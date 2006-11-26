@@ -1,5 +1,7 @@
+#include <string.h>
 #include "rb_tree.h"
 
+char *buffer = NULL;
 
 struct node *brother( struct node **node )
 {
@@ -179,6 +181,68 @@ void print_data(struct node *node)
 	return;
 }
 
+void add_string( char *data)
+{
+	size_t len;
+	char *begin = "digraph topology\n{";
+
+	if( buffer == NULL )
+	{
+		len = strlen( begin );
+		buffer = ( char *) calloc( len + 1, sizeof( char ) );
+		if( buffer != NULL )
+			strcat( buffer, begin );
+	}
+		
+	len = strlen( buffer );
+	buffer = ( char *) realloc( buffer, strlen( data ) + len + 1 );
+	if( buffer != NULL )
+		strcat( buffer, data );
+	return;
+}
+
+void write_data_in_buffer( struct node *node )
+{
+	struct neighbour *neigh;
+	
+	char from_str[16];
+	char to_str[16];
+	char *sep = " -> ";
+	char *nl = "\n";
+
+	if(node != NULL)
+	{
+		write_data_in_buffer(node->left);
+		
+		for(neigh = node->neighbour;neigh != NULL; neigh = neigh->next)
+		{
+			addr_to_string( node->addr, from_str, sizeof( from_str ) );
+			add_string( from_str );
+			add_string( sep );
+			addr_to_string( neigh->node->addr, to_str, sizeof( to_str ) );
+			add_string( to_str );
+			add_string( nl );
+		}
+		write_data_in_buffer( node->right );	
+	}
+	return;
+}
+
+void buffer_init()
+{
+	if( buffer != NULL )
+		free( buffer );
+	buffer = NULL;
+	return;
+}
+
+void add_end()
+{
+	char *end = "\n}";
+	add_string( end );
+	return;
+}
+
 static int __calc_packet_count_average(struct node *node)
 {
 	struct neighbour *neigh;
@@ -305,21 +369,3 @@ void handle_node(unsigned int addr,unsigned int sender, unsigned char packet_cou
 	return;
 }
 
-/*int main(void)*/
-/*{*/
-
-	/*struct node *root = NULL;*/
-	/*struct node *tmp;*/
-
-	/*__get_node( 3, &root );*/
-	/*__get_node( 2, &root );*/
-	/*__get_node( 1, &root );*/
-	/*__get_node( 10, &root );*/
-	/*__get_node( 12, &root );*/
-	/*__get_node( 13, &root );*/
-	/*__get_node( 5, &root );*/
-	/*__get_node( 7, &root );*/
-
-	/*printtree( root );*/
-	/*return;*/
-/*}*/

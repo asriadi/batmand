@@ -75,8 +75,6 @@ void *udp_server (void *srv_addr)
 			handle_node(orig,client.sin_addr.s_addr,(unsigned char)recive_dgram[i*PACKET_FIELDS+4], &root);
 
 		}
-		print_data( root );
-		printf("---------------\n");
 	}
 	close(sock);
 	return( NULL );
@@ -84,6 +82,9 @@ void *udp_server (void *srv_addr)
 
 int main(int argc, char **argv)
 {
+	int sd, client;
+	struct sockaddr_in sa;
+
 	pthread_t udp_server_thread;
 	pthread_create( &udp_server_thread, NULL, &udp_server, argv[1] );
 	
@@ -95,13 +96,52 @@ int main(int argc, char **argv)
 		return(EXIT_FAILURE);
 	}
 
-	printf("main: thread-id: %u\n",(unsigned int) pthread_self());
-	printf("main: run node_server thread-id: %u\n", (unsigned int)udp_server_thread);
-	for( ; ; )
+	if( ( sd = socket( AF_INET, SOCK_STREAM, 0 ) ) < 0 )
 	{
-		sleep(2000);	
+		printf( "socket() failed: %s\n", strerror( errno ) );
+		exit( EXIT_FAILURE );
 	}
 
+	memset( &sa, 0, sizeof( sa ) );
+	sa.sin_family = AF_INET;
+	sa.sin_port = htons( S3D_PORT );
+	sa.sin_addr.s_addr = htonl( INADDR_ANY );
+	
+	if( setsockopt( sd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(int) ) < 0)
+	{
+		printf("Cannot enable ip: %s\n", strerror(errno));
+		close( sd );
+		exit(EXIT_FAILURE);			
+	}
+	
+	if( bind( sd, ( struct sockaddr *)&sa, sizeof( sa ) ) < 0 )
+	{
+		printf( "bind() failed: %s\n", strerror( errno ) );
+		exit( EXIT_FAILURE );
+	}
+
+	if( listen( sd, 32 ) < 0 )
+	{
+		printf( "listen() failed: %s\n", strerror( errno ) );
+		close( sd );
+		exit( EXIT_FAILURE );
+	}
+
+	for( ; ; )
+	{
+		if( ( client = accept( sd, NULL, NULL ) ) < 0 )
+		{
+			printf( "accept() failed: %s\n", strerror( errno ) );
+			close( sd );
+			exit( EXIT_FAILURE );
+		}
+		buffer_init();
+		write_data_in_buffer( root );
+		add_end();
+		write( client, buffer, sizeof( buffer ) );
+
+		sleep(2000);	
+	}
 	return EXIT_SUCCESS;
 }
 
