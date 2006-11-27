@@ -100,7 +100,7 @@ void *udp_server( void *srv_dev )
 		exit_error( "Error by bind => %s\n", strerror( errno ) );
 	}
 	
-	printf( "node server listen on ip %s\n", str1 );
+	printf( "receiver listen on ip %s port %d\n", str1, ntohs( server.sin_port ) );
 	while(1)
 	{
 		int orig;
@@ -126,7 +126,6 @@ static void *tcp_server( void *arg )
 
 	con = *( ( int *) arg );
 	free( arg );
-	pthread_detach( pthread_self() );
 
 	numbytes = sizeof( message );
 	for( ; ; )
@@ -191,7 +190,7 @@ int main( int argc, char **argv )
 		exit_error( "listen() failed: %s\n", strerror( errno ) );
 	}
 	
-	printf("server: accept connections on ip %s port %d\n", str1, ntohs( sa.sin_port ) );
+	printf("sender listen on ip %s port %d\n", str1, ntohs( sa.sin_port ) );
 
 	for( ; ; )
 	{
@@ -199,9 +198,9 @@ int main( int argc, char **argv )
 		clnt_socket = malloc( sizeof( int ) );
 		*clnt_socket = accept( sock, (struct sockaddr*)&adr_client, &len_inet );
 		pthread_create( &tcp_server_thread, NULL, &tcp_server, clnt_socket );
+		pthread_detach( tcp_server_thread );
 		addr_to_string( adr_client.sin_addr.s_addr, client_ip, sizeof( client_ip ) );
-		printf("server: client %s connected\n",client_ip);
-		sleep( 2000 );
+		printf("sender: client %s connected\n",client_ip);
 	}
 
 	return EXIT_SUCCESS;
