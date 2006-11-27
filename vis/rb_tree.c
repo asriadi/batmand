@@ -1,3 +1,25 @@
+/*
+ * rb_tree.c
+ *
+ * Copyright (C) 2006 Andreas Langer <andreas_lbg@gmx.de>:
+ * 
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of version 2 of the GNU General Public
+ * License as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301, USA
+ *
+ */
+
 #include <string.h>
 #include "rb_tree.h"
 
@@ -184,7 +206,7 @@ void print_data(struct node *node)
 void add_string( char *data)
 {
 	size_t len;
-	char *begin = "digraph topology\n{";
+	char *begin = "digraph topology\n{\n";
 
 	if( buffer == NULL )
 	{
@@ -238,7 +260,7 @@ void buffer_init()
 
 void add_end()
 {
-	char *end = "\n}";
+	char *end = "}\0";
 	add_string( end );
 	return;
 }

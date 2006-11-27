@@ -1,3 +1,27 @@
+/*
+ * vis.c
+ *
+ * Copyright (C) 2006 Andreas Langer <andreas_lbg@gmx.de>:
+ * 
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of version 2 of the GNU General Public
+ * License as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301, USA
+ *
+ */
+
+#include <net/if.h> 
+#include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
@@ -8,6 +32,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <pthread.h>
+#include <stdarg.h>
 #include "rb_tree.h"
 
 #define MAXCHAR 4096
@@ -19,55 +44,69 @@
 static int on = 1;
 struct node *root = NULL;
 
-void *udp_server (void *srv_addr)
+void exit_error(char *format, ...)
+{
+	va_list args;
+
+	va_start(args, format);
+	vprintf(format, args);
+	va_end(args);
+	exit( EXIT_FAILURE );
+}
+
+void *udp_server( void *srv_dev )
 {
 	char recive_dgram[MAXCHAR];
-	char addr_str[ADDR_STR_LEN];
-	
+	char str1[ADDR_STR_LEN];
+	struct ifreq int_req;
 	struct sockaddr_in server, client;
 	int sock, n, packet_count,i;
 	socklen_t len;
 	
 	sock = socket(PF_INET, SOCK_DGRAM,0 );
-
 	memset( &server, 0, sizeof (server));
+
+	
+	memset( &int_req, 0, sizeof ( struct ifreq ) );
+	strncpy( int_req.ifr_name, srv_dev, IFNAMSIZ - 1 );
+
+	if( ioctl( sock, SIOCGIFADDR, &int_req ) < 0 )
+		exit_error( "Error - can't get IP address of interface %s\n", srv_dev );
+
 	server.sin_family = AF_INET;
-	server.sin_port = htons(PORT);
-	inet_pton(AF_INET, (char *)srv_addr,&server.sin_addr);
+	server.sin_port = htons( PORT );
+	server.sin_addr.s_addr = ((struct sockaddr_in *)&int_req.ifr_addr)->sin_addr.s_addr;
+
+	addr_to_string( server.sin_addr.s_addr, str1, sizeof (str1));
 
 	if(server.sin_addr.s_addr == INADDR_NONE)
-	{
-		printf("invalid adress %s", (char *) srv_addr);
-		exit(EXIT_FAILURE);
-	}
+		exit_error( "invalid adress %s", str1 );
 
-	if(sock < 0)
+	if( sock < 0 )
 	{
-		printf("Cannot create socket => %s\n",strerror(errno));
-		exit(EXIT_FAILURE);
+		close( sock );
+		exit_error( "Cannot create socket => %s\n", strerror(errno) );
 	}
 	
-	if(setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(int)) < 0)
+	if( setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &on, sizeof( int ) ) < 0 )
 	{
-		printf("Cannot enable ip: %s\n", strerror(errno));
-		close(sock);
-		exit(EXIT_FAILURE);			
+		close( sock );
+		exit_error( "Cannot enable ip: %s\n", strerror( errno ) );
 	}
 	
-	if(bind( sock, (struct sockaddr*)&server, sizeof(server)) < 0)
+	if( bind( sock, ( struct sockaddr*)&server, sizeof( server ) ) < 0 )
 	{
-		printf("Error by bind => %s\n",strerror(errno));
 		close(sock);
-		exit(EXIT_FAILURE);
+		exit_error( "Error by bind => %s\n", strerror( errno ) );
 	}
-
+	
+	printf( "node server listen on ip %s\n", str1 );
 	while(1)
 	{
 		int orig;
 		len = sizeof(client);
 
 		n = recvfrom(sock, recive_dgram, sizeof(recive_dgram), 0, (struct sockaddr*) &client, &len);
-		addr_to_string(client.sin_addr.s_addr, addr_str, sizeof(addr_str));
 		packet_count = n / PACKET_FIELDS;
 		for( i=0;i < packet_count; i++)
 		{
@@ -80,68 +119,91 @@ void *udp_server (void *srv_addr)
 	return( NULL );
 }
 
-int main(int argc, char **argv)
+static void *tcp_server( void *arg )
 {
-	int sd, client;
-	struct sockaddr_in sa;
+	int con, numbytes;
+	char message[] = "hu";
 
-	pthread_t udp_server_thread;
+	con = *( ( int *) arg );
+	free( arg );
+	pthread_detach( pthread_self() );
+
+	numbytes = sizeof( message );
+	for( ; ; )
+	{
+		if( write( con, message, numbytes) != numbytes )
+		{
+			close( con );
+			return( NULL );
+		}
+	}
+	close( con );
+	return( NULL );
+}
+
+int main( int argc, char **argv )
+{
+	int sock, *clnt_socket;
+	struct sockaddr_in sa, adr_client;
+	struct ifreq int_req;
+	char str1[ADDR_STR_LEN], client_ip[ADDR_STR_LEN];
+	socklen_t len_inet;
+	
+	pthread_t udp_server_thread, tcp_server_thread;
 	pthread_create( &udp_server_thread, NULL, &udp_server, argv[1] );
 	
-	char client_ip[16];
 
-	if(argc < 2)
-	{
-		fprintf(stderr,"Usage: recon <ip>\n");
-		return(EXIT_FAILURE);
-	}
+	if(argc < 3)
+		exit_error( "Usage: vis <receive interface> <send interface>\n" );
 
-	if( ( sd = socket( AF_INET, SOCK_STREAM, 0 ) ) < 0 )
-	{
-		printf( "socket() failed: %s\n", strerror( errno ) );
-		exit( EXIT_FAILURE );
-	}
+	
+	if( ( sock = socket( AF_INET, SOCK_STREAM, 0 ) ) < 0 )
+		exit_error( "socket() failed: %s\n", strerror( errno ) );
+
+	memset( &int_req, 0, sizeof ( struct ifreq ) );
+	strncpy( int_req.ifr_name, argv[2], IFNAMSIZ - 1 );
+
+	if( ioctl( sock, SIOCGIFADDR, &int_req ) < 0 )
+		exit_error( "Error - can't get IP address of interface %s\n", argv[2] );
 
 	memset( &sa, 0, sizeof( sa ) );
 	sa.sin_family = AF_INET;
 	sa.sin_port = htons( S3D_PORT );
-	sa.sin_addr.s_addr = htonl( INADDR_ANY );
-	
-	if( setsockopt( sd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(int) ) < 0)
+	sa.sin_addr.s_addr = ((struct sockaddr_in *)&int_req.ifr_addr)->sin_addr.s_addr;
+
+	addr_to_string( sa.sin_addr.s_addr, str1, sizeof ( str1 ) );
+
+	if( setsockopt( sock, SOL_SOCKET, SO_REUSEADDR, &on, sizeof( int ) ) < 0 )
 	{
-		printf("Cannot enable ip: %s\n", strerror(errno));
-		close( sd );
-		exit(EXIT_FAILURE);			
+		close( sock );
+		exit_error( "Cannot enable ip: %s\n", strerror( errno ) );
 	}
 	
-	if( bind( sd, ( struct sockaddr *)&sa, sizeof( sa ) ) < 0 )
+	if( bind( sock, ( struct sockaddr *)&sa, sizeof( sa ) ) < 0 )
 	{
-		printf( "bind() failed: %s\n", strerror( errno ) );
-		exit( EXIT_FAILURE );
+		close( sock );
+		exit_error( "bind() failed: %s\n", strerror( errno ) );
 	}
 
-	if( listen( sd, 32 ) < 0 )
+	if( listen( sock, 32 ) < 0 )
 	{
-		printf( "listen() failed: %s\n", strerror( errno ) );
-		close( sd );
-		exit( EXIT_FAILURE );
+		close( sock );
+		exit_error( "listen() failed: %s\n", strerror( errno ) );
 	}
+	
+	printf("server: accept connections on ip %s port %d\n", str1, ntohs( sa.sin_port ) );
 
 	for( ; ; )
 	{
-		if( ( client = accept( sd, NULL, NULL ) ) < 0 )
-		{
-			printf( "accept() failed: %s\n", strerror( errno ) );
-			close( sd );
-			exit( EXIT_FAILURE );
-		}
-		buffer_init();
-		write_data_in_buffer( root );
-		add_end();
-		write( client, buffer, sizeof( buffer ) );
-
-		sleep(2000);	
+		len_inet = sizeof( adr_client );
+		clnt_socket = malloc( sizeof( int ) );
+		*clnt_socket = accept( sock, (struct sockaddr*)&adr_client, &len_inet );
+		pthread_create( &tcp_server_thread, NULL, &tcp_server, clnt_socket );
+		addr_to_string( adr_client.sin_addr.s_addr, client_ip, sizeof( client_ip ) );
+		printf("server: client %s connected\n",client_ip);
+		sleep( 2000 );
 	}
+
 	return EXIT_SUCCESS;
 }
 
