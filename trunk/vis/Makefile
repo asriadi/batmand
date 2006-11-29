@@ -20,7 +20,7 @@ CC =		gcc
 CFLAGS =	-Wall -O0 -g3
 LDFLAGS = -lpthread
 
-vis:		rb_tree.o
+vis:		rb_tree.o convert.o
 
 clean:
 		rm -f vis *.o *~

@@ -33,7 +33,9 @@
 #include <errno.h>
 #include <pthread.h>
 #include <stdarg.h>
+
 #include "rb_tree.h"
+#include "convert.h"
 
 #define MAXCHAR 4096
 #define PORT 1967
@@ -192,6 +194,14 @@ int main( int argc, char **argv )
 	
 	printf("sender listen on ip %s port %d\n", str1, ntohs( sa.sin_port ) );
 
+	
+	/* init converter for olsr output */
+	if( convert() )
+	{
+		close( sock );
+		exit_error( "convert() failed: %s\n", strerror( errno ) );
+	}
+	
 	for( ; ; )
 	{
 		len_inet = sizeof( adr_client );
