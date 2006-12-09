@@ -47,4 +47,3 @@ struct node {
 };
 
 void handle_node(unsigned int addr,unsigned int sender, unsigned char packet_count, struct node **root );
-int convert();
