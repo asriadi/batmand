@@ -214,7 +214,7 @@ static void *tcp_server( void *arg )
 			}
 		}
 
-		if( write( con, buffer1.output, sizeof( buffer1.output ) ) != sizeof( buffer1.output ) )
+		if( write( con, buffer1.output, strlen( buffer1.output ) ) != strlen( buffer1.output ) )
 		{
 			close( con );
 			return( NULL );
