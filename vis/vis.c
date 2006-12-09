@@ -35,7 +35,6 @@
 #include <stdarg.h>
 
 #include "rb_tree.h"
-#include "convert.h"
 
 #define MAXCHAR 4096
 #define PORT 1967
@@ -43,8 +42,17 @@
 #define ADDR_STR_LEN 16
 #define PACKET_FIELDS 5
 
+typedef struct _buffer {
+	char *output;
+	int start_size;
+	pthread_mutex_t mutex;
+	pthread_cond_t prepared, processed;
+} buffer_t;
+
 static int on = 1;
 struct node *root = NULL;
+static buffer_t buffer1;
+
 
 void exit_error(char *format, ...)
 {
@@ -54,6 +62,73 @@ void exit_error(char *format, ...)
 	vprintf(format, args);
 	va_end(args);
 	exit( EXIT_FAILURE );
+}
+
+void addr_to_string(unsigned int addr, char *str, int len)
+{
+	inet_ntop(AF_INET, &addr, str, len);
+	return;
+}
+
+void init_buffer( buffer_t *buffer )
+{
+	if( pthread_mutex_init( &buffer->mutex, NULL ) != 0 )
+		exit_error( "init failed\n" );
+	
+	if( pthread_cond_init( &buffer->prepared, NULL ) != 0 )
+		exit_error( "init failed\n" );
+
+	if( pthread_cond_init( &buffer->processed, NULL ) != 0 )
+		exit_error( "init failed\n" );
+	return;
+}
+
+void reset_buffer( buffer_t *buffer )
+{
+	char begin[] = "digraph topology\n{\n";
+
+	if( buffer->output != NULL )
+		free( buffer->output );
+
+	buffer->output = NULL;
+	buffer->output = malloc( strlen( begin ) + 1 );
+	if( buffer->output == NULL )
+		exit_error( "reset_buffer() failed %s\n", strerror( errno ) );
+	
+	strncat( buffer->output, begin, sizeof( begin ) );
+	
+	buffer->start_size = strlen( buffer->output );
+	return;
+}
+
+void *convert( void *dummy )
+{
+	size_t len;
+	char test[] = "Hallo Netz\n}\n";
+	for( ; ; )
+	{
+		if( pthread_mutex_lock( &buffer1.mutex ) != 0 )
+			exit_error( "pthread_mutex_lock() in convert failed: %s\n", strerror( errno ) );
+		while( buffer1.start_size != strlen( buffer1.output ) )
+		{
+			if( pthread_cond_wait( &buffer1.processed, &buffer1.mutex ) != 0 )
+				exit_error( "pthread_cond_wait() in convert failed: %s\n", strerror( errno ) );
+		}
+
+		len = strlen( buffer1.output ) + strlen( test ) + 1;
+
+		buffer1.output = realloc( buffer1.output, len );
+
+		strncat( buffer1.output, test, sizeof( test ) );
+		if( pthread_cond_broadcast( &buffer1.prepared ) != 0 )
+			exit_error( "pthread_cond_broadcast() in convert failed: %s\n", strerror( errno ) );
+
+		if( pthread_mutex_unlock( &buffer1.mutex ) != 0 )
+			exit_error( "pthread_mutex_unlock() in convert failed: %s\n", strerror( errno ) );
+
+	}
+
+	return NULL;
 }
 
 void *udp_server( void *srv_dev )
@@ -82,7 +157,7 @@ void *udp_server( void *srv_dev )
 	addr_to_string( server.sin_addr.s_addr, str1, sizeof (str1));
 
 	if(server.sin_addr.s_addr == INADDR_NONE)
-		exit_error( "invalid adress %s", str1 );
+		exit_error( "invalid adress %s\n", str1 );
 
 	if( sock < 0 )
 	{
@@ -123,21 +198,43 @@ void *udp_server( void *srv_dev )
 
 static void *tcp_server( void *arg )
 {
-	int con, numbytes;
-	char message[] = "hu";
+	int con;
 
 	con = *( ( int *) arg );
 	free( arg );
 
-	numbytes = sizeof( message );
 	for( ; ; )
 	{
-		if( write( con, message, numbytes) != numbytes )
+		while( buffer1.start_size == strlen( buffer1.output ) )
+		{
+			if( pthread_cond_wait( &buffer1.prepared, &buffer1.mutex ) )
+			{
+				close( con );
+				exit_error( "pthread_cond_wait() failed: %s\n", strerror( errno ) );
+			}
+		}
+
+		if( write( con, buffer1.output, sizeof( buffer1.output ) ) != sizeof( buffer1.output ) )
 		{
 			close( con );
 			return( NULL );
 		}
+
+		if( pthread_cond_signal( &buffer1.processed ) != 0 )
+		{
+			close( con );
+			exit_error( "pthread_cond_signal() failed: %s\n", strerror( errno ) );
+		}
+		
+		if( pthread_mutex_unlock( &buffer1.mutex ) )
+		{
+			close( con );
+			exit_error( "pthread_mutex_unlock() failed: %s\n", strerror( errno ) );
+		}
+		sleep(2000);
+		reset_buffer( &buffer1 );
 	}
+
 	close( con );
 	return( NULL );
 }
@@ -150,13 +247,13 @@ int main( int argc, char **argv )
 	char str1[ADDR_STR_LEN], client_ip[ADDR_STR_LEN];
 	socklen_t len_inet;
 	
-	pthread_t udp_server_thread, tcp_server_thread;
-	pthread_create( &udp_server_thread, NULL, &udp_server, argv[1] );
-	
+	pthread_t udp_server_thread, tcp_server_thread, converter_thread;
 
 	if(argc < 3)
 		exit_error( "Usage: vis <receive interface> <send interface>\n" );
 
+	pthread_create( &udp_server_thread, NULL, &udp_server, argv[1] );
+	pthread_create( &converter_thread, NULL , &convert, NULL );
 	
 	if( ( sock = socket( AF_INET, SOCK_STREAM, 0 ) ) < 0 )
 		exit_error( "socket() failed: %s\n", strerror( errno ) );
@@ -196,12 +293,9 @@ int main( int argc, char **argv )
 
 	
 	/* init converter for olsr output */
-	if( convert() )
-	{
-		close( sock );
-		exit_error( "convert() failed: %s\n", strerror( errno ) );
-	}
-	
+	init_buffer( &buffer1 );
+	reset_buffer( &buffer1 );
+
 	for( ; ; )
 	{
 		len_inet = sizeof( adr_client );
