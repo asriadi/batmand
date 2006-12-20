@@ -180,28 +180,6 @@ static void clearance( struct node **node, struct node **root )
 	return;
 }
 
-/*void print_data(struct node *node)*/
-/*{*/
-	/*struct neighbour *neigh;*/
-	
-	/*char str[16];*/
-	/*if(node != NULL)*/
-	/*{*/
-		/*print_data(node->left);*/
-		/*addr_to_string(node->addr,str,sizeof(str));*/
-		/*printf("node %-15s => %2u last seen => %2u\n",str,node->packet_count_average,node->last_seen);*/
-		/*for(neigh = node->neighbour;neigh != NULL; neigh = neigh->next)*/
-		/*{*/
-			/*addr_to_string(neigh->node->addr,str,sizeof(str));*/
-			/*printf("\tneighbour => %15s => %u\n", str, neigh->packet_count);	*/
-		/*}*/
-		/*print_data(node->right);	*/
-	/*}*/
-	/*return;*/
-/*}*/
-
-
-
 static int __calc_packet_count_average(struct node *node)
 {
 	struct neighbour *neigh;
@@ -297,22 +275,6 @@ struct node *__get_node(unsigned int addr,struct node **node)
 	return( (*node) );
 }
 
-/*void printtree( struct node *node )*/
-/*{*/
-	/*printf("%d (%s)\n", node->addr, node->color == 0 ? "red" : "black" );*/
-	/*printf("go left\n");*/
-	/*if( node->left != NULL )*/
-		/*printtree( node->left );*/
-	/*printf("back from left\n");*/
-	/*printf("go right\n");*/
-	/*if( node->right != NULL )*/
-		/*printtree( node->right );*/
-	/*printf("back from right\n");*/
-	/*return;*/
-/*}*/
-
-
-
 void handle_node(unsigned int addr,unsigned int sender, unsigned char packet_count, struct node **root)
 {
 	struct node *src_node, *orig_node;
@@ -324,65 +286,39 @@ void handle_node(unsigned int addr,unsigned int sender, unsigned char packet_cou
 	return;
 }
 
+void addr_to_string(unsigned int addr, char *str, int len)
+{
+	inet_ntop(AF_INET, &addr, str, len);
+	return;
+}
 
-/*void add_string( char *data)*/
-/*{*/
-	/*size_t len;*/
-	/*char *begin = "digraph topology\n{\n";*/
-
-	/*if( buffer == NULL )*/
-	/*{*/
-		/*len = strlen( begin );*/
-		/*buffer = ( char *) calloc( len + 1, sizeof( char ) );*/
-		/*if( buffer != NULL )*/
-			/*strcat( buffer, begin );*/
-	/*}*/
-		
-	/*len = strlen( buffer );*/
-	/*buffer = ( char *) realloc( buffer, strlen( data ) + len + 1 );*/
-	/*if( buffer != NULL )*/
-		/*strcat( buffer, data );*/
-	/*return;*/
-/*}*/
-
-/*void write_data_in_buffer( struct node *node )*/
-/*{*/
-	/*struct neighbour *neigh;*/
+void write_data_in_buffer( struct node *node, char **buffer )
+{
+	struct neighbour *neigh;
 	
-	/*char from_str[16];*/
-	/*char to_str[16];*/
-	/*char *sep = " -> ";*/
-	/*char *nl = "\n";*/
+	char from_str[16];
+	char to_str[16];
+	char tmp[100];
 
-	/*if(node != NULL)*/
-	/*{*/
-		/*write_data_in_buffer(node->left);*/
+	if(node != NULL)
+	{
 		
-		/*for(neigh = node->neighbour;neigh != NULL; neigh = neigh->next)*/
-		/*{*/
-			/*addr_to_string( node->addr, from_str, sizeof( from_str ) );*/
-			/*add_string( from_str );*/
-			/*add_string( sep );*/
-			/*addr_to_string( neigh->node->addr, to_str, sizeof( to_str ) );*/
-			/*add_string( to_str );*/
-			/*add_string( nl );*/
-		/*}*/
-		/*write_data_in_buffer( node->right );	*/
-	/*}*/
-	/*return;*/
-/*}*/
+		for( neigh = node->neighbour; neigh != NULL; neigh = neigh->next )
+		{
+			addr_to_string( node->addr, from_str, sizeof( from_str ) );
+			addr_to_string( neigh->node->addr, to_str, sizeof( to_str ) );
+			snprintf( tmp, sizeof( tmp ), "\"%s\" -> \"%s\"\n", from_str, to_str );
+			
+			*buffer = realloc( *buffer, strlen( tmp ) + strlen( *buffer ) + 1 );
 
-/*void buffer_init()*/
-/*{*/
-	/*if( buffer != NULL )*/
-		/*free( buffer );*/
-	/*buffer = NULL;*/
-	/*return;*/
-/*}*/
+			strncat( *buffer, tmp, strlen( tmp ) );
+		}
 
-/*void add_end()*/
-/*{*/
-	/*char *end = "}\0";*/
-	/*add_string( end );*/
-	/*return;*/
-/*}*/
+		if( node->left != NULL )
+			write_data_in_buffer( node->left, &(*buffer ) );
+		if( node->right != NULL )
+			write_data_in_buffer( node->right, &(*buffer ) );
+	}
+	return;
+}
+
