@@ -24,6 +24,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <arpa/inet.h>
+#include <string.h>
 
 enum farb_typ { red = 0, black };
 
@@ -47,3 +49,5 @@ struct node {
 };
 
 void handle_node(unsigned int addr,unsigned int sender, unsigned char packet_count, struct node **root );
+void write_data_in_buffer( struct node *node, char **buffer );
+void addr_to_string(unsigned int addr, char *str, int len);

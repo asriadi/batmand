@@ -24,9 +24,7 @@
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <arpa/inet.h>
 #include <unistd.h>
-#include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -42,16 +40,8 @@
 #define ADDR_STR_LEN 16
 #define PACKET_FIELDS 5
 
-typedef struct _buffer {
-	char *output;
-	int start_size;
-	pthread_mutex_t mutex;
-	pthread_cond_t prepared, processed;
-} buffer_t;
-
 static int on = 1;
 struct node *root = NULL;
-static buffer_t buffer1;
 
 
 void exit_error(char *format, ...)
@@ -64,71 +54,29 @@ void exit_error(char *format, ...)
 	exit( EXIT_FAILURE );
 }
 
-void addr_to_string(unsigned int addr, char *str, int len)
-{
-	inet_ntop(AF_INET, &addr, str, len);
-	return;
-}
 
-void init_buffer( buffer_t *buffer )
-{
-	if( pthread_mutex_init( &buffer->mutex, NULL ) != 0 )
-		exit_error( "init failed\n" );
-	
-	if( pthread_cond_init( &buffer->prepared, NULL ) != 0 )
-		exit_error( "init failed\n" );
-
-	if( pthread_cond_init( &buffer->processed, NULL ) != 0 )
-		exit_error( "init failed\n" );
-	return;
-}
-
-void reset_buffer( buffer_t *buffer )
-{
-	char begin[] = "digraph topology\n{\n";
-
-	if( buffer->output != NULL )
-		free( buffer->output );
-
-	buffer->output = NULL;
-	buffer->output = malloc( strlen( begin ) + 1 );
-	if( buffer->output == NULL )
-		exit_error( "reset_buffer() failed %s\n", strerror( errno ) );
-	
-	strncat( buffer->output, begin, sizeof( begin ) );
-	
-	buffer->start_size = strlen( buffer->output );
-	return;
-}
-
-void *convert( void *dummy )
+void generate_buffer( char **buffer )
 {
 	size_t len;
-	char test[] = "Hallo Netz\n}\n";
-	for( ; ; )
-	{
-		if( pthread_mutex_lock( &buffer1.mutex ) != 0 )
-			exit_error( "pthread_mutex_lock() in convert failed: %s\n", strerror( errno ) );
-		while( buffer1.start_size != strlen( buffer1.output ) )
-		{
-			if( pthread_cond_wait( &buffer1.processed, &buffer1.mutex ) != 0 )
-				exit_error( "pthread_cond_wait() in convert failed: %s\n", strerror( errno ) );
-		}
+	char test[] = "digraph topology\n{\n";
+	char end[] = "}\n";
 
-		len = strlen( buffer1.output ) + strlen( test ) + 1;
+	if( *buffer != NULL )
+		free( *buffer );
 
-		buffer1.output = realloc( buffer1.output, len );
+	len = strlen( test ) + 1;
 
-		strncat( buffer1.output, test, sizeof( test ) );
-		if( pthread_cond_broadcast( &buffer1.prepared ) != 0 )
-			exit_error( "pthread_cond_broadcast() in convert failed: %s\n", strerror( errno ) );
+	*buffer = malloc( len * sizeof( char ) );
 
-		if( pthread_mutex_unlock( &buffer1.mutex ) != 0 )
-			exit_error( "pthread_mutex_unlock() in convert failed: %s\n", strerror( errno ) );
+	strncat( *buffer, test, sizeof( test ) );
 
-	}
+	write_data_in_buffer( root, &(*buffer) );
 
-	return NULL;
+	*buffer = realloc( *buffer, strlen( *buffer ) + strlen( end ) + 1 );
+
+	strncat( *buffer, end, sizeof( end ) );
+
+	return;
 }
 
 void *udp_server( void *srv_dev )
@@ -199,40 +147,25 @@ void *udp_server( void *srv_dev )
 static void *tcp_server( void *arg )
 {
 	int con;
+	char *buffer = NULL;
 
 	con = *( ( int *) arg );
 	free( arg );
 
 	for( ; ; )
 	{
-		while( buffer1.start_size == strlen( buffer1.output ) )
-		{
-			if( pthread_cond_wait( &buffer1.prepared, &buffer1.mutex ) )
-			{
-				close( con );
-				exit_error( "pthread_cond_wait() failed: %s\n", strerror( errno ) );
-			}
-		}
-
-		if( write( con, buffer1.output, strlen( buffer1.output ) ) != strlen( buffer1.output ) )
+		generate_buffer( &buffer );
+		if( write( con, buffer, strlen( buffer ) ) != strlen( buffer ) )
 		{
 			close( con );
 			return( NULL );
 		}
-
-		if( pthread_cond_signal( &buffer1.processed ) != 0 )
-		{
-			close( con );
-			exit_error( "pthread_cond_signal() failed: %s\n", strerror( errno ) );
-		}
+			
+		free( buffer );
+		buffer = NULL;
 		
-		if( pthread_mutex_unlock( &buffer1.mutex ) )
-		{
-			close( con );
-			exit_error( "pthread_mutex_unlock() failed: %s\n", strerror( errno ) );
-		}
-		sleep(2000);
-		reset_buffer( &buffer1 );
+		sleep(5);
+		
 	}
 
 	close( con );
@@ -247,13 +180,12 @@ int main( int argc, char **argv )
 	char str1[ADDR_STR_LEN], client_ip[ADDR_STR_LEN];
 	socklen_t len_inet;
 	
-	pthread_t udp_server_thread, tcp_server_thread, converter_thread;
+	pthread_t udp_server_thread, tcp_server_thread;
 
 	if(argc < 3)
 		exit_error( "Usage: vis <receive interface> <send interface>\n" );
 
 	pthread_create( &udp_server_thread, NULL, &udp_server, argv[1] );
-	pthread_create( &converter_thread, NULL , &convert, NULL );
 	
 	if( ( sock = socket( AF_INET, SOCK_STREAM, 0 ) ) < 0 )
 		exit_error( "socket() failed: %s\n", strerror( errno ) );
@@ -290,11 +222,6 @@ int main( int argc, char **argv )
 	}
 	
 	printf("sender listen on ip %s port %d\n", str1, ntohs( sa.sin_port ) );
-
-	
-	/* init converter for olsr output */
-	init_buffer( &buffer1 );
-	reset_buffer( &buffer1 );
 
 	for( ; ; )
 	{
