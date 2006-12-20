@@ -68,13 +68,13 @@ void generate_buffer( char **buffer )
 
 	*buffer = malloc( len * sizeof( char ) );
 
-	strncat( *buffer, test, sizeof( test ) );
+	strncpy( *buffer, test, strlen( test ) );
 
 	write_data_in_buffer( root, &(*buffer) );
 
 	*buffer = realloc( *buffer, strlen( *buffer ) + strlen( end ) + 1 );
 
-	strncat( *buffer, end, sizeof( end ) );
+	strncat( *buffer, end, strlen( end ) );
 
 	return;
 }
