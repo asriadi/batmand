@@ -158,6 +158,8 @@ static void *tcp_server( void *arg )
 	int con = *( ( int *) arg );
 	buffer_t *last_send = NULL;
 
+	free( arg );
+
 	for( ; ; )
 	{
 		if( current != NULL && current != last_send )
