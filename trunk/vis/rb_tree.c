@@ -212,6 +212,7 @@ static void __add_neighbour_node(struct node *orig, unsigned char packet_count, 
 	}
 		
 	(*neigh) = (struct neighbour*)malloc(sizeof(struct neighbour));
+	memset( (*neigh), 0, sizeof( struct neighbour ) ); 
 	(*neigh)->node = orig;
 	(*neigh)->packet_count = packet_count;
 	(*neigh)->next = NULL;
@@ -292,7 +293,7 @@ void addr_to_string(unsigned int addr, char *str, int len)
 	return;
 }
 
-void write_data_in_buffer( struct node *node, char **buffer )
+void write_data_in_buffer( struct node *node, char *buffer )
 {
 	struct neighbour *neigh;
 	
@@ -308,10 +309,11 @@ void write_data_in_buffer( struct node *node, char **buffer )
 			addr_to_string( node->addr, from_str, sizeof( from_str ) );
 			addr_to_string( neigh->node->addr, to_str, sizeof( to_str ) );
 			snprintf( tmp, sizeof( tmp ), "\"%s\" -> \"%s\"\n", from_str, to_str );
+			/*snprintf( tmp, sizeof( tmp ), "\"%s\" -> \"%s\"[label=\"%d\"]\n", from_str, to_str, ( int )neigh->packet_count );*/
 			
-			*buffer = realloc( *buffer, strlen( tmp ) + strlen( *buffer ) + 1 );
+			buffer = realloc( buffer, strlen( tmp ) + strlen( buffer ) + 1 );
 
-			strncat( *buffer, tmp, strlen( tmp ) );
+			strncat( buffer, tmp, strlen( tmp ) );
 		}
 
 		if( node->left != NULL )

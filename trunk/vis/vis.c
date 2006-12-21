@@ -40,8 +40,17 @@
 #define ADDR_STR_LEN 16
 #define PACKET_FIELDS 5
 
+typedef struct _buffer {
+	char *buffer;
+	int counter;
+	struct _buffer *next;
+	pthread_mutex_t mutex;
+} buffer_t;
+
 static int on = 1;
 struct node *root = NULL;
+buffer_t *current = NULL;
+buffer_t *first = NULL;
 
 
 void exit_error(char *format, ...)
@@ -55,29 +64,29 @@ void exit_error(char *format, ...)
 }
 
 
-void generate_buffer( char **buffer )
-{
-	size_t len;
-	char test[] = "digraph topology\n{\n";
-	char end[] = "}\n";
+/*void generate_buffer( char **buffer )*/
+/*{*/
+	/*size_t len;*/
+	/*char test[] = "digraph topology\n{\n";*/
+	/*char end[] = "}\n";*/
 
-	if( *buffer != NULL )
-		free( *buffer );
+	/*if( *buffer != NULL )*/
+		/*free( *buffer );*/
 
-	len = strlen( test ) + 1;
+	/*len = strlen( test ) + 1;*/
 
-	*buffer = malloc( len * sizeof( char ) );
+	/**buffer = malloc( len * sizeof( char ) );*/
 
-	strncpy( *buffer, test, strlen( test ) );
+	/*strncpy( *buffer, test, strlen( test ) );*/
 
-	write_data_in_buffer( root, &(*buffer) );
+	/*write_data_in_buffer( root, &(*buffer) );*/
 
-	*buffer = realloc( *buffer, strlen( *buffer ) + strlen( end ) + 1 );
+	/**buffer = realloc( *buffer, strlen( *buffer ) + strlen( end ) + 1 );*/
 
-	strncat( *buffer, end, strlen( end ) );
+	/*strncat( *buffer, end, strlen( end ) );*/
 
-	return;
-}
+	/*return;*/
+/*}*/
 
 void *udp_server( void *srv_dev )
 {
@@ -146,30 +155,78 @@ void *udp_server( void *srv_dev )
 
 static void *tcp_server( void *arg )
 {
-	int con;
-	char *buffer = NULL;
-
-	con = *( ( int *) arg );
-	free( arg );
+	int con = *( ( int *) arg );
+	buffer_t *last_send = NULL;
 
 	for( ; ; )
 	{
-		generate_buffer( &buffer );
-		if( write( con, buffer, strlen( buffer ) ) != strlen( buffer ) )
+		if( current != NULL && current != last_send )
 		{
-			close( con );
-			return( NULL );
+			pthread_mutex_lock( &current->mutex );
+			current->counter = current->counter == -1 ? 1 : current->counter + 1;
+			pthread_mutex_unlock( &current->mutex );
+			if( write( con, current->buffer, strlen( current->buffer ) ) != strlen( current->buffer ) )
+			{
+				close( con );
+				pthread_mutex_lock( &current->mutex );
+				current->counter--;
+				pthread_mutex_unlock( &current->mutex );
+				return( NULL );
+			}
+			pthread_mutex_lock( &current->mutex );
+			current->counter--; 
+			pthread_mutex_unlock( &current->mutex );
+			last_send = current;
 		}
-			
-		free( buffer );
-		buffer = NULL;
-		
 		sleep(5);
-		
 	}
 
 	close( con );
 	return( NULL );
+}
+
+void *master( void *arg )
+{
+	buffer_t *new, *tmp;
+	char begin[] = "digraph topology\n{\n";
+	char end[] = "}\n";
+	
+	for( ; ; )
+	{
+		tmp = first;
+		while( tmp != NULL )
+		{
+			if( tmp->counter > 0 || tmp == current )
+				break;
+			
+			first = tmp->next;
+			free( tmp->buffer );
+			free( tmp );
+			tmp = first;
+
+		}
+
+		new = malloc( sizeof( buffer_t ) );
+		new->counter = -1;
+		new->next = NULL;
+		pthread_mutex_init( &new->mutex, NULL );
+
+		new->buffer = malloc( strlen( begin ) );
+		strncpy( new->buffer, begin, strlen( begin ) );
+		write_data_in_buffer( root, new->buffer );
+		
+		new->buffer = realloc( new->buffer, strlen( new->buffer ) + strlen( end ) + 1 );
+		strncat( new->buffer, end, strlen( end ) );
+		
+		if( first == NULL )
+			first = new;
+		else
+			current->next = new;
+		current = new;
+		sleep( 3 );
+	}
+
+	return NULL;
 }
 
 int main( int argc, char **argv )
@@ -180,13 +237,14 @@ int main( int argc, char **argv )
 	char str1[ADDR_STR_LEN], client_ip[ADDR_STR_LEN];
 	socklen_t len_inet;
 	
-	pthread_t udp_server_thread, tcp_server_thread;
+	pthread_t udp_server_thread, tcp_server_thread, master_thread;
 
 	if(argc < 3)
 		exit_error( "Usage: vis <receive interface> <send interface>\n" );
 
 	pthread_create( &udp_server_thread, NULL, &udp_server, argv[1] );
-	
+	pthread_create( &master_thread, NULL, &master, NULL );
+
 	if( ( sock = socket( AF_INET, SOCK_STREAM, 0 ) ) < 0 )
 		exit_error( "socket() failed: %s\n", strerror( errno ) );
 
