@@ -32,7 +32,7 @@
 #include <pthread.h>
 #include <stdarg.h>
 
-#include "rb_tree.h"
+#include "list.h"
 
 #define MAXCHAR 4096
 #define PORT 1967
@@ -40,18 +40,12 @@
 #define ADDR_STR_LEN 16
 #define PACKET_FIELDS 5
 
-typedef struct _buffer {
-	char *buffer;
-	int counter;
-	struct _buffer *next;
-	pthread_mutex_t mutex;
-} buffer_t;
 
 static int on = 1;
 struct node *root = NULL;
 buffer_t *current = NULL;
 buffer_t *first = NULL;
-
+buffer_t *fillme = NULL;
 
 void exit_error(char *format, ...)
 {
@@ -213,11 +207,16 @@ void *master( void *arg )
 		new->next = NULL;
 		pthread_mutex_init( &new->mutex, NULL );
 
-		new->buffer = malloc( strlen( begin ) );
-		strncpy( new->buffer, begin, strlen( begin ) );
-		write_data_in_buffer( root, new->buffer );
+		new->buffer = (char *)malloc( strlen( begin ) + 1 );
+		memset( new->buffer, '\0', strlen( begin ) );
+		strncpy( new->buffer, begin, strlen( begin ) + 1);
 		
-		new->buffer = realloc( new->buffer, strlen( new->buffer ) + strlen( end ) + 1 );
+		printf( "vis.c buffer: %s\n-----Ende-----\n", new->buffer );
+		fillme = new;
+
+		write_data_in_buffer( root );
+		
+		new->buffer = (char *)realloc( new->buffer, strlen( new->buffer ) + strlen( end ) + 1 );
 		strncat( new->buffer, end, strlen( end ) );
 		
 		if( first == NULL )
