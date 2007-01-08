@@ -1,5 +1,5 @@
 /*
- * rb_tree.h
+ * list.h
  *
  * Copyright (C) 2006 Andreas Langer <andreas_lbg@gmx.de>:
  * 
@@ -27,7 +27,6 @@
 #include <arpa/inet.h>
 #include <string.h>
 
-enum farb_typ { red = 0, black };
 
 struct neighbour {
 	struct node *node;
@@ -37,14 +36,11 @@ struct neighbour {
 
 struct node {
 	unsigned int addr;
-	int color;
 	unsigned char packet_count_average;
 	unsigned char last_seen;
 	char deleted:1;
 	struct neighbour *neighbour;
-	struct node *left;
-	struct node *right;
-	struct node *father;
+	struct node *next;
 	pthread_mutex_t mutex;
 };
 

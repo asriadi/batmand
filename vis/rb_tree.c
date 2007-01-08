@@ -293,7 +293,7 @@ void addr_to_string(unsigned int addr, char *str, int len)
 	return;
 }
 
-void write_data_in_buffer( struct node *node, char *buffer )
+void write_data_in_buffer( struct node *node )
 {
 	struct neighbour *neigh;
 	
@@ -311,15 +311,15 @@ void write_data_in_buffer( struct node *node, char *buffer )
 			snprintf( tmp, sizeof( tmp ), "\"%s\" -> \"%s\"\n", from_str, to_str );
 			/*snprintf( tmp, sizeof( tmp ), "\"%s\" -> \"%s\"[label=\"%d\"]\n", from_str, to_str, ( int )neigh->packet_count );*/
 			
-			buffer = realloc( buffer, strlen( tmp ) + strlen( buffer ) + 1 );
+			fillme->buffer = realloc( fillme->buffer, strlen( tmp ) + strlen( fillme->buffer ) + 1 );
 
-			strncat( buffer, tmp, strlen( tmp ) );
+			strncat( fillme->buffer, tmp, strlen( tmp ) );
 		}
 
 		if( node->left != NULL )
-			write_data_in_buffer( node->left, &(*buffer ) );
+			write_data_in_buffer( node->left );
 		if( node->right != NULL )
-			write_data_in_buffer( node->right, &(*buffer ) );
+			write_data_in_buffer( node->right );
 	}
 	return;
 }
