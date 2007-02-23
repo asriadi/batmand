@@ -222,8 +222,8 @@ if ( $ARGV[0] eq "-p" ) {
 
 
 
-foreach my $todo ( keys %to_do_hash ) {
-
-	print "ToDo: $todo -> $to_do_hash{ $todo }\n" if ( $to_do_hash{ $todo } > 2 );
-
-}
+# foreach my $todo ( keys %to_do_hash ) {
+#
+# 	print "ToDo: $todo -> $to_do_hash{ $todo }\n" if ( $to_do_hash{ $todo } > 2 );
+#
+# }
