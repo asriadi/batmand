@@ -495,7 +495,7 @@ void apply_init_args( int argc, char *argv[] ) {
 		exit(EXIT_FAILURE);
 	}
 
-	if ( tap_probe() )
+	if ( ! tap_probe() )
 		exit(EXIT_FAILURE);
 
 	if ( ! unix_client ) {
@@ -1198,7 +1198,8 @@ void close_all_sockets() {
 	if ( ( routing_class != 0 ) && ( curr_gateway != NULL ) )
 		del_default_route();
 
-	tap_destroy( tap_sock );
+	if ( tap_sock )
+		tap_destroy( tap_sock );
 
 // 	if ( vis_if.sock )
 // 		close( vis_if.sock );
@@ -1223,6 +1224,7 @@ int8_t receive_packet( unsigned char *packet_buff, int32_t packet_buff_len, int1
 	struct timeval tv;
 	struct list_head *if_pos;
 	struct batman_if *batman_if;
+	struct orig_node *orig_node;
 	struct ether_header ether_header;
 	int8_t res;
 	fd_set tmp_wait_set;
@@ -1252,28 +1254,90 @@ int8_t receive_packet( unsigned char *packet_buff, int32_t packet_buff_len, int1
 	if ( res == 0 )
 		return 0;
 
-	list_for_each( if_pos, &if_list ) {
+	if ( FD_ISSET( tap_sock, &tmp_wait_set ) ) {
 
-		batman_if = list_entry( if_pos, struct batman_if, list );
+		if ( ( *pay_buff_len = read( tap_sock, packet_buff, packet_buff_len - 1 ) ) < 0 ) {
 
-		if ( FD_ISSET( batman_if->raw_sock, &tmp_wait_set ) ) {
+			debug_output( 0, "Error - couldn't read data from tap interface: %s\n", strerror(errno) );
+			return -1;
 
-			if ( ( *pay_buff_len = rawsock_read( batman_if->raw_sock, &ether_header, packet_buff, packet_buff_len - 1 ) ) < 0 )
-				return -1;
+		} else {
 
-			if ( *pay_buff_len < sizeof(struct packet) )
-				return 0;
+			/* ethernet packet should be broadcasted */
+			if ( memcmp( &((struct ether_header *)packet_buff)->ether_dhost, broadcastAddr, sizeof(ether_header.ether_dhost) ) == 0 ) {
 
-			((struct packet *)packet_buff)->seqno = ntohs( ((struct packet *)packet_buff)->seqno ); /* network to host order for our 16bit seqno.*/
+				/* TODO: broadcast packet with batman information */
 
-			(*if_incoming) = batman_if;
-			break;
+			/* unicast packet */
+			} else {
+
+				/* get routing information */
+				orig_node = get_orig_node( ((struct ether_header *)packet_buff)->ether_dhost );
+
+				memcpy( ether_header.ether_dhost, ((struct ether_header *)packet_buff)->ether_dhost, ETH_ALEN );
+				memcpy( ether_header.ether_shost, my_hw_addr, ETH_ALEN );
+
+				if ( rawsock_write( orig_node->batman_if->raw_sock, &ether_header, packet_buff, packet_buff_len ) < 0 ) {
+
+					debug_output( 0, "Error - can't send data through raw socket: %s\n", strerror(errno) );
+					return -1;
+
+				}
+
+			}
+
+			return 0;
 
 		}
 
-	}
+	} else {
 
-	memcpy( neigh, ether_header.ether_shost, sizeof(ether_header.ether_shost) );
+		list_for_each( if_pos, &if_list ) {
+
+			batman_if = list_entry( if_pos, struct batman_if, list );
+
+			if ( FD_ISSET( batman_if->raw_sock, &tmp_wait_set ) ) {
+
+				if ( ( *pay_buff_len = rawsock_read( batman_if->raw_sock, &ether_header, packet_buff, packet_buff_len - 1 ) ) < 0 )
+					return -1;
+
+				/* ethernet packet should be broadcasted */
+				if ( memcmp( &ether_header.ether_dhost, broadcastAddr, sizeof(ether_header.ether_dhost) ) == 0 ) {
+
+					if ( *pay_buff_len < sizeof(struct packet) )
+						return 0;
+
+					((struct packet *)packet_buff)->seqno = ntohs( ((struct packet *)packet_buff)->seqno ); /* network to host order for our 16bit seqno.*/
+
+					(*if_incoming) = batman_if;
+					break;
+
+				/* unicast packet */
+				} else {
+
+					/* get routing information */
+					orig_node = get_orig_node( ether_header.ether_dhost );
+
+					memcpy( ether_header.ether_shost, my_hw_addr, ETH_ALEN );
+
+					if ( rawsock_write( orig_node->batman_if->raw_sock, &ether_header, packet_buff, packet_buff_len ) < 0 ) {
+
+						debug_output( 0, "Error - can't send data through raw socket: %s\n", strerror(errno) );
+						return -1;
+
+					}
+
+					return 0;
+
+				}
+
+			}
+
+		}
+
+		memcpy( neigh, ether_header.ether_shost, sizeof(ether_header.ether_shost) );
+
+	}
 
 	return 1;
 

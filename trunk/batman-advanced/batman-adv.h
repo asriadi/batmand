@@ -196,5 +196,6 @@ void   usage( void );
 void   verbose_usage( void );
 void   del_default_route();
 int8_t add_default_route();
+struct orig_node *get_orig_node( uint8_t *addr );
 
 #endif

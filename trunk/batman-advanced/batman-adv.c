@@ -94,7 +94,7 @@ uint32_t pref_gateway = 0;
 uint8_t found_ifs = 0;
 int32_t receive_max_sock = 0;
 fd_set receive_wait_set;
-int32_t tap_sock;
+int32_t tap_sock = 0;
 uint8_t my_hw_addr[6];
 
 unsigned char broadcastAddr[] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
@@ -186,7 +186,7 @@ struct orig_node *get_orig_node( uint8_t *addr ) {
 
 		orig_node = list_entry( pos, struct orig_node, list );
 
-		if ( memcmp( &orig_node->orig, addr, sizeof(orig_node->orig) == 0 ) )
+		if ( memcmp( &orig_node->orig, addr, sizeof(orig_node->orig) ) == 0 )
 			return orig_node;
 
 	}
@@ -548,7 +548,7 @@ int isDuplicate( uint8_t *orig, uint16_t seqno ) {
 	list_for_each( orig_pos, &orig_list ) {
 		orig_node = list_entry( orig_pos, struct orig_node, list );
 
-		if ( memcmp( &orig_node->orig, orig, sizeof(orig_node->orig) == 0 ) ) {
+		if ( memcmp( &orig_node->orig, orig, sizeof(orig_node->orig) ) == 0 ) {
 
 			list_for_each( neigh_pos, &orig_node->neigh_list ) {
 				neigh_node = list_entry( neigh_pos, struct neigh_node, list );
@@ -595,7 +595,7 @@ void update_originator( struct orig_node *orig_node, struct packet *in, uint8_t 
 
 		tmp_neigh_node = list_entry( neigh_pos, struct neigh_node, list );
 
-		if ( ( memcmp( &tmp_neigh_node->addr, neigh, sizeof(tmp_neigh_node->addr) == 0 ) ) && ( tmp_neigh_node->if_incoming == if_incoming ) ) {
+		if ( ( memcmp( &tmp_neigh_node->addr, neigh, sizeof(tmp_neigh_node->addr) ) == 0 ) && ( tmp_neigh_node->if_incoming == if_incoming ) ) {
 
 			neigh_node = tmp_neigh_node;
 

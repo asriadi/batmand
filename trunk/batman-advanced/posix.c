@@ -257,7 +257,7 @@ int main( int argc, char *argv[] ) {
 	/* check if user is root */
 	if ( ( getuid() ) || ( getgid() ) ) {
 
-		fprintf( stderr, "Error - you must be root to run %s !\n", argv[0] );
+		fprintf( stderr, "Error - you must be root to run batmand-adv !\n" );
 		exit(EXIT_FAILURE);
 
 	}

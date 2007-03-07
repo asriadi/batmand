@@ -260,7 +260,7 @@ int32_t tap_create( int16_t mtu, uint8_t *hw_addr ) {
 
 	}
 
-	memcpy( hw_addr, ifr_if.ifr_hwaddr.sa_data, ETH_ALEN );
+	memcpy( hw_addr, ifr_tap.ifr_hwaddr.sa_data, ETH_ALEN );
 
 	close( tmp_fd );
 
