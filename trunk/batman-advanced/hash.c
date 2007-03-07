@@ -56,7 +56,6 @@ void hash_delete(struct hashtable_t *hash, hashdata_free_cb free_cb) {
 
 /* iterate though the hash. first element is selected with iter_in NULL.
  * use the returned iterator to access the elements until hash_it_t returns NULL. */
-
 struct hash_it_t *hash_iterate(struct hashtable_t *hash, struct hash_it_t *iter_in) {
 	struct hash_it_t *iter;
 
@@ -72,16 +71,18 @@ struct hash_it_t *hash_iterate(struct hashtable_t *hash, struct hash_it_t *iter_
 			return(iter);
 	}
 	iter->index++;
-	while ( iter->index < hash->size ) {
-		if ( hash->table[ iter->index ].data != NULL)	
-			return(iter);
+	while ( iter->index < hash->size ) {		/* go through the entries of the hash table */
+		if ((iter->bucket= hash->table[ iter->index ].data) != NULL)	
+			return(iter);						/* if this table entry is not null, return it */
 		else
-			iter->index++;
+			iter->index++;						/* else, go to the next */
 	}
 	/* nothing to iterate over anymore */
 	free(iter);
 	return(NULL);
 }
+
+
 /* allocates and clears the hash */
 struct hashtable_t *hash_new(int size, hashdata_compare_cb compare, hashdata_choose_cb choose) {
 	struct hashtable_t *hash;
@@ -100,6 +101,8 @@ struct hashtable_t *hash_new(int size, hashdata_compare_cb compare, hashdata_cho
 	hash->choose= choose;
 	return(hash);
 }
+
+
 /* adds data to the hashtable. returns 0 on success, -1 on error */
 int hash_add(struct hashtable_t *hash, void *data) {
 	int index;
@@ -195,6 +198,7 @@ void *hash_remove(struct hashtable_t *hash, void *data) {
 	return(NULL);
 }
 
+
 /* resize the hash, returns the pointer to the new hash or NULL on error. removes the old hash on success. */
 struct hashtable_t *hash_resize(struct hashtable_t *hash, int size) {
 	struct hashtable_t *new_hash;
@@ -221,6 +225,7 @@ struct hashtable_t *hash_resize(struct hashtable_t *hash, int size) {
 	return( new_hash);
 	
 }
+
 
 /* print the hash table for debugging */
 void hash_debug( struct hashtable_t *hash) {
