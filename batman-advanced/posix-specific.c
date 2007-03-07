@@ -1273,15 +1273,19 @@ int8_t receive_packet( unsigned char *packet_buff, int32_t packet_buff_len, int1
 			} else {
 
 				/* get routing information */
-				orig_node = get_orig_node( ((struct ether_header *)packet_buff)->ether_dhost );
+				orig_node = find_orig_node( ((struct ether_header *)packet_buff)->ether_dhost );
 
-				memcpy( ether_header.ether_dhost, ((struct ether_header *)packet_buff)->ether_dhost, ETH_ALEN );
-				memcpy( ether_header.ether_shost, my_hw_addr, ETH_ALEN );
+				if ( orig_node != NULL ) {
 
-				if ( rawsock_write( orig_node->batman_if->raw_sock, &ether_header, packet_buff, *pay_buff_len ) < 0 ) {
+					memcpy( ether_header.ether_dhost, ((struct ether_header *)packet_buff)->ether_dhost, ETH_ALEN );
+					memcpy( ether_header.ether_shost, my_hw_addr, ETH_ALEN );
 
-					debug_output( 0, "Error - can't send data through raw socket: %s\n", strerror(errno) );
-					return -1;
+					if ( rawsock_write( orig_node->batman_if->raw_sock, &ether_header, packet_buff, *pay_buff_len ) < 0 ) {
+
+						debug_output( 0, "Error - can't send data through raw socket: %s\n", strerror(errno) );
+						return -1;
+
+					}
 
 				}
 

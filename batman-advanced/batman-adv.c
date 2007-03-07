@@ -176,8 +176,7 @@ void verbose_usage( void ) {
 
 
 
-/* this function finds or creates an originator entry for the given address if it does not exits */
-struct orig_node *get_orig_node( uint8_t *addr ) {
+struct orig_node *find_orig_node( uint8_t *addr ) {
 
 	struct list_head *pos;
 	struct orig_node *orig_node;
@@ -190,6 +189,20 @@ struct orig_node *get_orig_node( uint8_t *addr ) {
 			return orig_node;
 
 	}
+
+	return NULL;
+
+}
+
+
+
+/* this function finds or creates an originator entry for the given address if it does not exits */
+struct orig_node *get_orig_node( uint8_t *addr ) {
+
+	struct orig_node *orig_node = find_orig_node( addr );
+
+	if ( orig_node != NULL )
+		return orig_node;
 
 	debug_output( 4, "Creating new originator\n" );
 
