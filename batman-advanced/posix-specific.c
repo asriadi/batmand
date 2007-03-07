@@ -1264,8 +1264,8 @@ int8_t receive_packet( unsigned char *packet_buff, int32_t packet_buff_len, int1
 		} else {
 
 			/* ethernet packet should be broadcasted */
-			if ( memcmp( &((struct ether_header *)packet_buff)->ether_dhost, broadcastAddr, sizeof(ether_header.ether_dhost) ) == 0 ) {
-
+			if ( memcmp( ((struct ether_header *)packet_buff)->ether_dhost, broadcastAddr, sizeof(ether_header.ether_dhost) ) == 0 ) {
+printf( "kernel broadcast packet to: %s\n", addr_to_string(((struct ether_header *)packet_buff)->ether_dhost ) );
 				/* get own orginator packet and send it with broadcast payload */
 				reschedule_own_packet( packet_buff, *pay_buff_len );
 
@@ -1274,11 +1274,11 @@ int8_t receive_packet( unsigned char *packet_buff, int32_t packet_buff_len, int1
 
 				/* get routing information */
 				orig_node = find_orig_node( ((struct ether_header *)packet_buff)->ether_dhost );
-
+printf( "kernel unicast\n" );
 				if ( orig_node != NULL ) {
-
-					memcpy( ether_header.ether_dhost, ((struct ether_header *)packet_buff)->ether_dhost, ETH_ALEN );
-					memcpy( ether_header.ether_shost, my_hw_addr, ETH_ALEN );
+printf( "kernel unicast packet to: %s\n", addr_to_string(((struct ether_header *)packet_buff)->ether_dhost ) );
+					memcpy( ether_header.ether_dhost, ((struct ether_header *)packet_buff)->ether_dhost, sizeof(ether_header.ether_dhost) );
+					memcpy( ether_header.ether_shost, my_hw_addr, sizeof(ether_header.ether_shost) );
 
 					if ( rawsock_write( orig_node->batman_if->raw_sock, &ether_header, packet_buff, *pay_buff_len ) < 0 ) {
 
@@ -1308,7 +1308,7 @@ int8_t receive_packet( unsigned char *packet_buff, int32_t packet_buff_len, int1
 
 				/* ethernet packet should be broadcasted */
 				if ( memcmp( &ether_header.ether_dhost, broadcastAddr, sizeof(ether_header.ether_dhost) ) == 0 ) {
-
+printf( "broadcast packet from: %s\n", addr_to_string(ether_header.ether_dhost ) );
 					if ( *pay_buff_len < sizeof(struct packet) )
 						return 0;
 
@@ -1322,21 +1322,25 @@ int8_t receive_packet( unsigned char *packet_buff, int32_t packet_buff_len, int1
 
 					/* packet for me */
 					if ( memcmp( &ether_header.ether_dhost, my_hw_addr, sizeof(ether_header.ether_dhost) ) == 0 ) {
-
+printf( "unicast packet for me from: %s\n", addr_to_string(ether_header.ether_dhost ) );
 						tap_write( tap_sock, packet_buff, *pay_buff_len );
 
 					/* route it */
 					} else {
 
 						/* get routing information */
-						orig_node = get_orig_node( ether_header.ether_dhost );
+						orig_node = find_orig_node( ether_header.ether_dhost );
+printf( "routing unicast\n" );
+						if ( orig_node != NULL ) {
+printf( "dhost: %s\n", addr_to_string(ether_header.ether_dhost ) );
+							memcpy( ether_header.ether_shost, my_hw_addr, ETH_ALEN );
 
-						memcpy( ether_header.ether_shost, my_hw_addr, ETH_ALEN );
+							if ( rawsock_write( orig_node->batman_if->raw_sock, &ether_header, packet_buff, *pay_buff_len ) < 0 ) {
 
-						if ( rawsock_write( orig_node->batman_if->raw_sock, &ether_header, packet_buff, *pay_buff_len ) < 0 ) {
+								debug_output( 0, "Error - can't send data through raw socket: %s\n", strerror(errno) );
+								return -1;
 
-							debug_output( 0, "Error - can't send data through raw socket: %s\n", strerror(errno) );
-							return -1;
+							}
 
 						}
 

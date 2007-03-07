@@ -519,7 +519,7 @@ void debug() {
 		if ( batman_count == 0 ) {
 
 			debug_output( 1, "No batman nodes in range ...\n" );
-			debug_output( 4, "No batman nodes in range ...\n" );
+			debug_output( 4, "    No batman nodes in range ...\n" );
 
 		}
 

@@ -108,10 +108,10 @@ int32_t rawsock_read(int32_t rawsock, struct ether_header *recv_header, unsigned
 	printf("dest   = %s\n", ether_ntoa((struct ether_addr *)recv_header->ether_dhost));
 	printf("type: %08x\n",ntohs(recv_header->ether_type));*/
 
-// TODO: is that neccessary ?
-// 	if (recv_header->ether_type != htons(ETH_P_BATMAN) )
-// 		return -2;
-// 	else
+	/* TODO: is that neccessary ?
+	if (recv_header->ether_type != htons(ETH_P_BATMAN) )
+		printf("type: %08x\n",ntohs(recv_header->ether_type));*/
+
 
 	return packet_size - sizeof(struct ether_header);
 
@@ -130,6 +130,7 @@ int32_t rawsock_write(int32_t rawsock, struct ether_header *send_header, unsigne
 	vector[1].iov_len  = size;
 
 	send_header->ether_type = htons(ETH_P_BATMAN);
+
 /*	printf("source = %s\n", ether_ntoa((struct ether_addr *)send_header->ether_shost));
 	printf("dest   = %s\n", ether_ntoa((struct ether_addr *)send_header->ether_dhost));
 	printf("type: %08x\n",ntohs(send_header->ether_type));*/
