@@ -72,9 +72,10 @@ struct hash_it_t *hash_iterate(struct hashtable_t *hash, struct hash_it_t *iter_
 	}
 	iter->index++;
 	while ( iter->index < hash->size ) {		/* go through the entries of the hash table */
-		if ((iter->bucket= hash->table[ iter->index ].data) != NULL)	
+		if ((hash->table[ iter->index ].data) != NULL){
+			iter->bucket = &(hash->table[ iter->index ]);
 			return(iter);						/* if this table entry is not null, return it */
-		else
+		} else
 			iter->index++;						/* else, go to the next */
 	}
 	/* nothing to iterate over anymore */
