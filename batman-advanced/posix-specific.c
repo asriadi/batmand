@@ -1266,7 +1266,8 @@ int8_t receive_packet( unsigned char *packet_buff, int32_t packet_buff_len, int1
 			/* ethernet packet should be broadcasted */
 			if ( memcmp( &((struct ether_header *)packet_buff)->ether_dhost, broadcastAddr, sizeof(ether_header.ether_dhost) ) == 0 ) {
 
-				/* TODO: broadcast packet with batman information */
+				/* get own orginator packet and send it with broadcast payload */
+				reschedule_own_packet( packet_buff, *pay_buff_len );
 
 			/* unicast packet */
 			} else {
@@ -1277,7 +1278,7 @@ int8_t receive_packet( unsigned char *packet_buff, int32_t packet_buff_len, int1
 				memcpy( ether_header.ether_dhost, ((struct ether_header *)packet_buff)->ether_dhost, ETH_ALEN );
 				memcpy( ether_header.ether_shost, my_hw_addr, ETH_ALEN );
 
-				if ( rawsock_write( orig_node->batman_if->raw_sock, &ether_header, packet_buff, packet_buff_len ) < 0 ) {
+				if ( rawsock_write( orig_node->batman_if->raw_sock, &ether_header, packet_buff, *pay_buff_len ) < 0 ) {
 
 					debug_output( 0, "Error - can't send data through raw socket: %s\n", strerror(errno) );
 					return -1;
@@ -1315,15 +1316,25 @@ int8_t receive_packet( unsigned char *packet_buff, int32_t packet_buff_len, int1
 				/* unicast packet */
 				} else {
 
-					/* get routing information */
-					orig_node = get_orig_node( ether_header.ether_dhost );
+					/* packet for me */
+					if ( memcmp( &ether_header.ether_dhost, my_hw_addr, sizeof(ether_header.ether_dhost) ) == 0 ) {
 
-					memcpy( ether_header.ether_shost, my_hw_addr, ETH_ALEN );
+						tap_write( tap_sock, packet_buff, *pay_buff_len );
 
-					if ( rawsock_write( orig_node->batman_if->raw_sock, &ether_header, packet_buff, packet_buff_len ) < 0 ) {
+					/* route it */
+					} else {
 
-						debug_output( 0, "Error - can't send data through raw socket: %s\n", strerror(errno) );
-						return -1;
+						/* get routing information */
+						orig_node = get_orig_node( ether_header.ether_dhost );
+
+						memcpy( ether_header.ether_shost, my_hw_addr, ETH_ALEN );
+
+						if ( rawsock_write( orig_node->batman_if->raw_sock, &ether_header, packet_buff, *pay_buff_len ) < 0 ) {
+
+							debug_output( 0, "Error - can't send data through raw socket: %s\n", strerror(errno) );
+							return -1;
+
+						}
 
 					}
 
@@ -1589,6 +1600,15 @@ int8_t send_packet( unsigned char *packet_buff, int32_t packet_buff_len, uint8_t
 // 	return NULL;
 //
 // }
+
+
+
+void tap_write( int32_t tap_fd, unsigned char *buff, int16_t buff_len ) {
+
+	if ( write( tap_fd, buff, buff_len ) < 0 )
+		debug_output( 0, "Error - can't write broadcast data to tap interface: %s\n", strerror(errno) );
+
+}
 
 
 

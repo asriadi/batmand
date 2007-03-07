@@ -87,7 +87,7 @@ int8_t rawsock_create(char *devicename) {
 
 
 /* reads size bytes of input, and the header. returns num of bytes received on success, < 0 on error. */
-int32_t rawsock_read(int32_t rawsock, struct ether_header *recv_header, unsigned char *buf, int32_t size) {
+int32_t rawsock_read(int32_t rawsock, struct ether_header *recv_header, unsigned char *buf, int16_t size) {
 	struct iovec vector[2];
 	int32_t packet_size;
 
@@ -120,7 +120,7 @@ int32_t rawsock_read(int32_t rawsock, struct ether_header *recv_header, unsigned
 
 
 /* write size bytes of input, and the header. returns 0 on success, < 0 on error.*/
-int32_t rawsock_write(int32_t rawsock, struct ether_header *send_header, unsigned char *buf, int32_t size) {
+int32_t rawsock_write(int32_t rawsock, struct ether_header *send_header, unsigned char *buf, int16_t size) {
 	struct iovec vector[2];
 	int32_t ret;
 
@@ -185,7 +185,7 @@ int32_t tap_create( int16_t mtu, uint8_t *hw_addr ) {
 	if ( ( ioctl( fd, TUNSETIFF, (void *) &ifr_tap ) ) < 0 ) {
 
 		debug_output( 0, "Error - can't create tap device (TUNSETIFF): %s\n", strerror(errno) );
-		close(fd);
+		close( fd );
 		return -1;
 
 	}
@@ -193,7 +193,7 @@ int32_t tap_create( int16_t mtu, uint8_t *hw_addr ) {
 	if ( ioctl( fd, TUNSETPERSIST, 1 ) < 0 ) {
 
 		debug_output( 0, "Error - can't create tap device (TUNSETPERSIST): %s\n", strerror(errno) );
-		close(fd);
+		close( fd );
 		return -1;
 
 	}
@@ -251,7 +251,7 @@ int32_t tap_create( int16_t mtu, uint8_t *hw_addr ) {
 
 
 	/* get mac address */
-	if ( ioctl( tmp_fd, SIOCGIFHWADDR, &ifr_if ) < 0 ) {
+	if ( ioctl( tmp_fd, SIOCGIFHWADDR, &ifr_tap ) < 0 ) {
 
 		debug_output( 0, "Error - can't create tap device (SIOCGIFHWADDR): %s\n", strerror(errno) );
 		tap_destroy( fd );
@@ -274,7 +274,7 @@ void tap_destroy( int32_t tap_fd ) {
 
 	if ( ioctl( tap_fd, TUNSETPERSIST, 0 ) < 0 ) {
 
-		printf( "Error - can't delete tap device: %s\n", strerror(errno) );
+		debug_output( 0, "Error - can't delete tap device: %s\n", strerror(errno) );
 
 	}
 
