@@ -196,6 +196,7 @@ void   usage( void );
 void   verbose_usage( void );
 void   del_default_route();
 int8_t add_default_route();
+struct orig_node *find_orig_node( uint8_t *addr );
 struct orig_node *get_orig_node( uint8_t *addr );
 void reschedule_own_packet( unsigned char *pay_buff, int16_t pay_buff_len );
 
