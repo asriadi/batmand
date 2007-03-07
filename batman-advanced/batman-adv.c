@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2006 B.A.T.M.A.N. contributors:
  * Thomas Lopatic, Corinna 'Elektra' Aichele, Axel Neumann,
- * Felix Fietkau, Marek Lindner
+ * Felix Fietkau, Marek Lindner, Simon Wunderlich
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of version 2 of the GNU General Public
@@ -28,6 +28,7 @@
 #include "list.h"
 #include "batman-adv.h"
 #include "allocate.h"
+#include "hash.h"
 
 /* "-d" is the command line switch for the debug level,
  * specify it multiple times to increase verbosity
@@ -100,7 +101,9 @@ uint8_t my_hw_addr[6];
 unsigned char broadcastAddr[] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 
 
-static LIST_HEAD(orig_list);
+/* static LIST_HEAD(orig_list); 		XXX: obsolete with hashing */
+struct hashtable_t *orig_hash;
+
 static LIST_HEAD(forw_list);
 static LIST_HEAD(gw_list);
 LIST_HEAD(if_list);
@@ -173,11 +176,44 @@ void verbose_usage( void ) {
 	fprintf( stderr, "       -v print version\n" );
 
 }
+/* needed for hash, compares 2 struct orig_node, but only their mac-addresses. assumes that 
+ * the mac address is the first field in the struct */
+int orig_comp(void *data1, void *data2) {
+	return(memcmp(data1, data2, 6)); 
+}
 
+/* hashfunction to choose an entry in a hash table of given size */
+/* hash algorithm from http://en.wikipedia.org/wiki/Hash_table */
+int orig_choose(void *data, int size) {
+	unsigned char *key= data;
+	uint32_t hash = 0;
+	size_t i;
+     
+	for (i = 0; i < 6; i++) {
+		hash += key[i];
+		hash += (hash << 10);
+		hash ^= (hash >> 6);
+	}
+	hash += (hash << 3);
+	hash ^= (hash >> 11);
+	hash += (hash << 15);
+	return (hash%size);
+}
 
+/* free the data when hash_delete is called. */
+void orig_free(void *data) {
+	/* TODO: free nodes when destroying the hash, or leak the memory. :( */
+}
 
 struct orig_node *find_orig_node( uint8_t *addr ) {
+	return((struct orig_node *) hash_find( orig_hash, addr )); 
+		/* addr is supposed to be the first entry in the struct orig_node entry, so 
+		 * we don't allocate and copy into a new struct orig_node. should be enough for comparing. */
 
+}
+/* XXX: obsolete with hash structure */
+/*
+struct orig_node *find_orig_node( uint8_t *addr ) {
 	struct list_head *pos;
 	struct orig_node *orig_node;
 
@@ -193,7 +229,7 @@ struct orig_node *find_orig_node( uint8_t *addr ) {
 	return NULL;
 
 }
-
+*/
 
 
 /* this function finds or creates an originator entry for the given address if it does not exits */
@@ -217,7 +253,17 @@ struct orig_node *get_orig_node( uint8_t *addr ) {
 	orig_node->bidirect_link = debugMalloc( found_ifs * sizeof(int), 2 );
 	memset( orig_node->bidirect_link, 0, found_ifs * sizeof(int) );
 
-	list_add_tail( &orig_node->list, &orig_list );
+	hash_add(orig_hash, orig_node);
+	if (orig_hash->elements * 4 > orig_hash->size) {
+		struct hashtable_t *swaphash;
+		swaphash = hash_resize(orig_hash, orig_hash->size*2);
+		if (swaphash == NULL) 
+			printf("Couldn't resize hash table\n");
+		else 
+			orig_hash = swaphash;
+
+	}
+/*	list_add_tail( &orig_node->list, &orig_list );		XXX: obsolete wiht hash structure */
 
 	return orig_node;
 
@@ -435,6 +481,7 @@ static void update_gw_list( struct orig_node *orig_node, uint8_t new_gwflags ) {
 
 void debug() {
 
+	struct hash_it_t *hashit;
 	struct list_head *forw_pos, *orig_pos, *neigh_pos;
 	struct forw_node *forw_node;
 	struct orig_node *orig_node;
@@ -492,9 +539,11 @@ void debug() {
 			debug_output( 4, "Originator list\n" );
 
 		}
-
-		list_for_each( orig_pos, &orig_list ) {
-			orig_node = list_entry( orig_pos, struct orig_node, list );
+		hashit=NULL;
+		while (NULL != (hashit = hash_iterate(orig_hash, hashit))) {
+/*		list_for_each( orig_pos, &orig_list ) {
+			orig_node = list_entry( orig_pos, struct orig_node, list ); XXX: obsoleted by hash */
+			orig_node = hashit->bucket->data;
 
 			if ( orig_node->router == NULL )
 				continue;
@@ -533,12 +582,16 @@ void debug() {
 
 int isDuplicate( uint8_t *orig, uint16_t seqno ) {
 
-	struct list_head *orig_pos, *neigh_pos;
+	struct list_head /* XXX: *orig_pos,*/ *neigh_pos;
 	struct orig_node *orig_node;
 	struct neigh_node *neigh_node;
+	struct hash_it_t *hashit;
 
-	list_for_each( orig_pos, &orig_list ) {
-		orig_node = list_entry( orig_pos, struct orig_node, list );
+	hashit=NULL;
+	while (NULL != (hashit = hash_iterate(orig_hash, hashit))) {
+	/*list_for_each( orig_pos, &orig_list ) {
+		orig_node = list_entry( orig_pos, struct orig_node, list ); XXX: obsoleted by hash */
+		orig_node = hashit->bucket->data;
 
 		if ( memcmp( &orig_node->orig, orig, sizeof(orig_node->orig) ) == 0 ) {
 
@@ -912,19 +965,25 @@ void send_outstanding_packets() {
 
 void purge( uint32_t curr_time ) {
 
-	struct list_head *orig_pos, *neigh_pos, *orig_temp, *neigh_temp;
+	struct list_head /**orig_pos, */*neigh_pos, /**orig_temp,*/ *neigh_temp;
 	struct list_head *gw_pos, *gw_pos_tmp;
 	struct orig_node *orig_node;
 	struct neigh_node *neigh_node;
 	struct gw_node *gw_node;
+	struct hash_it_t *hashit;
 	uint8_t gw_purged = 0;
 
 	debug_output( 4, "purge() \n" );
 
 	/* for all origins... */
+
+	hashit=NULL;
+	while (NULL != (hashit = hash_iterate(orig_hash, hashit))) {
+/*
 	list_for_each_safe( orig_pos, orig_temp, &orig_list ) {
 
-		orig_node = list_entry( orig_pos, struct orig_node, list );
+		orig_node = list_entry( orig_pos, struct orig_node, list ); XXX: obsoleted by hash */
+		orig_node = hashit->bucket->data;
 
 		if ( (int)( ( orig_node->last_aware + ( 2 * TIMEOUT ) ) < curr_time ) ) {
 
@@ -960,7 +1019,8 @@ void purge( uint32_t curr_time ) {
 
 			}
 
-			list_del( orig_pos );
+			/* XXX: list_del( orig_pos ); */
+			hash_remove( orig_hash, orig_node);
 
 			update_routes( orig_node, NULL );
 
@@ -1066,6 +1126,8 @@ int8_t batman() {
 		schedule_own_packet( batman_if, NULL, 0 );
 
 	}
+	if (NULL == (orig_hash = hash_new( 128, orig_comp, orig_choose)))
+		return(-1);
 
 	while ( !is_aborted() ) {
 
@@ -1290,6 +1352,8 @@ int8_t batman() {
 
 	}
 
+	hash_delete(orig_hash, orig_free);
+
 	if ( debug_level > 0 )
 		printf( "Deleting all BATMAN routes\n" );
 
@@ -1305,6 +1369,7 @@ int8_t batman() {
 		debugFree( forw_node, 113 );
 
 	}
+
 
 	return 0;
 

@@ -94,16 +94,16 @@ struct packet
 
 struct orig_node                 /* structure for orig_list maintaining nodes of mesh */
 {
+	uint8_t  orig[6];			/* important, must be first entry! (for faster hash comparison) */
 	struct list_head list;
-	uint8_t  orig[6];
 	struct neigh_node *router;
 	struct batman_if *batman_if;
 	uint32_t *bidirect_link;    /* if node is a bidrectional neighbour, when my originator packet was broadcasted (replied) by this node and received by me */
 	uint32_t last_aware;        /* when last packet from this node was received */
-	uint8_t  gwflags;      /* flags related to gateway functions: gateway class */
 	uint16_t last_seqno;        /* last and best known squence number */
 	struct list_head neigh_list;
-};
+	uint8_t  gwflags;      /* flags related to gateway functions: gateway class */
+} __attribute((packed));
 
 struct neigh_node
 {
