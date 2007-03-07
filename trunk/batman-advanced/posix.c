@@ -223,11 +223,11 @@ int8_t is_aborted() {
 
 char *addr_to_string( uint8_t *hw_addr ) {
 
-	struct ether_addr *ether_addr;
+	struct ether_addr ether_addr;
 
-	memcpy( ether_addr->ether_addr_octet, hw_addr, 6 );
+	memcpy( ether_addr.ether_addr_octet, hw_addr, 6 );
 
-	return ether_ntoa( ether_addr );
+	return ether_ntoa( &ether_addr );
 
 }
 

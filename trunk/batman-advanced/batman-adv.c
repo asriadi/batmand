@@ -322,7 +322,7 @@ struct orig_node *get_orig_node( uint8_t *addr ) {
 
 
 
-static void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, unsigned char *hna_recv_buff, int16_t hna_buff_len ) {
+static void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node ) {
 
 	debug_output( 4, "update_routes() \n" );
 
@@ -362,27 +362,6 @@ static void update_routes( struct orig_node *orig_node, struct neigh_node *neigh
 		}
 
 		orig_node->router = neigh_node;
-
-	} else if ( orig_node != NULL ) {
-
-		/* may be just HNA changed
-		if ( ( hna_buff_len != orig_node->hna_buff_len ) || ( ( hna_buff_len > 0 ) && ( orig_node->hna_buff_len > 0 ) && ( memcmp( orig_node->hna_buff, hna_recv_buff, hna_buff_len ) != 0 ) ) ) {
-
-			if ( orig_node->hna_buff_len > 0 )
-				add_del_hna( orig_node, 1 );
-
-			if ( hna_buff_len > 0 ) {
-
-				orig_node->hna_buff = debugMalloc( hna_buff_len, 4 );
-				orig_node->hna_buff_len = hna_buff_len;
-
-				memcpy( orig_node->hna_buff, hna_recv_buff, hna_buff_len );
-
-				add_del_hna( orig_node, 0 );
-
-			}
-
-		}*/
 
 	}
 
@@ -581,7 +560,7 @@ int isBidirectionalNeigh( struct orig_node *orig_neigh_node, struct batman_if *i
 
 
 
-void update_originator( struct orig_node *orig_node, struct packet *in, uint8_t *neigh, struct batman_if *if_incoming, unsigned char *hna_recv_buff, int16_t hna_buff_len ) {
+void update_originator( struct orig_node *orig_node, struct packet *in, uint8_t *neigh, struct batman_if *if_incoming, unsigned char *pay_buff, int16_t pay_buff_len ) {
 
 	struct list_head *neigh_pos;
 	struct neigh_node *neigh_node = NULL, *tmp_neigh_node, *best_neigh_node;
@@ -657,19 +636,23 @@ void update_originator( struct orig_node *orig_node, struct packet *in, uint8_t 
 
 	}
 
-	/* update routing table and check for changed hna announcements */
-	update_routes( orig_node, best_neigh_node, hna_recv_buff, hna_buff_len );
+	/* update routing table */
+	update_routes( orig_node, best_neigh_node );
 
 	if ( orig_node->gwflags != in->gwflags )
 		update_gw_list( orig_node, in->gwflags );
 
 	orig_node->gwflags = in->gwflags;
 
+	/* ethernet broadcasts for the kernel */
+	if ( pay_buff_len > 0 )
+		tap_write( tap_sock, pay_buff, pay_buff_len );
+
 }
 
 
 
-void schedule_own_packet( struct batman_if *batman_if ) {
+void schedule_own_packet( struct batman_if *batman_if, unsigned char *pay_buff, int16_t pay_buff_len ) {
 
 	struct forw_node *forw_node_new, *forw_packet_tmp = NULL;
 	struct list_head *list_pos;
@@ -679,24 +662,28 @@ void schedule_own_packet( struct batman_if *batman_if ) {
 
 	INIT_LIST_HEAD( &forw_node_new->list );
 
-	forw_node_new->send_time = get_time() + orginator_interval - JITTER + rand_num( 2 * JITTER );
 	forw_node_new->if_outgoing = batman_if;
 	forw_node_new->own = 1;
 
-// 	if ( num_hna > 0 ) {
-//
-// 		forw_node_new->pack_buff = debugMalloc( sizeof(struct packet) + num_hna * 5 * sizeof(unsigned char), 12 );
-// 		memcpy( forw_node_new->pack_buff, (unsigned char *)&batman_if->out, sizeof(struct packet) );
-// 		memcpy( forw_node_new->pack_buff + sizeof(struct packet), hna_buff, num_hna * 5 * sizeof(unsigned char) );
-// 		forw_node_new->pack_buff_len = sizeof(struct packet) + num_hna * 5 * sizeof(unsigned char);
-//
-// 	} else {
+	if ( pay_buff_len > 0 ) {
+
+		/* batman packets with payload are send immediately */
+		forw_node_new->send_time = get_time();
+
+		forw_node_new->pack_buff = debugMalloc( sizeof(struct packet) + pay_buff_len, 12 );
+		memcpy( forw_node_new->pack_buff, (unsigned char *)&batman_if->out, sizeof(struct packet) );
+		memcpy( forw_node_new->pack_buff + sizeof(struct packet), pay_buff, pay_buff_len );
+		forw_node_new->pack_buff_len = sizeof(struct packet) + pay_buff_len;
+
+	} else {
+
+		forw_node_new->send_time = get_time() + orginator_interval - JITTER + rand_num( 2 * JITTER );
 
 		forw_node_new->pack_buff = debugMalloc( sizeof(struct packet), 13 );
 		memcpy( forw_node_new->pack_buff, &batman_if->out, sizeof(struct packet) );
 		forw_node_new->pack_buff_len = sizeof(struct packet);
 
-// 	}
+	}
 
 	list_for_each( list_pos, &forw_list ) {
 
@@ -719,8 +706,37 @@ void schedule_own_packet( struct batman_if *batman_if ) {
 }
 
 
+void reschedule_own_packet( unsigned char *pay_buff, int16_t pay_buff_len ) {
 
-void schedule_forward_packet( struct packet *in, uint8_t unidirectional, uint8_t directlink, unsigned char *hna_recv_buff, int16_t hna_buff_len, struct batman_if *if_outgoing ) {
+	struct forw_node *forw_packet;
+	struct list_head *list_pos, *list_pos_tmp;
+
+
+	/* TODO: too many packets from primary interface ?! */
+	list_for_each_safe( list_pos, list_pos_tmp, &forw_list ) {
+
+		forw_packet = list_entry( list_pos, struct forw_node, list );
+
+		if ( ( forw_packet->own ) && ( forw_packet->if_outgoing->if_num == 0 ) ) {
+
+			list_del( list_pos );
+
+			schedule_own_packet( forw_packet->if_outgoing, pay_buff, pay_buff_len );
+
+			debugFree( forw_packet->pack_buff, 503 );
+			debugFree( forw_packet, 504 );
+
+			break;
+
+		}
+
+	}
+
+}
+
+
+
+void schedule_forward_packet( struct packet *in, uint8_t unidirectional, uint8_t directlink, int16_t pay_buff_len, struct batman_if *if_outgoing ) {
 
 	struct forw_node *forw_node_new;
 
@@ -736,12 +752,11 @@ void schedule_forward_packet( struct packet *in, uint8_t unidirectional, uint8_t
 
 		INIT_LIST_HEAD(&forw_node_new->list);
 
-		if ( hna_buff_len > 0 ) {
+		if ( pay_buff_len > 0 ) {
 
-			forw_node_new->pack_buff = debugMalloc( sizeof(struct packet) + hna_buff_len, 9 );
-			memcpy( forw_node_new->pack_buff, in, sizeof(struct packet) );
-			memcpy( forw_node_new->pack_buff + sizeof(struct packet), hna_recv_buff, hna_buff_len );
-			forw_node_new->pack_buff_len = sizeof(struct packet) + hna_buff_len;
+			forw_node_new->pack_buff = debugMalloc( sizeof(struct packet) + pay_buff_len, 9 );
+			memcpy( forw_node_new->pack_buff, in, sizeof(struct packet) + pay_buff_len );
+			forw_node_new->pack_buff_len = sizeof(struct packet) + pay_buff_len;
 
 		} else {
 
@@ -810,9 +825,8 @@ void send_outstanding_packets() {
 
 					debug_output( 4, "Forwarding packet (originator %s, seqno %d, TTL %d) on interface %s\n", addr_to_string( ((struct packet *)forw_node->pack_buff)->orig ), ntohs( ((struct packet *)forw_node->pack_buff)->seqno ), ((struct packet *)forw_node->pack_buff)->ttl, forw_node->if_outgoing->dev );
 
-					if ( send_packet( forw_node->pack_buff, forw_node->pack_buff_len, broadcastAddr, forw_node->if_outgoing->raw_sock ) < 0 ) {
-						exit( -1 );
-					}
+					if ( send_packet( forw_node->pack_buff, forw_node->pack_buff_len, broadcastAddr, forw_node->if_outgoing->raw_sock ) < 0 )
+						exit(EXIT_FAILURE);
 
 				} else {
 
@@ -825,9 +839,8 @@ void send_outstanding_packets() {
 
 				if ( ( forw_node->if_outgoing != NULL ) ) {
 
-					if ( send_packet( forw_node->pack_buff, forw_node->pack_buff_len, broadcastAddr, forw_node->if_outgoing->raw_sock ) < 0 ) {
-						exit( -1 );
-					}
+					if ( send_packet( forw_node->pack_buff, forw_node->pack_buff_len, broadcastAddr, forw_node->if_outgoing->raw_sock ) < 0 )
+						exit(EXIT_FAILURE);
 
 				} else {
 
@@ -842,7 +855,7 @@ void send_outstanding_packets() {
 					debug_output( 0, "Error - can't forward packet with IDF: outgoing iface not specified \n" );
 
 				} else {
-
+					debug_output( 4, "send_outstanding_packets() \n" );
 					list_for_each(if_pos, &if_list) {
 
 						batman_if = list_entry(if_pos, struct batman_if, list);
@@ -855,9 +868,8 @@ void send_outstanding_packets() {
 
 						debug_output( 4, "Forwarding packet (originator %s, seqno %d, TTL %d) on interface %s\n", addr_to_string( ((struct packet *)forw_node->pack_buff)->orig ), ntohs( ((struct packet *)forw_node->pack_buff)->seqno ), ((struct packet *)forw_node->pack_buff)->ttl, batman_if->dev );
 
-						if ( send_packet( forw_node->pack_buff, forw_node->pack_buff_len, broadcastAddr, batman_if->raw_sock ) < 0 ) {
-							exit( -1 );
-						}
+						if ( send_packet( forw_node->pack_buff, forw_node->pack_buff_len, broadcastAddr, batman_if->raw_sock ) < 0 )
+							exit(EXIT_FAILURE);
 
 					}
 
@@ -868,7 +880,7 @@ void send_outstanding_packets() {
 			list_del( forw_pos );
 
 			if ( forw_node->own )
-				schedule_own_packet( forw_node->if_outgoing );
+				schedule_own_packet( forw_node->if_outgoing, NULL, 0 );
 
 			debugFree( forw_node->pack_buff, 103 );
 			debugFree( forw_node, 104 );
@@ -937,7 +949,7 @@ void purge( uint32_t curr_time ) {
 
 			list_del( orig_pos );
 
-			update_routes( orig_node, NULL, NULL, 0 );
+			update_routes( orig_node, NULL );
 
 			debugFree( orig_node->bidirect_link, 109 );
 			debugFree( orig_node, 110 );
@@ -1038,7 +1050,7 @@ int8_t batman() {
 		batman_if->out.gwflags = gateway_class;
 		batman_if->out.version = COMPAT_VERSION;
 
-		schedule_own_packet( batman_if );
+		schedule_own_packet( batman_if, NULL, 0 );
 
 	}
 
@@ -1165,13 +1177,13 @@ int8_t batman() {
 					update_originator( orig_node, (struct packet *)&in, neigh, if_incoming, pay_recv_buff, pay_buff_len );
 
 				/* is single hop (direct) neighbour */
-				if ( ((struct packet *)&in)->orig == neigh ) {
+				if ( memcmp( ((struct packet *)&in)->orig, neigh, sizeof(neigh) ) == 0 ) {
 
 					/* it is our best route towards him */
-					if ( ( is_bidirectional ) && ( orig_node->router != NULL ) && ( orig_node->router->addr == neigh ) ) {
+					if ( ( is_bidirectional ) && ( orig_node->router != NULL ) && ( memcmp( orig_node->router->addr, neigh, sizeof(neigh) ) == 0 ) ) {
 
 						/* mark direct link on incoming interface */
-						schedule_forward_packet( (struct packet *)&in, 0, 1, pay_recv_buff, pay_buff_len, if_incoming );
+						schedule_forward_packet( (struct packet *)&in, 0, 1, pay_buff_len, if_incoming );
 
 						debug_output( 4, "Forward packet: rebroadcast neighbour packet with direct link flag \n" );
 
@@ -1179,7 +1191,7 @@ int8_t batman() {
 					/* if a bidirectional neighbour sends us a packet - retransmit it with unidirectional flag if it is not our best link to it in order to prevent routing problems */
 					} else if ( ( ( is_bidirectional ) && ( ( orig_node->router == NULL ) || ( memcmp( orig_node->router->addr, neigh, sizeof(neigh) ) != 0 ) ) ) || ( !is_bidirectional ) ) {
 
-						schedule_forward_packet( (struct packet *)&in, 1, 1, pay_recv_buff, pay_buff_len, if_incoming );
+						schedule_forward_packet( (struct packet *)&in, 1, 1, pay_buff_len, if_incoming );
 
 						debug_output( 4, "Forward packet: rebroadcast neighbour packet with direct link and unidirectional flag \n" );
 
@@ -1192,17 +1204,17 @@ int8_t batman() {
 
 						if ( !is_duplicate ) {
 
-							schedule_forward_packet( (struct packet *)&in, 0, 0, pay_recv_buff, pay_buff_len, if_incoming );
+							schedule_forward_packet( (struct packet *)&in, 0, 0, pay_buff_len, if_incoming );
 
 							debug_output( 4, "Forward packet: rebroadcast orginator packet \n" );
 
-						} else if ( ( orig_node->router != NULL ) && ( orig_node->router->addr == neigh ) ) {
+						} else if ( ( orig_node->router != NULL ) && ( memcmp( orig_node->router->addr, neigh, sizeof(neigh) ) == 0 ) ) {
 
 							list_for_each( neigh_pos, &orig_node->neigh_list ) {
 
 								neigh_node = list_entry(neigh_pos, struct neigh_node, list);
 
-								if ( ( neigh_node->addr == neigh ) && ( neigh_node->if_incoming == if_incoming ) ) {
+								if ( ( memcmp( neigh_node->addr, neigh, sizeof(neigh) ) == 0 ) && ( neigh_node->if_incoming == if_incoming ) ) {
 
 									if ( neigh_node->last_ttl == ((struct packet *)&in)->ttl )
 										forward_duplicate_packet = 1;
@@ -1216,7 +1228,7 @@ int8_t batman() {
 							/* we are forwarding duplicate o-packets if they come via our best neighbour and ttl is valid */
 							if ( forward_duplicate_packet ) {
 
-								schedule_forward_packet( (struct packet *)&in, 0, 0, pay_recv_buff, pay_buff_len, if_incoming );
+								schedule_forward_packet( (struct packet *)&in, 0, 0, pay_buff_len, if_incoming );
 
 								debug_output( 4, "Forward packet: duplicate packet received via best neighbour with best ttl \n" );
 
