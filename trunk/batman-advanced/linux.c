@@ -1,0 +1,285 @@
+/*
+ * Copyright (C) 2006 B.A.T.M.A.N. contributors:
+ * Marek Lindner, Simon Wunderlich
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of version 2 of the GNU General Public
+ * License as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301, USA
+ *
+ */
+
+
+
+#include <stdio.h>              /* perror() */
+#include <string.h>             /* strncpy() */
+#include <unistd.h>             /* close() */
+#include <sys/ioctl.h>          /* ioctl(), SIO* */
+#include <arpa/inet.h>          /* htons() */
+#include <sys/uio.h>            /* writev(), readv() */
+#include <sys/types.h>          /* socket(), bind() */
+#include <sys/socket.h>         /* socket(), bind() */
+#include <net/if.h>             /* struct ifreq */
+#include <net/ethernet.h>       /* ETH_P_ALL */
+#include <netpacket/packet.h>   /* sockaddr_ll */
+#include <netinet/ether.h>      /* ether_ntoa() */
+#include <errno.h>              /* errno */
+#include <fcntl.h>              /* O_RDWR */
+#include <netinet/ip.h>         /* tunnel stuff */
+#include <linux/if_tun.h>       /* tap interface */
+#include <linux/if_tunnel.h>
+
+#include "os.h"
+#include "batman-adv.h"
+
+
+
+
+/* creates a raw socket for the [devicename], returns the socket or -1 on error */
+int8_t rawsock_create(char *devicename) {
+	int32_t rawsock;
+	struct ifreq req;
+	struct sockaddr_ll addr;
+
+
+	if ( ( rawsock = socket(PF_PACKET,SOCK_RAW,htons(ETH_P_BATMAN) ) ) < 0 ) {
+
+		debug_output( 0, "Error - can't create raw socket: %s", strerror(errno) );
+		return(-1);
+
+	}
+
+	strncpy(req.ifr_name, devicename, IFNAMSIZ);
+
+	if ( ioctl(rawsock, SIOCGIFINDEX, &req) < 0 ) {
+
+		debug_output( 0, "Error - can't create raw socket (SIOCGIFINDEX): %s", strerror(errno) );
+		return(-1);
+
+	}
+
+
+	addr.sll_family   = AF_PACKET;
+	addr.sll_protocol = htons(ETH_P_BATMAN);
+	addr.sll_ifindex  = req.ifr_ifindex;
+
+
+	if ( bind(rawsock, (struct sockaddr *)&addr, sizeof(addr)) < 0 ) {
+
+		debug_output( 0, "Error - can't bind raw socket: %s", strerror(errno) );
+		close(rawsock);
+		return(-1);
+
+	}
+
+	return (rawsock);
+
+}
+
+
+
+/* reads size bytes of input, and the header. returns num of bytes received on success, < 0 on error. */
+int32_t rawsock_read(int32_t rawsock, struct ether_header *recv_header, unsigned char *buf, int32_t size) {
+	struct iovec vector[2];
+	int32_t packet_size;
+
+	vector[0].iov_base = recv_header;
+	vector[0].iov_len  = sizeof(struct ether_header);
+	vector[1].iov_base = buf;
+	vector[1].iov_len  = size;
+
+	if ( ( packet_size = readv(rawsock, vector, 2) ) < 0 ) {
+
+		debug_output( 0, "Error - can't read from raw socket: %s", strerror(errno) );
+		return(packet_size);
+
+	}
+
+
+/*	printf("source = %s\n", ether_ntoa((struct ether_addr *)recv_header->ether_shost));
+	printf("dest   = %s\n", ether_ntoa((struct ether_addr *)recv_header->ether_dhost));
+	printf("type: %08x\n",ntohs(recv_header->ether_type));*/
+
+// TODO: is that neccessary ?
+// 	if (recv_header->ether_type != htons(ETH_P_BATMAN) )
+// 		return -2;
+// 	else
+
+	return packet_size - sizeof(struct ether_header);
+
+}
+
+
+
+/* write size bytes of input, and the header. returns 0 on success, < 0 on error.*/
+int32_t rawsock_write(int32_t rawsock, struct ether_header *send_header, unsigned char *buf, int32_t size) {
+	struct iovec vector[2];
+	int32_t ret;
+
+	vector[0].iov_base = send_header;
+	vector[0].iov_len  = sizeof(struct ether_header);
+	vector[1].iov_base = buf;
+	vector[1].iov_len  = size;
+
+	send_header->ether_type = htons(ETH_P_BATMAN);
+/*	printf("source = %s\n", ether_ntoa((struct ether_addr *)send_header->ether_shost));
+	printf("dest   = %s\n", ether_ntoa((struct ether_addr *)send_header->ether_dhost));
+	printf("type: %08x\n",ntohs(send_header->ether_type));*/
+
+
+	if ( ( ret = writev(rawsock, vector, 2) ) < 0 )
+		debug_output( 0, "Error - can't write to raw socket: %s", strerror(errno) );
+
+	return(ret);
+
+}
+
+
+
+/* Probe for tap interface availability */
+int8_t tap_probe() {
+
+	int32_t fd;
+
+	if ( ( fd = open( "/dev/net/tun", O_RDWR ) ) < 0 ) {
+
+		debug_output( 0, "Error - could not open '/dev/net/tun' ! Is the tun kernel module loaded ?\n" );
+		return 0;
+
+	}
+
+	close( fd );
+
+	return 1;
+
+}
+
+
+
+int32_t tap_create( int16_t mtu, uint8_t *hw_addr ) {
+
+	int32_t fd, tmp_fd;
+	struct ifreq ifr_tap, ifr_if;
+
+	/* set up tunnel device */
+	memset( &ifr_tap, 0, sizeof(ifr_tap) );
+	memset( &ifr_if, 0, sizeof(ifr_if) );
+	ifr_tap.ifr_flags = IFF_TAP | IFF_NO_PI;
+	strncpy( ifr_tap.ifr_name, "bat0", IFNAMSIZ );
+
+	if ( ( fd = open( "/dev/net/tun", O_RDWR ) ) < 0 ) {
+
+		debug_output( 0, "Error - can't create tap device (/dev/net/tun): %s\n", strerror(errno) );
+		return -1;
+
+	}
+
+	if ( ( ioctl( fd, TUNSETIFF, (void *) &ifr_tap ) ) < 0 ) {
+
+		debug_output( 0, "Error - can't create tap device (TUNSETIFF): %s\n", strerror(errno) );
+		close(fd);
+		return -1;
+
+	}
+
+	if ( ioctl( fd, TUNSETPERSIST, 1 ) < 0 ) {
+
+		debug_output( 0, "Error - can't create tap device (TUNSETPERSIST): %s\n", strerror(errno) );
+		close(fd);
+		return -1;
+
+	}
+
+
+	tmp_fd = socket( AF_INET, SOCK_DGRAM, 0 );
+
+	if ( tmp_fd < 0 ) {
+		debug_output( 0, "Error - can't create tap device (udp socket): %s\n", strerror(errno) );
+		tap_destroy( fd );
+		return -1;
+	}
+
+
+	if ( ioctl( tmp_fd, SIOCGIFFLAGS, &ifr_tap ) < 0 ) {
+
+		debug_output( 0, "Error - can't create tap device (SIOCGIFFLAGS): %s\n", strerror(errno) );
+		tap_destroy( fd );
+		close( tmp_fd );
+		return -1;
+
+	}
+
+	ifr_tap.ifr_flags |= IFF_UP;
+	ifr_tap.ifr_flags |= IFF_RUNNING;
+
+	if ( ioctl( tmp_fd, SIOCSIFFLAGS, &ifr_tap ) < 0 ) {
+
+		debug_output( 0, "Error - can't create tap device (SIOCSIFFLAGS): %s\n", strerror(errno) );
+		tap_destroy( fd );
+		close( tmp_fd );
+		return -1;
+
+	}
+
+	/* set MTU of tap interface: real MTU - 28 */
+	if ( mtu < 100 ) {
+
+		debug_output( 0, "Warning - MTU smaller than 100 -> can't reduce MTU anymore\n" );
+
+	} else {
+
+		ifr_tap.ifr_mtu = mtu - 28;
+
+		if ( ioctl( tmp_fd, SIOCSIFMTU, &ifr_tap ) < 0 ) {
+
+			debug_output( 0, "Error - can't create tap device (SIOCSIFMTU): %s\n", strerror(errno) );
+			tap_destroy( fd );
+			close( tmp_fd );
+			return -1;
+
+		}
+
+	}
+
+
+	/* get mac address */
+	if ( ioctl( tmp_fd, SIOCGIFHWADDR, &ifr_if ) < 0 ) {
+
+		debug_output( 0, "Error - can't create tap device (SIOCGIFHWADDR): %s\n", strerror(errno) );
+		tap_destroy( fd );
+		close( tmp_fd );
+		return -1;
+
+	}
+
+	memcpy( hw_addr, ifr_if.ifr_hwaddr.sa_data, ETH_ALEN );
+
+	close( tmp_fd );
+
+	return fd;
+
+}
+
+
+
+void tap_destroy( int32_t tap_fd ) {
+
+	if ( ioctl( tap_fd, TUNSETPERSIST, 0 ) < 0 ) {
+
+		printf( "Error - can't delete tap device: %s\n", strerror(errno) );
+
+	}
+
+	close( tap_fd );
+
+}
+
+
