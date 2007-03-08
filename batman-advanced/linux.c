@@ -131,10 +131,30 @@ int32_t rawsock_write(int32_t rawsock, struct ether_header *send_header, unsigne
 
 	send_header->ether_type = htons(ETH_P_BATMAN);
 
-/*	printf("source = %s\n", ether_ntoa((struct ether_addr *)send_header->ether_shost));
-	printf("dest   = %s\n", ether_ntoa((struct ether_addr *)send_header->ether_dhost));
-	printf("type: %08x\n",ntohs(send_header->ether_type));*/
+	printf("source = %s, ", ether_ntoa((struct ether_addr *)send_header->ether_shost) );
+	printf("dest   = %s, ", ether_ntoa((struct ether_addr *)send_header->ether_dhost));
+	printf("type: %08x, len %i\n",ntohs(send_header->ether_type), size );
 
+	if ( memcmp( send_header->ether_dhost, broadcastAddr, 6 ) == 0 ) {
+
+		if ( size == sizeof(struct packet) ) {
+
+			printf( "batman: orig = %s, \n", addr_to_string( ((struct packet *)buf)->orig ) );
+
+		} else {
+
+			unsigned char *pay_buff = buf + sizeof(struct packet);
+			printf( "broadcast: to = %s, ", addr_to_string( ((struct ether_header *)pay_buff)->ether_dhost ) );
+			printf( "from = %s, \n", addr_to_string( ((struct ether_header *)pay_buff)->ether_shost ) );
+
+		}
+
+	} else {
+
+		printf( "unicast: to = %s, ", addr_to_string( ((struct ether_header *)buf)->ether_dhost ) );
+		printf( "from = %s, \n", addr_to_string( ((struct ether_header *)buf)->ether_shost ) );
+
+	}
 
 	if ( ( ret = writev(rawsock, vector, 2) ) < 0 )
 		debug_output( 0, "Error - can't write to raw socket: %s", strerror(errno) );

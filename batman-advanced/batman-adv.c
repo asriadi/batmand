@@ -117,7 +117,6 @@ struct debug_clients debug_clients;
 void usage( void ) {
 
 	fprintf( stderr, "Usage: batman [options] interface [interface interface]\n" );
-	fprintf( stderr, "       -a announce network(s)\n" );
 	fprintf( stderr, "       -b run connection in batch mode\n" );
 	fprintf( stderr, "       -c connect via unix socket\n" );
 	fprintf( stderr, "       -d debug level\n" );
@@ -137,8 +136,6 @@ void usage( void ) {
 void verbose_usage( void ) {
 
 	fprintf( stderr, "Usage: batman [options] interface [interface interface]\n\n" );
-	fprintf( stderr, "       -a announce network(s)\n" );
-	fprintf( stderr, "          network/netmask is expected\n" );
 	fprintf( stderr, "       -b run connection in batch mode\n" );
 	fprintf( stderr, "       -c connect to running batmand via unix socket\n" );
 	fprintf( stderr, "       -d debug level\n" );
@@ -176,10 +173,10 @@ void verbose_usage( void ) {
 	fprintf( stderr, "       -v print version\n" );
 
 }
-/* needed for hash, compares 2 struct orig_node, but only their mac-addresses. assumes that 
+/* needed for hash, compares 2 struct orig_node, but only their mac-addresses. assumes that
  * the mac address is the first field in the struct */
 int orig_comp(void *data1, void *data2) {
-	return(memcmp(data1, data2, 6)); 
+	return(memcmp(data1, data2, 6));
 }
 
 /* hashfunction to choose an entry in a hash table of given size */
@@ -188,7 +185,7 @@ int orig_choose(void *data, int size) {
 	unsigned char *key= data;
 	uint32_t hash = 0;
 	size_t i;
-     
+
 	for (i = 0; i < 6; i++) {
 		hash += key[i];
 		hash += (hash << 10);
@@ -206,8 +203,8 @@ void orig_free(void *data) {
 }
 
 struct orig_node *find_orig_node( uint8_t *addr ) {
-	return((struct orig_node *) hash_find( orig_hash, addr )); 
-		/* addr is supposed to be the first entry in the struct orig_node entry, so 
+	return((struct orig_node *) hash_find( orig_hash, addr ));
+		/* addr is supposed to be the first entry in the struct orig_node entry, so
 		 * we don't allocate and copy into a new struct orig_node. should be enough for comparing. */
 
 }
@@ -250,16 +247,16 @@ struct orig_node *get_orig_node( uint8_t *addr ) {
 	memcpy( &orig_node->orig, addr, sizeof(orig_node->orig) );
 	orig_node->router = NULL;
 
-	orig_node->bidirect_link = debugMalloc( found_ifs * sizeof(int), 2 );
-	memset( orig_node->bidirect_link, 0, found_ifs * sizeof(int) );
+	orig_node->bidirect_link = debugMalloc( found_ifs * sizeof(uint32_t), 2 );
+	memset( orig_node->bidirect_link, 0, found_ifs * sizeof(uint32_t) );
 
 	hash_add(orig_hash, orig_node);
 	if (orig_hash->elements * 4 > orig_hash->size) {
 		struct hashtable_t *swaphash;
 		swaphash = hash_resize(orig_hash, orig_hash->size*2);
-		if (swaphash == NULL) 
-			printf("Couldn't resize hash table\n");
-		else 
+		if (swaphash == NULL)
+			debug_output( 0, "Couldn't resize hash table\n" );
+		else
 			orig_hash = swaphash;
 
 	}
@@ -593,7 +590,7 @@ int isDuplicate( uint8_t *orig, uint16_t seqno ) {
 		orig_node = list_entry( orig_pos, struct orig_node, list ); XXX: obsoleted by hash */
 		orig_node = hashit->bucket->data;
 
-		if ( memcmp( &orig_node->orig, orig, sizeof(orig_node->orig) ) == 0 ) {
+		if ( orig_comp( &orig_node->orig, orig ) == 0 ) {
 
 			list_for_each( neigh_pos, &orig_node->neigh_list ) {
 				neigh_node = list_entry( neigh_pos, struct neigh_node, list );
@@ -640,7 +637,7 @@ void update_originator( struct orig_node *orig_node, struct packet *in, uint8_t 
 
 		tmp_neigh_node = list_entry( neigh_pos, struct neigh_node, list );
 
-		if ( ( memcmp( &tmp_neigh_node->addr, neigh, sizeof(tmp_neigh_node->addr) ) == 0 ) && ( tmp_neigh_node->if_incoming == if_incoming ) ) {
+		if ( ( orig_comp( &tmp_neigh_node->addr, neigh ) == 0 ) && ( tmp_neigh_node->if_incoming == if_incoming ) ) {
 
 			neigh_node = tmp_neigh_node;
 
@@ -831,7 +828,6 @@ void schedule_forward_packet( struct packet *in, uint8_t unidirectional, uint8_t
 			forw_node_new->pack_buff_len = sizeof(struct packet);
 
 		}
-
 
 		((struct packet *)forw_node_new->pack_buff)->ttl--;
 		forw_node_new->send_time = get_time();
@@ -1104,7 +1100,7 @@ int8_t batman() {
 	struct neigh_node *neigh_node;
 	struct forw_node *forw_node;
 	uint32_t debug_timeout, select_timeout, time_count = 0, curr_time;
-	unsigned char in[1501], *pay_recv_buff;
+	unsigned char in[2000], *pay_recv_buff;
 	int16_t pay_buff_len;
 	uint8_t neigh[6], is_duplicate, is_bidirectional, forward_duplicate_packet;
 	int8_t res;
@@ -1150,7 +1146,7 @@ int8_t batman() {
 
 		if ( res > 0 ) {
 
-			debug_output( 4, "Received BATMAN packet from %s (originator %s, seqno %d, TTL %d)\n", addr_to_string( neigh ), addr_to_string( ((struct packet *)&in)->orig ), ((struct packet *)&in)->seqno, ((struct packet *)&in)->ttl );
+			debug_output( 0, "Received BATMAN packet from %s (originator %s, seqno %d, TTL %d, payload: %s)\n", addr_to_string( neigh ), addr_to_string( ((struct packet *)&in)->orig ), ((struct packet *)&in)->seqno, ((struct packet *)&in)->ttl, ( pay_buff_len > sizeof(struct packet) ? "yes" : "no" ) );
 
 			is_duplicate = is_bidirectional = forward_duplicate_packet = 0;
 
@@ -1175,7 +1171,7 @@ int8_t batman() {
 
 // 			addr_to_string( ((struct packet *)&in)->orig );
 // 			addr_to_string( neigh );
-			debug_output( 4, "new packet - orig: %s, sender: %s\n", addr_to_string( ((struct packet *)&in)->orig ), addr_to_string( neigh ) );
+// 			debug_output( 4, "new packet - orig: %s, sender: %s\n", addr_to_string( ((struct packet *)&in)->orig ), addr_to_string( neigh ) );
 
 			/*if ( is_duplicate )
 				output("Duplicate packet \n");
@@ -1206,15 +1202,15 @@ int8_t batman() {
 
 				debug_output( 4, "Drop packet: incompatible batman version (%i) \n", ((struct packet *)&in)->version );
 
-			} else if ( memcmp( my_hw_addr, neigh, sizeof(neigh) ) == 0 ) {
+			} else if ( orig_comp( my_hw_addr, neigh ) == 0 ) {
 
 				debug_output( 4, "Drop packet: received my own broadcast (sender: %s)\n", addr_to_string( neigh ) );
 
-			} else if ( memcmp( neigh, broadcastAddr, sizeof(neigh) ) == 0 ) {
+			} else if ( orig_comp( neigh, broadcastAddr ) == 0 ) {
 
 				debug_output( 4, "Drop packet: ignoring all packets with broadcast source IP (sender: %s)\n", addr_to_string( neigh ) );
 
-			} else if ( memcmp( my_hw_addr, ((struct packet *)&in)->orig, sizeof(neigh) ) == 0 ) {
+			} else if ( orig_comp( my_hw_addr, ((struct packet *)&in)->orig ) == 0 ) {
 
 				orig_neigh_node = get_orig_node( neigh );
 
@@ -1252,10 +1248,10 @@ int8_t batman() {
 					update_originator( orig_node, (struct packet *)&in, neigh, if_incoming, pay_recv_buff, pay_buff_len );
 
 				/* is single hop (direct) neighbour */
-				if ( memcmp( ((struct packet *)&in)->orig, neigh, sizeof(neigh) ) == 0 ) {
+				if ( orig_comp( ((struct packet *)&in)->orig, neigh ) == 0 ) {
 
 					/* it is our best route towards him */
-					if ( ( is_bidirectional ) && ( orig_node->router != NULL ) && ( memcmp( orig_node->router->addr, neigh, sizeof(neigh) ) == 0 ) ) {
+					if ( ( is_bidirectional ) && ( orig_node->router != NULL ) && ( orig_comp( orig_node->router->addr, neigh ) == 0 ) ) {
 
 						/* mark direct link on incoming interface */
 						schedule_forward_packet( (struct packet *)&in, 0, 1, pay_buff_len, if_incoming );
@@ -1264,9 +1260,9 @@ int8_t batman() {
 
 					/* if an unidirectional neighbour sends us a packet - retransmit it with unidirectional flag to tell him that we get its packets */
 					/* if a bidirectional neighbour sends us a packet - retransmit it with unidirectional flag if it is not our best link to it in order to prevent routing problems */
-					} else if ( ( ( is_bidirectional ) && ( ( orig_node->router == NULL ) || ( memcmp( orig_node->router->addr, neigh, sizeof(neigh) ) != 0 ) ) ) || ( !is_bidirectional ) ) {
+					} else if ( ( ( is_bidirectional ) && ( ( orig_node->router == NULL ) || ( orig_comp( orig_node->router->addr, neigh ) != 0 ) ) ) || ( !is_bidirectional ) ) {
 
-						schedule_forward_packet( (struct packet *)&in, 1, 1, pay_buff_len, if_incoming );
+						schedule_forward_packet( (struct packet *)&in, 1, 1, 0, if_incoming );
 
 						debug_output( 4, "Forward packet: rebroadcast neighbour packet with direct link and unidirectional flag \n" );
 
@@ -1283,13 +1279,13 @@ int8_t batman() {
 
 							debug_output( 4, "Forward packet: rebroadcast orginator packet \n" );
 
-						} else if ( ( orig_node->router != NULL ) && ( memcmp( orig_node->router->addr, neigh, sizeof(neigh) ) == 0 ) ) {
+						} else if ( ( orig_node->router != NULL ) && ( orig_comp( orig_node->router->addr, neigh ) == 0 ) ) {
 
 							list_for_each( neigh_pos, &orig_node->neigh_list ) {
 
 								neigh_node = list_entry(neigh_pos, struct neigh_node, list);
 
-								if ( ( memcmp( neigh_node->addr, neigh, sizeof(neigh) ) == 0 ) && ( neigh_node->if_incoming == if_incoming ) ) {
+								if ( ( orig_comp( neigh_node->addr, neigh ) == 0 ) && ( neigh_node->if_incoming == if_incoming ) ) {
 
 									if ( neigh_node->last_ttl == ((struct packet *)&in)->ttl )
 										forward_duplicate_packet = 1;
