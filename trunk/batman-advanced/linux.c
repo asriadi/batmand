@@ -103,6 +103,14 @@ int32_t rawsock_read(int32_t rawsock, struct ether_header *recv_header, unsigned
 
 	}
 
+	int i;
+	printf( "read packet (type: %08x): ", ntohs(recv_header->ether_type) );
+	for ( i=0; i < packet_size; i += 6 ) {
+
+		printf( "%s, " , addr_to_string( buf + i ) );
+	}
+	printf( "\n" );
+
 
 /*	printf("source = %s\n", ether_ntoa((struct ether_addr *)recv_header->ether_shost));
 	printf("dest   = %s\n", ether_ntoa((struct ether_addr *)recv_header->ether_dhost));
@@ -155,6 +163,14 @@ int32_t rawsock_write(int32_t rawsock, struct ether_header *send_header, unsigne
 		printf( "from = %s, \n", addr_to_string( ((struct ether_header *)buf)->ether_shost ) );
 
 	}
+
+	int i;
+	printf( "send packet: " );
+	for ( i=0; i < size; i += 6 ) {
+
+		printf( "%s, " , addr_to_string( buf + i ) );
+	}
+	printf( "\n" );
 
 	if ( ( ret = writev(rawsock, vector, 2) ) < 0 )
 		debug_output( 0, "Error - can't write to raw socket: %s", strerror(errno) );

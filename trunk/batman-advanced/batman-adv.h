@@ -90,6 +90,7 @@ struct packet
 	uint16_t seqno;
 	uint8_t  gwflags;  /* flags related to gateway functions: gateway class */
 	uint8_t  version;  /* batman version field */
+	uint16_t pay_len;
 } __attribute__((packed));
 
 struct orig_node                 /* structure for orig_list maintaining nodes of mesh */
@@ -122,7 +123,7 @@ struct forw_node                 /* structure for forw_list maintaining packets 
 	uint32_t send_time;
 	uint8_t  own;
 	unsigned char *pack_buff;
-	int32_t  pack_buff_len;
+	int16_t  pack_buff_len;
 	struct batman_if *if_outgoing;
 };
 

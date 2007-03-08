@@ -36,8 +36,8 @@ int32_t tap_create( int16_t mtu, uint8_t *hw_addr );
 void tap_destroy( int32_t tap_fd );
 void tap_write( int32_t tap_fd, unsigned char *buff, int16_t buff_len );
 
-int8_t receive_packet( unsigned char *packet_buff, int32_t packet_buff_len, int16_t *pay_buff_len, uint8_t *neigh, uint32_t timeout, struct batman_if **if_incoming );
-int8_t send_packet( unsigned char *packet_buff, int32_t packet_buff_len, uint8_t *recv_addr, int32_t send_sock );
+int8_t receive_packet( unsigned char *packet_buff, int16_t packet_buff_len, int16_t *pay_buff_len, uint8_t *neigh, uint32_t timeout, struct batman_if **if_incoming );
+int8_t send_packet( unsigned char *packet_buff, int16_t packet_buff_len, uint8_t *recv_addr, int32_t send_sock );
 
 void apply_init_args( int argc, char *argv[] );
 int16_t init_interface ( struct batman_if *batman_if );

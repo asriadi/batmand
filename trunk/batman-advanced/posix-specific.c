@@ -1219,7 +1219,7 @@ void close_all_sockets() {
 
 
 
-int8_t receive_packet( unsigned char *packet_buff, int32_t packet_buff_len, int16_t *pay_buff_len, uint8_t *neigh, uint32_t timeout, struct batman_if **if_incoming ) {
+int8_t receive_packet( unsigned char *packet_buff, int16_t packet_buff_len, int16_t *pay_buff_len, uint8_t *neigh, uint32_t timeout, struct batman_if **if_incoming ) {
 
 	struct timeval tv;
 	struct list_head *if_pos;
@@ -1288,7 +1288,8 @@ printf( "\n" );
 					}
 
 				} else {
-printf( "not found \n" );
+printf( "not found: \n" );
+
 				}
 
 			}
@@ -1311,10 +1312,19 @@ printf( "not found \n" );
 				/* ethernet packet should be broadcasted */
 				if ( memcmp( &ether_header.ether_dhost, broadcastAddr, sizeof(ether_header.ether_dhost) ) == 0 ) {
 
+					((struct packet *)packet_buff)->seqno = ntohs( ((struct packet *)packet_buff)->seqno ); /* network to host order for our 16bit seqno.*/
+					((struct packet *)packet_buff)->pay_len = htons( ((struct packet *)packet_buff)->pay_len ); /* change payload length to host order */
+
+
 					if ( *pay_buff_len < sizeof(struct packet) )
 						return 0;
 
-					((struct packet *)packet_buff)->seqno = ntohs( ((struct packet *)packet_buff)->seqno ); /* network to host order for our 16bit seqno.*/
+					if ( *pay_buff_len != sizeof(struct packet) + ((struct packet *)packet_buff)->pay_len ) {
+
+						debug_output( 0, "Error - drop packet due to false length field: received = %i, length = %i\n", *pay_buff_len - sizeof(struct packet), ((struct packet *)packet_buff)->pay_len );
+						return 0;
+
+					}
 
 					(*if_incoming) = batman_if;
 					break;
@@ -1366,7 +1376,7 @@ printf( "not found \n" );
 
 
 
-int8_t send_packet( unsigned char *packet_buff, int32_t packet_buff_len, uint8_t *recv_addr, int32_t send_sock ) {
+int8_t send_packet( unsigned char *packet_buff, int16_t packet_buff_len, uint8_t *recv_addr, int32_t send_sock ) {
 	printf( "send_packet\n" );
 	struct ether_header ether_header;
 
