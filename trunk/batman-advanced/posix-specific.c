@@ -1227,7 +1227,6 @@ int8_t receive_packet( unsigned char *packet_buff, int32_t packet_buff_len, int1
 	struct orig_node *orig_node;
 	struct ether_header ether_header;
 	int8_t res;
-	int16_t bytes;
 	fd_set tmp_wait_set;
 
 
@@ -1263,32 +1262,33 @@ int8_t receive_packet( unsigned char *packet_buff, int32_t packet_buff_len, int1
 			return -1;
 
 		} else {
-
+printf( "tap " );
 			/* ethernet packet should be broadcasted */
 			if ( memcmp( ((struct ether_header *)packet_buff)->ether_dhost, broadcastAddr, sizeof(ether_header.ether_dhost) ) == 0 ) {
 
 				/* get own orginator packet and send it with broadcast payload */
 				reschedule_own_packet( packet_buff, *pay_buff_len );
-
+printf( "broadcast \n" );
 			/* unicast packet */
 			} else {
-
+printf( "unicast " );
 				/* get routing information */
 				orig_node = find_orig_node( ((struct ether_header *)packet_buff)->ether_dhost );
 
-				if ( orig_node != NULL ) {
-
+				if ( ( orig_node != NULL ) && ( orig_node->batman_if != NULL ) ) {
+printf( "\n" );
 					memcpy( ether_header.ether_dhost, ((struct ether_header *)packet_buff)->ether_dhost, sizeof(ether_header.ether_dhost) );
 					memcpy( ether_header.ether_shost, my_hw_addr, sizeof(ether_header.ether_shost) );
 
-printf( "%s, len %i\n", packet_buff + 14, *pay_buff_len - sizeof(struct ether_header) );
-					if ( ( bytes = rawsock_write( orig_node->batman_if->raw_sock, &ether_header, packet_buff + sizeof(struct ether_header), *pay_buff_len - sizeof(struct ether_header) ) ) < 0 ) {
+					if ( ( rawsock_write( orig_node->batman_if->raw_sock, &ether_header, packet_buff, *pay_buff_len ) ) < 0 ) {
 
 						debug_output( 0, "Error - can't send data through raw socket: %s\n", strerror(errno) );
 						return -1;
 
 					}
 
+				} else {
+printf( "not found \n" );
 				}
 
 			}
@@ -1321,7 +1321,7 @@ printf( "%s, len %i\n", packet_buff + 14, *pay_buff_len - sizeof(struct ether_he
 
 				/* unicast packet */
 				} else {
-
+					printf( "raw unicast\n" );
 					/* packet for me */
 					if ( memcmp( &ether_header.ether_dhost, my_hw_addr, sizeof(ether_header.ether_dhost) ) == 0 ) {
 
@@ -1333,7 +1333,7 @@ printf( "%s, len %i\n", packet_buff + 14, *pay_buff_len - sizeof(struct ether_he
 						/* get routing information */
 						orig_node = find_orig_node( ether_header.ether_dhost );
 
-						if ( orig_node != NULL ) {
+						if ( ( orig_node != NULL ) && ( orig_node->batman_if != NULL ) ) {
 
 							memcpy( ether_header.ether_shost, my_hw_addr, ETH_ALEN );
 
@@ -1367,7 +1367,7 @@ printf( "%s, len %i\n", packet_buff + 14, *pay_buff_len - sizeof(struct ether_he
 
 
 int8_t send_packet( unsigned char *packet_buff, int32_t packet_buff_len, uint8_t *recv_addr, int32_t send_sock ) {
-
+	printf( "send_packet\n" );
 	struct ether_header ether_header;
 
 	memcpy( ether_header.ether_dhost, recv_addr, ETH_ALEN );
