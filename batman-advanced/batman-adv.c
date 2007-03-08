@@ -623,7 +623,7 @@ int isBidirectionalNeigh( struct orig_node *orig_neigh_node, struct batman_if *i
 
 
 
-void update_originator( struct orig_node *orig_node, struct packet *in, uint8_t *neigh, struct batman_if *if_incoming, unsigned char *pay_buff, int16_t pay_buff_len ) {
+void update_originator( struct orig_node *orig_node, struct packet *in, uint8_t *neigh, struct batman_if *if_incoming, unsigned char *pay_buff ) {
 
 	struct list_head *neigh_pos;
 	struct neigh_node *neigh_node = NULL, *tmp_neigh_node, *best_neigh_node;
@@ -708,8 +708,8 @@ void update_originator( struct orig_node *orig_node, struct packet *in, uint8_t 
 	orig_node->gwflags = in->gwflags;
 
 	/* ethernet broadcasts for the kernel */
-	if ( pay_buff_len > 0 )
-		tap_write( tap_sock, pay_buff, pay_buff_len );
+	if ( in->pay_len > 0 )
+		tap_write( tap_sock, pay_buff, in->pay_len );
 
 }
 
@@ -728,17 +728,17 @@ void schedule_own_packet( struct batman_if *batman_if, unsigned char *pay_buff, 
 	forw_node_new->if_outgoing = batman_if;
 	forw_node_new->own = 1;
 
-	if ( pay_buff_len > 0 ) {
-
-		/* batman packets with payload are send immediately */
-		forw_node_new->send_time = get_time();
-
-		forw_node_new->pack_buff = debugMalloc( sizeof(struct packet) + pay_buff_len, 12 );
-		memcpy( forw_node_new->pack_buff, (unsigned char *)&batman_if->out, sizeof(struct packet) );
-		memcpy( forw_node_new->pack_buff + sizeof(struct packet), pay_buff, pay_buff_len );
-		forw_node_new->pack_buff_len = sizeof(struct packet) + pay_buff_len;
-
-	} else {
+// 	if ( pay_buff_len > 0 ) {
+//
+// 		/* batman packets with payload are send immediately */
+// 		forw_node_new->send_time = get_time();
+//
+// 		forw_node_new->pack_buff = debugMalloc( sizeof(struct packet) + pay_buff_len, 12 );
+// 		memcpy( forw_node_new->pack_buff, (unsigned char *)&batman_if->out, sizeof(struct packet) );
+// 		memcpy( forw_node_new->pack_buff + sizeof(struct packet), pay_buff, pay_buff_len );
+// 		forw_node_new->pack_buff_len = sizeof(struct packet) + pay_buff_len;
+//
+// 	} else {
 
 		forw_node_new->send_time = get_time() + orginator_interval - JITTER + rand_num( 2 * JITTER );
 
@@ -746,7 +746,7 @@ void schedule_own_packet( struct batman_if *batman_if, unsigned char *pay_buff, 
 		memcpy( forw_node_new->pack_buff, &batman_if->out, sizeof(struct packet) );
 		forw_node_new->pack_buff_len = sizeof(struct packet);
 
-	}
+// 	}
 
 	list_for_each( list_pos, &forw_list ) {
 
@@ -799,7 +799,7 @@ void reschedule_own_packet( unsigned char *pay_buff, int16_t pay_buff_len ) {
 
 
 
-void schedule_forward_packet( struct packet *in, uint8_t unidirectional, uint8_t directlink, int16_t pay_buff_len, struct batman_if *if_outgoing ) {
+void schedule_forward_packet( struct packet *in, uint8_t unidirectional, uint8_t directlink, struct batman_if *if_outgoing ) {
 
 	struct forw_node *forw_node_new;
 
@@ -815,21 +815,22 @@ void schedule_forward_packet( struct packet *in, uint8_t unidirectional, uint8_t
 
 		INIT_LIST_HEAD(&forw_node_new->list);
 
-		if ( pay_buff_len > 0 ) {
-
-			forw_node_new->pack_buff = debugMalloc( sizeof(struct packet) + pay_buff_len, 9 );
-			memcpy( forw_node_new->pack_buff, in, sizeof(struct packet) + pay_buff_len );
-			forw_node_new->pack_buff_len = sizeof(struct packet) + pay_buff_len;
-
-		} else {
+// 		if ( pay_buff_len > 0 ) {
+//
+// 			forw_node_new->pack_buff = debugMalloc( sizeof(struct packet) + pay_buff_len, 9 );
+// 			memcpy( forw_node_new->pack_buff, in, sizeof(struct packet) + pay_buff_len );
+// 			forw_node_new->pack_buff_len = sizeof(struct packet) + pay_buff_len;
+//
+// 		} else {
 
 			forw_node_new->pack_buff = debugMalloc( sizeof(struct packet), 10 );
 			memcpy( forw_node_new->pack_buff, in, sizeof(struct packet) );
 			forw_node_new->pack_buff_len = sizeof(struct packet);
 
-		}
+// 		}
 
 		((struct packet *)forw_node_new->pack_buff)->ttl--;
+
 		forw_node_new->send_time = get_time();
 		forw_node_new->own = 0;
 
@@ -879,6 +880,7 @@ void send_outstanding_packets() {
 			directlink = ( ( ((struct packet *)forw_node->pack_buff)->flags & DIRECTLINK ) ? 1 : 0 );
 
 			((struct packet *)forw_node->pack_buff)->seqno = htons( ((struct packet *)forw_node->pack_buff)->seqno ); /* change sequence number to network order */
+			((struct packet *)forw_node->pack_buff)->pay_len = htons( ((struct packet *)forw_node->pack_buff)->pay_len ); /* change payload length to network order */
 
 
 			if ( ((struct packet *)forw_node->pack_buff)->flags & UNIDIRECTIONAL ) {
@@ -917,7 +919,7 @@ void send_outstanding_packets() {
 					debug_output( 0, "Error - can't forward packet with IDF: outgoing iface not specified \n" );
 
 				} else {
-					debug_output( 4, "send_outstanding_packets() \n" );
+
 					list_for_each(if_pos, &if_list) {
 
 						batman_if = list_entry(if_pos, struct batman_if, list);
@@ -1100,8 +1102,8 @@ int8_t batman() {
 	struct neigh_node *neigh_node;
 	struct forw_node *forw_node;
 	uint32_t debug_timeout, select_timeout, time_count = 0, curr_time;
-	unsigned char in[2000], *pay_recv_buff;
-	int16_t pay_buff_len;
+	unsigned char in[2000];
+	int16_t in_len;
 	uint8_t neigh[6], is_duplicate, is_bidirectional, forward_duplicate_packet;
 	int8_t res;
 
@@ -1118,10 +1120,12 @@ int8_t batman() {
 		batman_if->out.seqno = 1;
 		batman_if->out.gwflags = gateway_class;
 		batman_if->out.version = COMPAT_VERSION;
+		batman_if->out.pay_len = 0;
 
 		schedule_own_packet( batman_if, NULL, 0 );
 
 	}
+
 	if (NULL == (orig_hash = hash_new( 128, orig_comp, orig_choose)))
 		return(-1);
 
@@ -1139,19 +1143,16 @@ int8_t batman() {
 		curr_time = get_time();
 		select_timeout = ( curr_time < ((struct forw_node *)forw_list.next)->send_time ? ((struct forw_node *)forw_list.next)->send_time - curr_time : 10 );
 
-		res = receive_packet( ( unsigned char *)&in, sizeof(in), &pay_buff_len, neigh, select_timeout, &if_incoming );
+		res = receive_packet( ( unsigned char *)&in, sizeof(in), &in_len, neigh, select_timeout, &if_incoming );
 
 		if ( res < 0 )
 			return -1;
 
 		if ( res > 0 ) {
 
-			debug_output( 0, "Received BATMAN packet from %s (originator %s, seqno %d, TTL %d, payload: %s)\n", addr_to_string( neigh ), addr_to_string( ((struct packet *)&in)->orig ), ((struct packet *)&in)->seqno, ((struct packet *)&in)->ttl, ( pay_buff_len > sizeof(struct packet) ? "yes" : "no" ) );
+			debug_output( 0, "Received BATMAN packet from %s (originator %s, seqno %d, TTL %d, payload: %s)\n", addr_to_string( neigh ), addr_to_string( ((struct packet *)&in)->orig ), ((struct packet *)&in)->seqno, ((struct packet *)&in)->ttl, ( ((struct packet *)&in)->pay_len > 0 ? "yes" : "no" ) );
 
 			is_duplicate = is_bidirectional = forward_duplicate_packet = 0;
-
-			pay_buff_len -= sizeof(struct packet);
-			pay_recv_buff = ( pay_buff_len > 0 ? in + sizeof(struct packet) : NULL );
 
 // 			list_for_each( if_pos, &if_list ) {
 //
@@ -1245,7 +1246,7 @@ int8_t batman() {
 
 				/* update ranking */
 				if ( ( is_bidirectional ) && ( !is_duplicate ) )
-					update_originator( orig_node, (struct packet *)&in, neigh, if_incoming, pay_recv_buff, pay_buff_len );
+					update_originator( orig_node, (struct packet *)&in, neigh, if_incoming, in + sizeof(struct packet) );
 
 				/* is single hop (direct) neighbour */
 				if ( orig_comp( ((struct packet *)&in)->orig, neigh ) == 0 ) {
@@ -1254,7 +1255,7 @@ int8_t batman() {
 					if ( ( is_bidirectional ) && ( orig_node->router != NULL ) && ( orig_comp( orig_node->router->addr, neigh ) == 0 ) ) {
 
 						/* mark direct link on incoming interface */
-						schedule_forward_packet( (struct packet *)&in, 0, 1, pay_buff_len, if_incoming );
+						schedule_forward_packet( (struct packet *)&in, 0, 1, if_incoming );
 
 						debug_output( 4, "Forward packet: rebroadcast neighbour packet with direct link flag \n" );
 
@@ -1262,7 +1263,7 @@ int8_t batman() {
 					/* if a bidirectional neighbour sends us a packet - retransmit it with unidirectional flag if it is not our best link to it in order to prevent routing problems */
 					} else if ( ( ( is_bidirectional ) && ( ( orig_node->router == NULL ) || ( orig_comp( orig_node->router->addr, neigh ) != 0 ) ) ) || ( !is_bidirectional ) ) {
 
-						schedule_forward_packet( (struct packet *)&in, 1, 1, 0, if_incoming );
+						schedule_forward_packet( (struct packet *)&in, 1, 1, if_incoming );
 
 						debug_output( 4, "Forward packet: rebroadcast neighbour packet with direct link and unidirectional flag \n" );
 
@@ -1275,7 +1276,7 @@ int8_t batman() {
 
 						if ( !is_duplicate ) {
 
-							schedule_forward_packet( (struct packet *)&in, 0, 0, pay_buff_len, if_incoming );
+							schedule_forward_packet( (struct packet *)&in, 0, 0, if_incoming );
 
 							debug_output( 4, "Forward packet: rebroadcast orginator packet \n" );
 
@@ -1299,7 +1300,7 @@ int8_t batman() {
 							/* we are forwarding duplicate o-packets if they come via our best neighbour and ttl is valid */
 							if ( forward_duplicate_packet ) {
 
-								schedule_forward_packet( (struct packet *)&in, 0, 0, pay_buff_len, if_incoming );
+								schedule_forward_packet( (struct packet *)&in, 0, 0, if_incoming );
 
 								debug_output( 4, "Forward packet: duplicate packet received via best neighbour with best ttl \n" );
 
