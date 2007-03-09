@@ -728,17 +728,19 @@ void schedule_own_packet( struct batman_if *batman_if, unsigned char *pay_buff, 
 	forw_node_new->if_outgoing = batman_if;
 	forw_node_new->own = 1;
 
-// 	if ( pay_buff_len > 0 ) {
-//
-// 		/* batman packets with payload are send immediately */
-// 		forw_node_new->send_time = get_time();
-//
-// 		forw_node_new->pack_buff = debugMalloc( sizeof(struct packet) + pay_buff_len, 12 );
-// 		memcpy( forw_node_new->pack_buff, (unsigned char *)&batman_if->out, sizeof(struct packet) );
-// 		memcpy( forw_node_new->pack_buff + sizeof(struct packet), pay_buff, pay_buff_len );
-// 		forw_node_new->pack_buff_len = sizeof(struct packet) + pay_buff_len;
-//
-// 	} else {
+	if ( pay_buff_len > 0 ) {
+
+		/* batman packets with payload are send immediately */
+		forw_node_new->send_time = get_time();
+
+		forw_node_new->pack_buff = debugMalloc( sizeof(struct packet) + pay_buff_len, 12 );
+		memcpy( forw_node_new->pack_buff, (unsigned char *)&batman_if->out, sizeof(struct packet) );
+		memcpy( forw_node_new->pack_buff + sizeof(struct packet), pay_buff, pay_buff_len );
+		forw_node_new->pack_buff_len = sizeof(struct packet) + pay_buff_len;
+
+		((struct packet *)forw_node_new->pack_buff)->pay_len = pay_buff_len;
+
+	} else {
 
 		forw_node_new->send_time = get_time() + orginator_interval - JITTER + rand_num( 2 * JITTER );
 
@@ -746,7 +748,7 @@ void schedule_own_packet( struct batman_if *batman_if, unsigned char *pay_buff, 
 		memcpy( forw_node_new->pack_buff, &batman_if->out, sizeof(struct packet) );
 		forw_node_new->pack_buff_len = sizeof(struct packet);
 
-// 	}
+	}
 
 	list_for_each( list_pos, &forw_list ) {
 
@@ -815,19 +817,19 @@ void schedule_forward_packet( struct packet *in, uint8_t unidirectional, uint8_t
 
 		INIT_LIST_HEAD(&forw_node_new->list);
 
-// 		if ( pay_buff_len > 0 ) {
-//
-// 			forw_node_new->pack_buff = debugMalloc( sizeof(struct packet) + pay_buff_len, 9 );
-// 			memcpy( forw_node_new->pack_buff, in, sizeof(struct packet) + pay_buff_len );
-// 			forw_node_new->pack_buff_len = sizeof(struct packet) + pay_buff_len;
-//
-// 		} else {
+		if ( in->pay_len > 0 ) {
+
+			forw_node_new->pack_buff = debugMalloc( sizeof(struct packet) + in->pay_len, 9 );
+			memcpy( forw_node_new->pack_buff, in, sizeof(struct packet) + in->pay_len );
+			forw_node_new->pack_buff_len = sizeof(struct packet) + in->pay_len;
+
+		} else {
 
 			forw_node_new->pack_buff = debugMalloc( sizeof(struct packet), 10 );
 			memcpy( forw_node_new->pack_buff, in, sizeof(struct packet) );
 			forw_node_new->pack_buff_len = sizeof(struct packet);
 
-// 		}
+		}
 
 		((struct packet *)forw_node_new->pack_buff)->ttl--;
 
@@ -1150,7 +1152,7 @@ int8_t batman() {
 
 		if ( res > 0 ) {
 
-			debug_output( 0, "Received BATMAN packet from %s (originator %s, seqno %d, TTL %d, payload: %s)\n", addr_to_string( neigh ), addr_to_string( ((struct packet *)&in)->orig ), ((struct packet *)&in)->seqno, ((struct packet *)&in)->ttl, ( ((struct packet *)&in)->pay_len > 0 ? "yes" : "no" ) );
+			debug_output( 4, "Received BATMAN packet from %s (originator %s, seqno %d, TTL %d, payload: %s)\n", addr_to_string( neigh ), addr_to_string( ((struct packet *)&in)->orig ), ((struct packet *)&in)->seqno, ((struct packet *)&in)->ttl, ( ((struct packet *)&in)->pay_len > 0 ? "yes" : "no" ) );
 
 			is_duplicate = is_bidirectional = forward_duplicate_packet = 0;
 

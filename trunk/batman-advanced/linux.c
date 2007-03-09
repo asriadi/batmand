@@ -116,11 +116,6 @@ int32_t rawsock_read(int32_t rawsock, struct ether_header *recv_header, unsigned
 	printf("dest   = %s\n", ether_ntoa((struct ether_addr *)recv_header->ether_dhost));
 	printf("type: %08x\n",ntohs(recv_header->ether_type));*/
 
-	/* TODO: is that neccessary ?
-	if (recv_header->ether_type != htons(ETH_P_BATMAN) )
-		printf("type: %08x\n",ntohs(recv_header->ether_type));*/
-
-
 	return packet_size - sizeof(struct ether_header);
 
 }
@@ -139,7 +134,7 @@ int32_t rawsock_write(int32_t rawsock, struct ether_header *send_header, unsigne
 
 	send_header->ether_type = htons(ETH_P_BATMAN);
 
-	printf("source = %s, ", ether_ntoa((struct ether_addr *)send_header->ether_shost) );
+	/*printf("source = %s, ", ether_ntoa((struct ether_addr *)send_header->ether_shost) );
 	printf("dest   = %s, ", ether_ntoa((struct ether_addr *)send_header->ether_dhost));
 	printf("type: %08x, len %i\n",ntohs(send_header->ether_type), size );
 
@@ -162,15 +157,7 @@ int32_t rawsock_write(int32_t rawsock, struct ether_header *send_header, unsigne
 		printf( "unicast: to = %s, ", addr_to_string( ((struct ether_header *)buf)->ether_dhost ) );
 		printf( "from = %s, \n", addr_to_string( ((struct ether_header *)buf)->ether_shost ) );
 
-	}
-
-	int i;
-	printf( "send packet: " );
-	for ( i=0; i < size; i += 6 ) {
-
-		printf( "%s, " , addr_to_string( buf + i ) );
-	}
-	printf( "\n" );
+	}*/
 
 	if ( ( ret = writev(rawsock, vector, 2) ) < 0 )
 		debug_output( 0, "Error - can't write to raw socket: %s", strerror(errno) );
@@ -201,7 +188,7 @@ int8_t tap_probe() {
 
 
 
-int32_t tap_create( int16_t mtu, uint8_t *hw_addr ) {
+int32_t tap_create( int16_t mtu ) {
 
 	int32_t fd, tmp_fd;
 	struct ifreq ifr_tap, ifr_if;
@@ -227,13 +214,13 @@ int32_t tap_create( int16_t mtu, uint8_t *hw_addr ) {
 
 	}
 
-	if ( ioctl( fd, TUNSETPERSIST, 1 ) < 0 ) {
+/*	if ( ioctl( fd, TUNSETPERSIST, 1 ) < 0 ) {
 
-		debug_output( 0, "Error - can't create tap device (TUNSETPERSIST): %s\n", strerror(errno) );
+	debug_output( 0, "Error - can't create tap device (TUNSETPERSIST): %s\n", strerror(errno) );
 		close( fd );
 		return -1;
 
-	}
+ 	}*/
 
 
 	tmp_fd = socket( AF_INET, SOCK_DGRAM, 0 );
@@ -285,19 +272,6 @@ int32_t tap_create( int16_t mtu, uint8_t *hw_addr ) {
 		}
 
 	}
-
-
-	/* get mac address */
-	if ( ioctl( tmp_fd, SIOCGIFHWADDR, &ifr_tap ) < 0 ) {
-
-		debug_output( 0, "Error - can't create tap device (SIOCGIFHWADDR): %s\n", strerror(errno) );
-		tap_destroy( fd );
-		close( tmp_fd );
-		return -1;
-
-	}
-
-	memcpy( hw_addr, ifr_tap.ifr_hwaddr.sa_data, ETH_ALEN );
 
 	close( tmp_fd );
 
