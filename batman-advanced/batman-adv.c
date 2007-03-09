@@ -239,7 +239,7 @@ struct orig_node *get_orig_node( uint8_t *addr ) {
 
 	debug_output( 4, "Creating new originator\n" );
 
-	orig_node = debugMalloc( sizeof(struct orig_node), 1 );
+	orig_node = debugMalloc( sizeof(struct orig_node), 101 );
 	memset(orig_node, 0, sizeof(struct orig_node));
 	INIT_LIST_HEAD(&orig_node->list);
 	INIT_LIST_HEAD(&orig_node->neigh_list);
@@ -248,7 +248,7 @@ struct orig_node *get_orig_node( uint8_t *addr ) {
 	orig_node->router = NULL;
 	orig_node->batman_if = NULL;
 
-	orig_node->bidirect_link = debugMalloc( found_ifs * sizeof(uint32_t), 2 );
+	orig_node->bidirect_link = debugMalloc( found_ifs * sizeof(uint32_t), 102 );
 	memset( orig_node->bidirect_link, 0, found_ifs * sizeof(uint32_t) );
 
 	hash_add(orig_hash, orig_node);
@@ -461,7 +461,7 @@ static void update_gw_list( struct orig_node *orig_node, uint8_t new_gwflags ) {
 
 	debug_output( 3, "Found new gateway %s -> class: %i - %s\n", addr_to_string( gw_node->orig_node->orig ), new_gwflags, gw2string[new_gwflags] );
 
-	gw_node = debugMalloc( sizeof(struct gw_node), 5 );
+	gw_node = debugMalloc( sizeof(struct gw_node), 103 );
 	memset( gw_node, 0, sizeof(struct gw_node) );
 	INIT_LIST_HEAD( &gw_node->list );
 
@@ -662,7 +662,7 @@ void update_originator( struct orig_node *orig_node, struct packet *in, uint8_t 
 
 		debug_output( 4, "Creating new last-hop neighbour of originator\n" );
 
-		neigh_node = debugMalloc( sizeof (struct neigh_node), 6 );
+		neigh_node = debugMalloc( sizeof (struct neigh_node), 104 );
 		memset( neigh_node, 0, sizeof(struct neigh_node) );
 		INIT_LIST_HEAD( &neigh_node->list );
 
@@ -722,7 +722,7 @@ void schedule_own_packet( struct batman_if *batman_if, unsigned char *pay_buff, 
 	struct list_head *list_pos;
 
 
-	forw_node_new = debugMalloc( sizeof(struct forw_node), 11 );
+	forw_node_new = debugMalloc( sizeof(struct forw_node), 105 );
 
 	INIT_LIST_HEAD( &forw_node_new->list );
 
@@ -734,7 +734,7 @@ void schedule_own_packet( struct batman_if *batman_if, unsigned char *pay_buff, 
 		/* batman packets with payload are send immediately */
 		forw_node_new->send_time = get_time();
 
-		forw_node_new->pack_buff = debugMalloc( sizeof(struct packet) + pay_buff_len, 12 );
+		forw_node_new->pack_buff = debugMalloc( sizeof(struct packet) + pay_buff_len, 106 );
 		memcpy( forw_node_new->pack_buff, (unsigned char *)&batman_if->out, sizeof(struct packet) );
 		memcpy( forw_node_new->pack_buff + sizeof(struct packet), pay_buff, pay_buff_len );
 		forw_node_new->pack_buff_len = sizeof(struct packet) + pay_buff_len;
@@ -745,7 +745,7 @@ void schedule_own_packet( struct batman_if *batman_if, unsigned char *pay_buff, 
 
 		forw_node_new->send_time = get_time() + orginator_interval - JITTER + rand_num( 2 * JITTER );
 
-		forw_node_new->pack_buff = debugMalloc( sizeof(struct packet), 13 );
+		forw_node_new->pack_buff = debugMalloc( sizeof(struct packet), 107 );
 		memcpy( forw_node_new->pack_buff, &batman_if->out, sizeof(struct packet) );
 		forw_node_new->pack_buff_len = sizeof(struct packet);
 
@@ -789,8 +789,8 @@ void reschedule_own_packet( unsigned char *pay_buff, int16_t pay_buff_len ) {
 
 			schedule_own_packet( forw_packet->if_outgoing, pay_buff, pay_buff_len );
 
-			debugFree( forw_packet->pack_buff, 503 );
-			debugFree( forw_packet, 504 );
+			debugFree( forw_packet->pack_buff, 1101 );
+			debugFree( forw_packet, 1102 );
 
 			break;
 
@@ -814,19 +814,19 @@ void schedule_forward_packet( struct packet *in, uint8_t unidirectional, uint8_t
 
 	} else {
 
-		forw_node_new = debugMalloc( sizeof(struct forw_node), 8 );
+		forw_node_new = debugMalloc( sizeof(struct forw_node), 108 );
 
 		INIT_LIST_HEAD(&forw_node_new->list);
 
 		if ( in->pay_len > 0 ) {
 
-			forw_node_new->pack_buff = debugMalloc( sizeof(struct packet) + in->pay_len, 9 );
+			forw_node_new->pack_buff = debugMalloc( sizeof(struct packet) + in->pay_len, 109 );
 			memcpy( forw_node_new->pack_buff, in, sizeof(struct packet) + in->pay_len );
 			forw_node_new->pack_buff_len = sizeof(struct packet) + in->pay_len;
 
 		} else {
 
-			forw_node_new->pack_buff = debugMalloc( sizeof(struct packet), 10 );
+			forw_node_new->pack_buff = debugMalloc( sizeof(struct packet), 110 );
 			memcpy( forw_node_new->pack_buff, in, sizeof(struct packet) );
 			forw_node_new->pack_buff_len = sizeof(struct packet);
 
@@ -949,8 +949,8 @@ void send_outstanding_packets() {
 			if ( forw_node->own )
 				schedule_own_packet( forw_node->if_outgoing, NULL, 0 );
 
-			debugFree( forw_node->pack_buff, 103 );
-			debugFree( forw_node, 104 );
+			debugFree( forw_node->pack_buff, 1103 );
+			debugFree( forw_node, 1104 );
 
 		} else {
 
@@ -995,7 +995,7 @@ void purge( uint32_t curr_time ) {
 				neigh_node = list_entry(neigh_pos, struct neigh_node, list);
 
 				list_del( neigh_pos );
-				debugFree( neigh_node, 107 );
+				debugFree( neigh_node, 1105 );
 
 			}
 
@@ -1025,8 +1025,8 @@ void purge( uint32_t curr_time ) {
 
 			update_routes( orig_node, NULL );
 
-			debugFree( orig_node->bidirect_link, 109 );
-			debugFree( orig_node, 110 );
+			debugFree( orig_node->bidirect_link, 1106 );
+			debugFree( orig_node, 1107 );
 
 		} else {
 
@@ -1038,7 +1038,7 @@ void purge( uint32_t curr_time ) {
 				if ( (int)( ( neigh_node->last_aware + ( 2 * TIMEOUT ) ) < curr_time ) ) {
 
 					list_del( neigh_pos );
-					debugFree( neigh_node, 108 );
+					debugFree( neigh_node, 1108 );
 
 				}
 
@@ -1055,7 +1055,7 @@ void purge( uint32_t curr_time ) {
 		if ( ( gw_node->deleted ) && ( (int)((gw_node->deleted + 3 * TIMEOUT) < curr_time) ) ) {
 
 			list_del( gw_pos );
-			debugFree( gw_pos, 107 );
+			debugFree( gw_pos, 1109 );
 
 		}
 
@@ -1365,8 +1365,8 @@ int8_t batman() {
 
 		list_del( forw_pos );
 
-		debugFree( forw_node->pack_buff, 112 );
-		debugFree( forw_node, 113 );
+		debugFree( forw_node->pack_buff, 1110 );
+		debugFree( forw_node, 1111 );
 
 	}
 
