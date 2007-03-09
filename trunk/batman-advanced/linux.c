@@ -28,7 +28,7 @@
 #include <sys/types.h>          /* socket(), bind() */
 #include <sys/socket.h>         /* socket(), bind() */
 #include <net/if.h>             /* struct ifreq */
-#include <net/ethernet.h>       /* ETH_P_ALL */
+#include <net/ethernet.h>       /* ETH_P_ALL, struct ether_header */
 #include <netpacket/packet.h>   /* sockaddr_ll */
 #include <netinet/ether.h>      /* ether_ntoa() */
 #include <errno.h>              /* errno */

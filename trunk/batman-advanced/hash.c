@@ -18,8 +18,8 @@
 
 
 #include <stdio.h>		/* NULL */
-#include <stdlib.h>		/* malloc(), free() */
 #include "hash.h"
+#include "allocate.h"
 
 /* clears the hash */
 void hash_init(struct hashtable_t *hash) {
@@ -47,7 +47,7 @@ void hash_delete(struct hashtable_t *hash, hashdata_free_cb free_cb) {
 				if (free_cb!=NULL) free_cb( hash->table[i].data );
 				last_bucket= bucket;
 				bucket= bucket->next;
-				free(last_bucket);
+				debugFree(last_bucket, TAG_HASH_DELETE);
 			}
 		}
 	}
@@ -60,7 +60,7 @@ struct hash_it_t *hash_iterate(struct hashtable_t *hash, struct hash_it_t *iter_
 	struct hash_it_t *iter;
 
 	if (iter_in == NULL) {
-		iter= malloc(sizeof(struct hash_it_t));
+		iter= debugMalloc(sizeof(struct hash_it_t), TAG_HASH_ITER);
 		iter->index =  -1;
 		iter->bucket = NULL;
 	} else 
@@ -79,7 +79,7 @@ struct hash_it_t *hash_iterate(struct hashtable_t *hash, struct hash_it_t *iter_
 			iter->index++;						/* else, go to the next */
 	}
 	/* nothing to iterate over anymore */
-	free(iter);
+	debugFree(iter, TAG_HASH_ITER_REMOVE);
 	return(NULL);
 }
 
@@ -88,14 +88,14 @@ struct hash_it_t *hash_iterate(struct hashtable_t *hash, struct hash_it_t *iter_
 struct hashtable_t *hash_new(int size, hashdata_compare_cb compare, hashdata_choose_cb choose) {
 	struct hashtable_t *hash;
 
-	hash= malloc( sizeof(struct hashtable_t) );
+	hash= debugMalloc( sizeof(struct hashtable_t) , TAG_HASH);
 	if ( hash == NULL ) 			/* could not allocate the hash control structure */
 		return (NULL);
 
 	hash->size= size;
-	hash->table= malloc( sizeof(struct element_t) * size);
+	hash->table= debugMalloc( sizeof(struct element_t) * size, TAG_HASH_TABLE);
 	if ( hash->table == NULL ) {	/* could not allocate the table */
-		free(hash);
+		debugFree(hash, TAG_HASH_ALLOC_FAILED);
 		return(NULL);
 	}
 	hash->compare= compare;
@@ -127,8 +127,8 @@ int hash_add(struct hashtable_t *hash, void *data) {
 		} while ( new_bucket!=NULL);
 
 		/* found the tail of the list, add new element */
-		if (NULL == (new_bucket= malloc(sizeof(struct element_t))))
-				return(-1); /* malloc failed */
+		if (NULL == (new_bucket= debugMalloc(sizeof(struct element_t),TAG_HASH_BUCKET)))
+				return(-1); /* debugMalloc failed */
 
 		new_bucket->data= data;				/* init the new bucket */
 		new_bucket->next= NULL;
@@ -185,7 +185,7 @@ void *hash_remove(struct hashtable_t *hash, void *data) {
 					}
 				} else { /* not the first entry */
 					last_bucket->next= bucket->next;
-					free(bucket);
+					debugFree(bucket, TAG_HASH_BUCKET_REMOVE);
 				}
 
 				hash->elements--;
