@@ -926,13 +926,13 @@ void send_outstanding_packets() {
 
 
 /* free the data when hash_delete is called. */
-uint8_t free_orig_node( void *data ) {
+int free_orig_node( void *data ) {
 
 	struct list_head *neigh_pos, *neigh_temp, *gw_pos;
 	struct neigh_node *neigh_node;
 	struct gw_node *gw_node;
 	struct orig_node *orig_node = (struct orig_node *)data;
-	uint8_t gw_purged = 0;
+	int gw_purged = 0;
 
 
 	/* for all neighbours towards this orginator ... */
@@ -983,7 +983,7 @@ void purge( uint32_t curr_time ) {
 	struct neigh_node *neigh_node;
 	struct gw_node *gw_node;
 	struct hash_it_t *hashit = NULL;
-	uint8_t gw_purged = 0;
+	int gw_purged = 0;
 
 
 	debug_output( 4, "purge() \n" );
