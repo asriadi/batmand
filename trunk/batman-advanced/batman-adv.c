@@ -101,7 +101,6 @@ uint8_t my_hw_addr[6];
 unsigned char broadcastAddr[] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 
 
-/* static LIST_HEAD(orig_list); 		XXX: obsolete with hashing */
 struct hashtable_t *orig_hash;
 
 static LIST_HEAD(forw_list);
@@ -197,10 +196,7 @@ int orig_choose(void *data, int size) {
 	return (hash%size);
 }
 
-/* free the data when hash_delete is called. */
-void orig_free(void *data) {
-	/* TODO: free nodes when destroying the hash, or leak the memory. :( */
-}
+
 
 struct orig_node *find_orig_node( uint8_t *addr ) {
 	return((struct orig_node *) hash_find( orig_hash, addr ));
@@ -208,25 +204,7 @@ struct orig_node *find_orig_node( uint8_t *addr ) {
 		 * we don't allocate and copy into a new struct orig_node. should be enough for comparing. */
 
 }
-/* XXX: obsolete with hash structure */
-/*
-struct orig_node *find_orig_node( uint8_t *addr ) {
-	struct list_head *pos;
-	struct orig_node *orig_node;
 
-	list_for_each( pos, &orig_list ) {
-
-		orig_node = list_entry( pos, struct orig_node, list );
-
-		if ( memcmp( &orig_node->orig, addr, sizeof(orig_node->orig) ) == 0 )
-			return orig_node;
-
-	}
-
-	return NULL;
-
-}
-*/
 
 
 /* this function finds or creates an originator entry for the given address if it does not exits */
@@ -261,7 +239,6 @@ struct orig_node *get_orig_node( uint8_t *addr ) {
 			orig_hash = swaphash;
 
 	}
-/*	list_add_tail( &orig_node->list, &orig_list );		XXX: obsolete wiht hash structure */
 
 	return orig_node;
 
@@ -539,8 +516,7 @@ void debug() {
 		}
 		hashit=NULL;
 		while (NULL != (hashit = hash_iterate(orig_hash, hashit))) {
-/*		list_for_each( orig_pos, &orig_list ) {
-			orig_node = list_entry( orig_pos, struct orig_node, list ); XXX: obsoleted by hash */
+
 			orig_node = hashit->bucket->data;
 
 			if ( orig_node->router == NULL )
@@ -578,32 +554,17 @@ void debug() {
 
 
 
-int isDuplicate( uint8_t *orig, uint16_t seqno ) {
+int isDuplicate( struct orig_node *orig_node, uint16_t seqno ) {
 
-	struct list_head /* XXX: *orig_pos,*/ *neigh_pos;
-	struct orig_node *orig_node;
+	struct list_head *neigh_pos;
 	struct neigh_node *neigh_node;
-	struct hash_it_t *hashit;
 
-	hashit=NULL;
-	while (NULL != (hashit = hash_iterate(orig_hash, hashit))) {
-	/*list_for_each( orig_pos, &orig_list ) {
-		orig_node = list_entry( orig_pos, struct orig_node, list ); XXX: obsoleted by hash */
-		orig_node = hashit->bucket->data;
 
-		if ( orig_comp( &orig_node->orig, orig ) == 0 ) {
+	list_for_each( neigh_pos, &orig_node->neigh_list ) {
+		neigh_node = list_entry( neigh_pos, struct neigh_node, list );
 
-			list_for_each( neigh_pos, &orig_node->neigh_list ) {
-				neigh_node = list_entry( neigh_pos, struct neigh_node, list );
-
-				if ( get_bit_status( neigh_node->seq_bits, orig_node->last_seqno, seqno ) )
-					return 1;
-
-			}
-
-			return 0;
-
-		}
+		if ( get_bit_status( neigh_node->seq_bits, orig_node->last_seqno, seqno ) )
+			return 1;
 
 	}
 
@@ -964,69 +925,81 @@ void send_outstanding_packets() {
 
 
 
+/* free the data when hash_delete is called. */
+uint8_t free_orig_node( void *data ) {
+
+	struct list_head *neigh_pos, *neigh_temp, *gw_pos;
+	struct neigh_node *neigh_node;
+	struct gw_node *gw_node;
+	struct orig_node *orig_node = (struct orig_node *)data;
+	uint8_t gw_purged = 0;
+
+
+	/* for all neighbours towards this orginator ... */
+	list_for_each_safe( neigh_pos, neigh_temp, &orig_node->neigh_list ) {
+		neigh_node = list_entry(neigh_pos, struct neigh_node, list);
+
+		list_del( neigh_pos );
+		debugFree( neigh_node, 1105 );
+
+	}
+
+	list_for_each( gw_pos, &gw_list ) {
+
+		gw_node = list_entry( gw_pos, struct gw_node, list );
+
+		if ( gw_node->deleted )
+			continue;
+
+		if ( gw_node->orig_node == orig_node ) {
+
+			debug_output( 3, "Removing gateway %s from gateway list\n", addr_to_string( gw_node->orig_node->orig ) );
+
+			gw_node->deleted = get_time();
+
+			gw_purged = 1;
+
+			break;
+
+		}
+
+	}
+
+	update_routes( orig_node, NULL );
+
+	debugFree( orig_node->bidirect_link, 1106 );
+	debugFree( orig_node, 1107 );
+
+	return gw_purged;
+
+}
+
+
+
 void purge( uint32_t curr_time ) {
 
-	struct list_head /**orig_pos, */*neigh_pos, /**orig_temp,*/ *neigh_temp;
-	struct list_head *gw_pos, *gw_pos_tmp;
+	struct list_head *neigh_pos, *neigh_temp, *gw_pos, *gw_pos_tmp;
 	struct orig_node *orig_node;
 	struct neigh_node *neigh_node;
 	struct gw_node *gw_node;
-	struct hash_it_t *hashit;
+	struct hash_it_t *hashit = NULL;
 	uint8_t gw_purged = 0;
+
 
 	debug_output( 4, "purge() \n" );
 
 	/* for all origins... */
-
-	hashit=NULL;
 	while (NULL != (hashit = hash_iterate(orig_hash, hashit))) {
-/*
-	list_for_each_safe( orig_pos, orig_temp, &orig_list ) {
 
-		orig_node = list_entry( orig_pos, struct orig_node, list ); XXX: obsoleted by hash */
 		orig_node = hashit->bucket->data;
 
 		if ( (int)( ( orig_node->last_aware + ( 2 * TIMEOUT ) ) < curr_time ) ) {
 
 			debug_output( 4, "Orginator timeout: originator %s, last_aware %u)\n", addr_to_string( orig_node->orig ), orig_node->last_aware );
 
-			/* for all neighbours towards this orginator ... */
-			list_for_each_safe( neigh_pos, neigh_temp, &orig_node->neigh_list ) {
-				neigh_node = list_entry(neigh_pos, struct neigh_node, list);
+			hash_remove( orig_hash, orig_node );
 
-				list_del( neigh_pos );
-				debugFree( neigh_node, 1105 );
-
-			}
-
-			list_for_each_safe( gw_pos, gw_pos_tmp, &gw_list ) {
-
-				gw_node = list_entry( gw_pos, struct gw_node, list );
-
-				if ( gw_node->deleted )
-					continue;
-
-				if ( gw_node->orig_node == orig_node ) {
-
-					debug_output( 3, "Removing gateway %s from gateway list\n", addr_to_string( gw_node->orig_node->orig ) );
-
-					gw_node->deleted = get_time();
-
-					gw_purged = 1;
-
-					break;
-
-				}
-
-			}
-
-			/* XXX: list_del( orig_pos ); */
-			hash_remove( orig_hash, orig_node);
-
-			update_routes( orig_node, NULL );
-
-			debugFree( orig_node->bidirect_link, 1106 );
-			debugFree( orig_node, 1107 );
+			gw_purged += free_orig_node( orig_node );
 
 		} else {
 
@@ -1061,7 +1034,7 @@ void purge( uint32_t curr_time ) {
 
 	}
 
-// 	if ( gw_purged )
+// 	if ( gw_purged > 0 )
 // 		choose_gw();
 
 }
@@ -1244,7 +1217,7 @@ int8_t batman() {
 
 				orig_neigh_node = get_orig_node( neigh );
 
-				is_duplicate = isDuplicate( ((struct packet *)&in)->orig, ((struct packet *)&in)->seqno );
+				is_duplicate = isDuplicate( orig_node, ((struct packet *)&in)->seqno );
 				is_bidirectional = isBidirectionalNeigh( orig_neigh_node, if_incoming );
 
 				/* update ranking */
@@ -1352,7 +1325,7 @@ int8_t batman() {
 
 	}
 
-	hash_delete(orig_hash, orig_free);
+	hash_delete(orig_hash, free_orig_node);
 
 	if ( debug_level > 0 )
 		printf( "Deleting all BATMAN routes\n" );
