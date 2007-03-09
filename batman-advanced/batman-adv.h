@@ -142,6 +142,7 @@ struct batman_if
 	char *dev;
 	int32_t raw_sock;
 	int16_t if_num;
+	uint8_t  hw_addr[6];
 	pthread_t listen_thread_id;
 	struct packet out;
 	struct list_head client_list;

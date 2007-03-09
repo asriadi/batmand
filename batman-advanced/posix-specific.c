@@ -579,7 +579,14 @@ void apply_init_args( int argc, char *argv[] ) {
 
 		}
 
-		if ( ( tap_sock = tap_create( min_mtu, my_hw_addr ) ) < 0 ) {
+		if ( ( tap_sock = tap_create( min_mtu ) ) < 0 ) {
+
+			close_all_sockets();
+			exit(EXIT_FAILURE);
+
+		}
+
+		if ( set_hw_addr( "bat0", ((struct batman_if *)if_list.next)->hw_addr ) < 0 ) {
 
 			close_all_sockets();
 			exit(EXIT_FAILURE);
@@ -588,6 +595,8 @@ void apply_init_args( int argc, char *argv[] ) {
 
 		if ( tap_sock > receive_max_sock )
 			receive_max_sock = tap_sock;
+
+		memcpy( my_hw_addr, ((struct batman_if *)if_list.next)->hw_addr, 6 );
 
 		FD_SET( tap_sock, &receive_wait_set );
 
@@ -816,13 +825,14 @@ int16_t init_interface ( struct batman_if *batman_if ) {
 	struct ifreq int_req;
 	int32_t tmp_socket;
 
+
 	if ( strlen( batman_if->dev ) > IFNAMSIZ - 1 ) {
 		debug_output( 0, "Error - interface name too long: %s\n", batman_if->dev );
 		close_all_sockets();
 		exit(EXIT_FAILURE);
 	}
 
-	if ( ( tmp_socket = socket( PF_INET, SOCK_DGRAM, 0 ) ) < 0 ) {
+	if ( ( tmp_socket = socket( AF_INET, SOCK_DGRAM, 0 ) ) < 0 ) {
 
 		debug_output( 0, "Error - can't create tmp socket: %s", strerror(errno) );
 		close_all_sockets();
@@ -841,6 +851,8 @@ int16_t init_interface ( struct batman_if *batman_if ) {
 		exit(EXIT_FAILURE);
 
 	}
+
+	memcpy( batman_if->hw_addr, int_req.ifr_hwaddr.sa_data, 6 );
 
 	if ( ( batman_if->raw_sock = rawsock_create( batman_if->dev ) ) < 0 ) {
 
@@ -1262,21 +1274,21 @@ int8_t receive_packet( unsigned char *packet_buff, int16_t packet_buff_len, int1
 			return -1;
 
 		} else {
-printf( "tap " );
+
 			/* ethernet packet should be broadcasted */
 			if ( memcmp( ((struct ether_header *)packet_buff)->ether_dhost, broadcastAddr, sizeof(ether_header.ether_dhost) ) == 0 ) {
 
 				/* get own orginator packet and send it with broadcast payload */
 				reschedule_own_packet( packet_buff, *pay_buff_len );
-printf( "broadcast \n" );
+
 			/* unicast packet */
 			} else {
-printf( "unicast " );
+
 				/* get routing information */
 				orig_node = find_orig_node( ((struct ether_header *)packet_buff)->ether_dhost );
 
 				if ( ( orig_node != NULL ) && ( orig_node->batman_if != NULL ) ) {
-printf( "\n" );
+
 					memcpy( ether_header.ether_dhost, ((struct ether_header *)packet_buff)->ether_dhost, sizeof(ether_header.ether_dhost) );
 					memcpy( ether_header.ether_shost, my_hw_addr, sizeof(ether_header.ether_shost) );
 
@@ -1288,7 +1300,9 @@ printf( "\n" );
 					}
 
 				} else {
-printf( "not found: \n" );
+
+					/*unsigned char *pay_buff = (unsigned char *)packet_buff + sizeof(struct packet);
+					printf( "not found: %s\n", addr_to_string( ((struct ether_header *)pay_buff)->ether_dhost ) );*/
 
 				}
 
@@ -1319,19 +1333,22 @@ printf( "not found: \n" );
 					if ( *pay_buff_len < sizeof(struct packet) )
 						return 0;
 
-					if ( *pay_buff_len != sizeof(struct packet) + ((struct packet *)packet_buff)->pay_len ) {
+					if ( *pay_buff_len < sizeof(struct packet) + ((struct packet *)packet_buff)->pay_len ) {
 
 						debug_output( 0, "Error - drop packet due to false length field: received = %i, length = %i\n", *pay_buff_len - sizeof(struct packet), ((struct packet *)packet_buff)->pay_len );
 						return 0;
 
 					}
 
+					/*if ( ((struct packet *)packet_buff)->pay_len > 0 )
+						debug_output( 4, "broadcast with payload: %i\n", ((struct packet *)packet_buff)->pay_len );*/
+
 					(*if_incoming) = batman_if;
 					break;
 
 				/* unicast packet */
 				} else {
-					printf( "raw unicast\n" );
+
 					/* packet for me */
 					if ( memcmp( &ether_header.ether_dhost, my_hw_addr, sizeof(ether_header.ether_dhost) ) == 0 ) {
 
@@ -1377,7 +1394,7 @@ printf( "not found: \n" );
 
 
 int8_t send_packet( unsigned char *packet_buff, int16_t packet_buff_len, uint8_t *recv_addr, int32_t send_sock ) {
-	printf( "send_packet\n" );
+
 	struct ether_header ether_header;
 
 	memcpy( ether_header.ether_dhost, recv_addr, ETH_ALEN );
@@ -1627,6 +1644,75 @@ void tap_write( int32_t tap_fd, unsigned char *buff, int16_t buff_len ) {
 
 	if ( write( tap_fd, buff, buff_len ) < 0 )
 		debug_output( 0, "Error - can't write broadcast data to tap interface: %s\n", strerror(errno) );
+
+}
+
+
+
+int8_t set_hw_addr( char *dev, uint8_t *hw_addr ) {
+
+	struct ifreq int_req;
+	int32_t tmp_socket;
+
+
+	strncpy( int_req.ifr_name, dev, IFNAMSIZ - 1 );
+
+	if ( ( tmp_socket = socket( AF_INET, SOCK_DGRAM, 0 ) ) < 0 ) {
+
+		debug_output( 0, "Error - can't create tmp socket: %s", strerror(errno) );
+		return -1;
+
+	}
+
+	if ( ioctl( tmp_socket, SIOCGIFFLAGS, &int_req ) < 0 ) {
+
+		debug_output( 0, "Error - can't set hardware address of interface %s (SIOCGIFFLAGS): %s\n", dev, strerror(errno) );
+		close( tmp_socket );
+		return -1;
+
+	}
+
+	int_req.ifr_flags &= ~IFF_UP;
+	int_req.ifr_flags &= ~IFF_RUNNING;
+
+	if ( ioctl( tmp_socket, SIOCSIFFLAGS, &int_req ) < 0 ) {
+
+		debug_output( 0, "Error - can't set hardware address of interface %s (SIOCSIFFLAGS): %s\n", dev, strerror(errno) );
+		close( tmp_socket );
+		return -1;
+
+	}
+
+	if ( ioctl( tmp_socket, SIOCGIFHWADDR, &int_req ) < 0 ) {
+
+		debug_output( 0, "Error - can't set hardware address of interface %s (SIOCGIFHWADDR): %s\n", dev, strerror(errno) );
+		close( tmp_socket );
+		return -1;
+
+	}
+
+	memcpy( int_req.ifr_hwaddr.sa_data, hw_addr, 6 );
+
+	if ( ioctl( tmp_socket, SIOCSIFHWADDR, &int_req ) < 0 ) {
+
+		debug_output( 0, "Error - can't set hardware address of interface %s (SIOCSIFHWADDR): %s\n", dev, strerror(errno) );
+		close( tmp_socket );
+		return -1;
+
+	}
+
+	int_req.ifr_flags |= IFF_UP;
+	int_req.ifr_flags |= IFF_RUNNING;
+
+	if ( ioctl( tmp_socket, SIOCSIFFLAGS, &int_req ) < 0 ) {
+
+		debug_output( 0, "Error - can't set hardware address of interface %s (SIOCSIFFLAGS): %s\n", dev, strerror(errno) );
+		close( tmp_socket );
+		return -1;
+
+	}
+
+	return 0;
 
 }
 
