@@ -1,5 +1,6 @@
 /* Copyright (C) 2006 B.A.T.M.A.N. contributors:
- * Simon Wunderlich
+ * Simon Wunderlich, Marek Lindner
+ *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of version 2 of the GNU General Public
  * License as published by the Free Software Foundation.
@@ -19,7 +20,7 @@
 
 typedef int (*hashdata_compare_cb)(void *, void *);
 typedef int (*hashdata_choose_cb)(void *, int);
-typedef void (*hashdata_free_cb)(void *);
+typedef int (*hashdata_free_cb)(void *);
 
 struct element_t {
 	void *data;						/* pointer to the data */
