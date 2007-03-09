@@ -219,7 +219,7 @@ int8_t is_aborted() {
 
 }
 
-// #include <netinet/ether.h>              /* ether_ntoa() */
+
 
 char *addr_to_string( uint8_t *hw_addr ) {
 

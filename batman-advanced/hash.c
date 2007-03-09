@@ -31,7 +31,7 @@ void hash_init(struct hashtable_t *hash) {
 	}
 }
 
-/* remove the hash structure. if hashdata_free_cb != NULL, 
+/* remove the hash structure. if hashdata_free_cb != NULL,
  * this function will be called to remove the elements inside of the hash.
  * if you don't remove the elements, memory might be leaked. */
 void hash_delete(struct hashtable_t *hash, hashdata_free_cb free_cb) {
@@ -47,7 +47,7 @@ void hash_delete(struct hashtable_t *hash, hashdata_free_cb free_cb) {
 				if (free_cb!=NULL) free_cb( hash->table[i].data );
 				last_bucket= bucket;
 				bucket= bucket->next;
-				debugFree(last_bucket, TAG_HASH_DELETE);
+				debugFree(last_bucket, 1301);
 			}
 		}
 	}
@@ -60,10 +60,10 @@ struct hash_it_t *hash_iterate(struct hashtable_t *hash, struct hash_it_t *iter_
 	struct hash_it_t *iter;
 
 	if (iter_in == NULL) {
-		iter= debugMalloc(sizeof(struct hash_it_t), TAG_HASH_ITER);
+		iter= debugMalloc(sizeof(struct hash_it_t), 301);
 		iter->index =  -1;
 		iter->bucket = NULL;
-	} else 
+	} else
 		iter= iter_in;
 	if ( iter->bucket!=NULL ) {
 		iter->bucket = iter->bucket->next;		/* choose next */
@@ -79,7 +79,7 @@ struct hash_it_t *hash_iterate(struct hashtable_t *hash, struct hash_it_t *iter_
 			iter->index++;						/* else, go to the next */
 	}
 	/* nothing to iterate over anymore */
-	debugFree(iter, TAG_HASH_ITER_REMOVE);
+	debugFree(iter, 1302);
 	return(NULL);
 }
 
@@ -88,14 +88,14 @@ struct hash_it_t *hash_iterate(struct hashtable_t *hash, struct hash_it_t *iter_
 struct hashtable_t *hash_new(int size, hashdata_compare_cb compare, hashdata_choose_cb choose) {
 	struct hashtable_t *hash;
 
-	hash= debugMalloc( sizeof(struct hashtable_t) , TAG_HASH);
+	hash= debugMalloc( sizeof(struct hashtable_t) , 302);
 	if ( hash == NULL ) 			/* could not allocate the hash control structure */
 		return (NULL);
 
 	hash->size= size;
-	hash->table= debugMalloc( sizeof(struct element_t) * size, TAG_HASH_TABLE);
+	hash->table= debugMalloc( sizeof(struct element_t) * size, 303);
 	if ( hash->table == NULL ) {	/* could not allocate the table */
-		debugFree(hash, TAG_HASH_ALLOC_FAILED);
+		debugFree(hash, 1303);
 		return(NULL);
 	}
 	hash->compare= compare;
@@ -127,7 +127,7 @@ int hash_add(struct hashtable_t *hash, void *data) {
 		} while ( new_bucket!=NULL);
 
 		/* found the tail of the list, add new element */
-		if (NULL == (new_bucket= debugMalloc(sizeof(struct element_t),TAG_HASH_BUCKET)))
+		if (NULL == (new_bucket= debugMalloc(sizeof(struct element_t),304)))
 				return(-1); /* debugMalloc failed */
 
 		new_bucket->data= data;				/* init the new bucket */
@@ -146,9 +146,9 @@ void *hash_find(struct hashtable_t *hash, void *keydata) {
 	index = hash->choose( keydata , hash->size );
 	bucket = &(hash->table[index]);
 
-	if ( bucket->data!=NULL ) {		
+	if ( bucket->data!=NULL ) {
 		do {
-			if (0 == hash->compare( bucket->data, keydata )) {		
+			if (0 == hash->compare( bucket->data, keydata )) {
 				return( bucket->data );
 			}
 			bucket= bucket->next;
@@ -161,7 +161,7 @@ void *hash_find(struct hashtable_t *hash, void *keydata) {
 
 /* removes data from hash, if found. returns pointer do data on success,
  * so you can remove the used structure yourself, or NULL on error .
- * data could be the structure you use with just the key filled, 
+ * data could be the structure you use with just the key filled,
  * we just need the key for comparing. */
 void *hash_remove(struct hashtable_t *hash, void *data) {
 	int index;
@@ -185,17 +185,17 @@ void *hash_remove(struct hashtable_t *hash, void *data) {
 					}
 				} else { /* not the first entry */
 					last_bucket->next= bucket->next;
-					debugFree(bucket, TAG_HASH_BUCKET_REMOVE);
+					debugFree(bucket, 1304);
 				}
 
 				hash->elements--;
-				return( data_save ); 
+				return( data_save );
 			}
 			last_bucket= bucket;
 			bucket=      bucket->next;
 		} while (bucket!=NULL);
 	}
-	
+
 	return(NULL);
 }
 
@@ -207,7 +207,7 @@ struct hashtable_t *hash_resize(struct hashtable_t *hash, int size) {
 	int i;
 
 	/* initialize a new hash with the new size */
-	if (NULL == (new_hash= hash_new(size, hash->compare, hash->choose))) 
+	if (NULL == (new_hash= hash_new(size, hash->compare, hash->choose)))
 		return(NULL);
 
 	/* copy the elements */
@@ -221,10 +221,10 @@ struct hashtable_t *hash_resize(struct hashtable_t *hash, int size) {
 			}
 		}
 	}
-	hash_delete(hash, NULL);		/* we don't want to remove the elements, 
+	hash_delete(hash, NULL);		/* we don't want to remove the elements,
 									 * as we just reordered them in the new_hash */
 	return( new_hash);
-	
+
 }
 
 
