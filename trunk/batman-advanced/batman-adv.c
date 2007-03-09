@@ -246,6 +246,7 @@ struct orig_node *get_orig_node( uint8_t *addr ) {
 
 	memcpy( &orig_node->orig, addr, sizeof(orig_node->orig) );
 	orig_node->router = NULL;
+	orig_node->batman_if = NULL;
 
 	orig_node->bidirect_link = debugMalloc( found_ifs * sizeof(uint32_t), 2 );
 	memset( orig_node->bidirect_link, 0, found_ifs * sizeof(uint32_t) );
