@@ -144,7 +144,7 @@ void *unix_listen( void *arg ) {
 			/* new client */
 			if ( FD_ISSET( unix_if.unix_sock, &tmp_wait_sockets ) ) {
 
-				unix_client = debugMalloc( sizeof(struct unix_client), 133 );
+				unix_client = debugMalloc( sizeof(struct unix_client), 201 );
 				memset( unix_client, 0, sizeof(struct unix_client) );
 
 				if ( ( unix_client->sock = accept( unix_if.unix_sock, (struct sockaddr *)&unix_client->addr, &sun_size) ) == -1 ) {
@@ -195,7 +195,7 @@ void *unix_listen( void *arg ) {
 											list_del( debug_pos );
 											debug_clients.clients_num[(int)unix_client->debug_level - '1']--;
 
-											debugFree( debug_pos, 263 );
+											debugFree( debug_pos, 1201 );
 
 											break;
 
@@ -207,7 +207,7 @@ void *unix_listen( void *arg ) {
 
 								if ( unix_client->debug_level != buff[2] ) {
 
-									debug_level_info = debugMalloc( sizeof(struct debug_level_info), 57 );
+									debug_level_info = debugMalloc( sizeof(struct debug_level_info), 202 );
 									INIT_LIST_HEAD( &debug_level_info->list );
 									debug_level_info->fd = unix_client->sock;
 									list_add( &debug_level_info->list, (struct list_head *)debug_clients.fd_list[(int)buff[2] - '1'] );
@@ -242,7 +242,7 @@ void *unix_listen( void *arg ) {
 											list_del( debug_pos );
 											debug_clients.clients_num[(int)unix_client->debug_level - '1']--;
 
-											debugFree( debug_pos, 264 );
+											debugFree( debug_pos, 1202 );
 
 											break;
 
@@ -260,7 +260,7 @@ void *unix_listen( void *arg ) {
 							close( unix_client->sock );
 
 							list_del( unix_pos );
-							debugFree( unix_pos, 231 );
+							debugFree( unix_pos, 1203 );
 
 						}
 
@@ -299,7 +299,7 @@ void *unix_listen( void *arg ) {
 					list_del( debug_pos );
 					debug_clients.clients_num[(int)unix_client->debug_level - '1']--;
 
-					debugFree( debug_pos, 265 );
+					debugFree( debug_pos, 1204 );
 
 					break;
 
@@ -310,7 +310,7 @@ void *unix_listen( void *arg ) {
 		}
 
 		list_del( unix_pos );
-		debugFree( unix_pos, 241 );
+		debugFree( unix_pos, 1205 );
 
 	}
 
@@ -509,7 +509,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 		for ( res = 0; res < 4; res++ ) {
 
-			debug_clients.fd_list[res] = debugMalloc( sizeof(struct list_head), 97 );
+			debug_clients.fd_list[res] = debugMalloc( sizeof(struct list_head), 203 );
 			INIT_LIST_HEAD( (struct list_head *)debug_clients.fd_list[res] );
 
 		}
@@ -534,7 +534,7 @@ void apply_init_args( int argc, char *argv[] ) {
 			printf( "B.A.T.M.A.N.-III Advanced v%s (compability version %i)\n", SOURCE_VERSION, COMPAT_VERSION );
 
 			debug_clients.clients_num[ debug_level - 1 ]++;
-			debug_level_info = debugMalloc( sizeof(struct debug_level_info), 39 );
+			debug_level_info = debugMalloc( sizeof(struct debug_level_info), 204 );
 			INIT_LIST_HEAD( &debug_level_info->list );
 			debug_level_info->fd = 1;
 			list_add( &debug_level_info->list, (struct list_head *)debug_clients.fd_list[debug_level - 1] );
@@ -545,7 +545,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 		while ( argc > found_args ) {
 
-			batman_if = debugMalloc( sizeof(struct batman_if), 17 );
+			batman_if = debugMalloc( sizeof(struct batman_if), 205 );
 			memset( batman_if, 0, sizeof(struct batman_if) );
 			INIT_LIST_HEAD( &batman_if->list );
 			INIT_LIST_HEAD( &batman_if->client_list );
@@ -1203,7 +1203,7 @@ void close_all_sockets() {
 		close( batman_if->raw_sock );
 
 		list_del( if_pos );
-		debugFree( if_pos, 203 );
+		debugFree( if_pos, 1206 );
 
 	}
 
@@ -1734,13 +1734,13 @@ void cleanup() {
 				debug_level_info = list_entry(debug_pos, struct debug_level_info, list);
 
 				list_del( debug_pos );
-				debugFree( debug_pos, 277 );
+				debugFree( debug_pos, 1207 );
 
 			}
 
 		}
 
-		debugFree( debug_clients.fd_list[i], 258 );
+		debugFree( debug_clients.fd_list[i], 1208 );
 
 	}
 
