@@ -27,8 +27,7 @@
 #include "os.h"
 #include "list.h"
 #include "batman-adv.h"
-#include "allocate.h"
-#include "hash.h"
+
 
 /* "-d" is the command line switch for the debug level,
  * specify it multiple times to increase verbosity
@@ -174,13 +173,13 @@ void verbose_usage( void ) {
 }
 /* needed for hash, compares 2 struct orig_node, but only their mac-addresses. assumes that
  * the mac address is the first field in the struct */
-int orig_comp(void *data1, void *data2) {
+int32_t orig_comp(void *data1, void *data2) {
 	return(memcmp(data1, data2, 6));
 }
 
 /* hashfunction to choose an entry in a hash table of given size */
 /* hash algorithm from http://en.wikipedia.org/wiki/Hash_table */
-int orig_choose(void *data, int size) {
+int32_t orig_choose(void *data, int32_t size) {
 	unsigned char *key= data;
 	uint32_t hash = 0;
 	size_t i;
@@ -456,7 +455,7 @@ static void update_gw_list( struct orig_node *orig_node, uint8_t new_gwflags ) {
 
 void debug() {
 
-	struct hash_it_t *hashit;
+	struct hash_it_t *hashit = NULL;
 	struct list_head *forw_pos, *orig_pos, *neigh_pos;
 	struct forw_node *forw_node;
 	struct orig_node *orig_node;
@@ -514,8 +513,8 @@ void debug() {
 			debug_output( 4, "Originator list\n" );
 
 		}
-		hashit=NULL;
-		while (NULL != (hashit = hash_iterate(orig_hash, hashit))) {
+
+		while ( NULL != ( hashit = hash_iterate( orig_hash, hashit ) ) ) {
 
 			orig_node = hashit->bucket->data;
 
@@ -925,57 +924,6 @@ void send_outstanding_packets() {
 
 
 
-/* free the data when hash_delete is called. */
-int free_orig_node( void *data ) {
-
-	struct list_head *neigh_pos, *neigh_temp, *gw_pos;
-	struct neigh_node *neigh_node;
-	struct gw_node *gw_node;
-	struct orig_node *orig_node = (struct orig_node *)data;
-	int gw_purged = 0;
-
-
-	/* for all neighbours towards this orginator ... */
-	list_for_each_safe( neigh_pos, neigh_temp, &orig_node->neigh_list ) {
-		neigh_node = list_entry(neigh_pos, struct neigh_node, list);
-
-		list_del( neigh_pos );
-		debugFree( neigh_node, 1105 );
-
-	}
-
-	list_for_each( gw_pos, &gw_list ) {
-
-		gw_node = list_entry( gw_pos, struct gw_node, list );
-
-		if ( gw_node->deleted )
-			continue;
-
-		if ( gw_node->orig_node == orig_node ) {
-
-			debug_output( 3, "Removing gateway %s from gateway list\n", addr_to_string( gw_node->orig_node->orig ) );
-
-			gw_node->deleted = get_time();
-
-			gw_purged = 1;
-
-			break;
-
-		}
-
-	}
-
-	update_routes( orig_node, NULL );
-
-	debugFree( orig_node->bidirect_link, 1106 );
-	debugFree( orig_node, 1107 );
-
-	return gw_purged;
-
-}
-
-
-
 void purge( uint32_t curr_time ) {
 
 	struct list_head *neigh_pos, *neigh_temp, *gw_pos, *gw_pos_tmp;
@@ -983,13 +931,13 @@ void purge( uint32_t curr_time ) {
 	struct neigh_node *neigh_node;
 	struct gw_node *gw_node;
 	struct hash_it_t *hashit = NULL;
-	int gw_purged = 0;
+	uint8_t gw_purged = 0;
 
 
 	debug_output( 4, "purge() \n" );
 
 	/* for all origins... */
-	while (NULL != (hashit = hash_iterate(orig_hash, hashit))) {
+	while ( NULL != ( hashit = hash_iterate( orig_hash, hashit ) ) ) {
 
 		orig_node = hashit->bucket->data;
 
@@ -999,7 +947,40 @@ void purge( uint32_t curr_time ) {
 
 			hash_remove( orig_hash, orig_node );
 
-			gw_purged += free_orig_node( orig_node );
+			/* for all neighbours towards this orginator ... */
+			list_for_each_safe( neigh_pos, neigh_temp, &orig_node->neigh_list ) {
+				neigh_node = list_entry(neigh_pos, struct neigh_node, list);
+
+				list_del( neigh_pos );
+				debugFree( neigh_node, 1105 );
+
+			}
+
+			list_for_each( gw_pos, &gw_list ) {
+
+				gw_node = list_entry( gw_pos, struct gw_node, list );
+
+				if ( gw_node->deleted )
+					continue;
+
+				if ( gw_node->orig_node == orig_node ) {
+
+					debug_output( 3, "Removing gateway %s from gateway list\n", addr_to_string( gw_node->orig_node->orig ) );
+
+					gw_node->deleted = get_time();
+
+					gw_purged = 1;
+
+					break;
+
+				}
+
+			}
+
+			update_routes( orig_node, NULL );
+
+			debugFree( orig_node->bidirect_link, 1106 );
+			debugFree( orig_node, 1107 );
 
 		} else {
 
@@ -1077,7 +1058,7 @@ int8_t batman() {
 	struct batman_if *batman_if, *if_incoming;
 	struct neigh_node *neigh_node;
 	struct forw_node *forw_node;
-	uint32_t debug_timeout, select_timeout, time_count = 0, curr_time;
+	uint32_t debug_timeout, select_timeout, curr_time;
 	unsigned char in[2000];
 	int16_t in_len;
 	uint8_t neigh[6], is_duplicate, is_bidirectional, forward_duplicate_packet;
@@ -1102,18 +1083,12 @@ int8_t batman() {
 
 	}
 
-	if (NULL == (orig_hash = hash_new( 128, orig_comp, orig_choose)))
+	if ( NULL == ( orig_hash = hash_new( 128, orig_comp, orig_choose ) ) )
 		return(-1);
 
 	while ( !is_aborted() ) {
 
 		debug_output( 4, " \n \n" );
-
-// 		if(vis_if.sock && time_count == 50)
-// 		{
-// 			time_count = 0;
-// 			send_vis_packet();
-// 		}
 
 		/* harden select_timeout against sudden time change (e.g. ntpdate) */
 		curr_time = get_time();
@@ -1130,49 +1105,8 @@ int8_t batman() {
 
 			is_duplicate = is_bidirectional = forward_duplicate_packet = 0;
 
-// 			list_for_each( if_pos, &if_list ) {
-//
-// 				batman_if = list_entry(if_pos, struct batman_if, list);
-//
-// 				if ( neigh == batman_if->addr.sin_addr.s_addr )
-// 					is_my_addr = 1;
-//
-// 				if ( ((struct packet *)&in)->orig == batman_if->addr.sin_addr.s_addr )
-// 					is_my_orig = 1;
-//
-// 				if ( neigh == batman_if->broad.sin_addr.s_addr )
-// 					is_broadcast = 1;
-//
-// 			}
-
-
-// 			addr_to_string( ((struct packet *)&in)->orig );
-// 			addr_to_string( neigh );
-// 			debug_output( 4, "new packet - orig: %s, sender: %s\n", addr_to_string( ((struct packet *)&in)->orig ), addr_to_string( neigh ) );
-
-			/*if ( is_duplicate )
-				output("Duplicate packet \n");
-
-			if ( in.orig == neigh )
-				output("Originator packet from neighbour \n");
-
-			if ( is_my_orig == 1 )
-				output("Originator packet from myself (via neighbour) \n");
-
-			if ( in.flags & UNIDIRECTIONAL )
-				output("Packet with unidirectional flag \n");
-
-			if ( is_bidirectional )
-				output("received via bidirectional link \n");
-
-			if ( !( in.flags & UNIDIRECTIONAL ) && ( !is_bidirectional ) )
-				output("neighbour thinks connection is bidirectional - I disagree \n");*/
-
 			if ( ((struct packet *)&in)->gwflags != 0 )
 				debug_output( 4, "Is an internet gateway (class %i) \n", ((struct packet *)&in)->gwflags );
-
-			/*if ( ( ! is_my_addr ) && ( ! is_my_orig ) )
-				debug_output( 3, "IP: %s send packet with sequence number: %i from %s\n", neigh_str, ((struct packet *)&in)->seqno, orig_str );*/
 
 
 			if ( ((struct packet *)&in)->version != COMPAT_VERSION ) {
@@ -1304,13 +1238,14 @@ int8_t batman() {
 
 		}
 
-		send_outstanding_packets();
 
-		purge( get_time() );
+		send_outstanding_packets();
 
 		if ( debug_timeout + 1000 < get_time() ) {
 
 			debug_timeout = get_time();
+
+			purge( get_time() );
 
 			debug();
 
@@ -1319,18 +1254,20 @@ int8_t batman() {
 // 			if ( ( routing_class != 0 ) && ( curr_gateway == NULL ) )
 // 				choose_gw();
 
-		}
+// 			if ( vis_if.sock )
+// 				send_vis_packet();
 
-		time_count++;
+		}
 
 	}
 
-	hash_delete(orig_hash, free_orig_node);
 
 	if ( debug_level > 0 )
 		printf( "Deleting all BATMAN routes\n" );
 
 	purge( get_time() + ( 5 * TIMEOUT ) + orginator_interval );
+
+	hash_destroy( orig_hash );
 
 
 	list_for_each_safe( forw_pos, forw_pos_tmp, &forw_list ) {
