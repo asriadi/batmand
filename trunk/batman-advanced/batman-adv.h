@@ -29,6 +29,8 @@
 #include <netinet/ether.h>      /* ether_ntoa() */
 #include "list.h"
 #include "bitarray.h"
+#include "hash.h"
+#include "allocate.h"
 
 
 #define SOURCE_VERSION "0.1 alpha"
@@ -76,6 +78,8 @@ extern int32_t receive_max_sock;
 extern fd_set receive_wait_set;
 extern int32_t tap_sock;
 extern uint8_t my_hw_addr[6];
+
+extern struct hashtable_t *orig_hash;
 
 extern struct list_head if_list;
 extern struct vis_if vis_if;

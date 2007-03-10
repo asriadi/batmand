@@ -19,8 +19,7 @@
 
 
 #include <stdio.h>		/* NULL */
-#include "hash.h"
-#include "allocate.h"
+#include "batman-adv.h"
 
 /* clears the hash */
 void hash_init(struct hashtable_t *hash) {
@@ -31,6 +30,7 @@ void hash_init(struct hashtable_t *hash) {
 		hash->table[i].next= NULL;
 	}
 }
+
 
 /* remove the hash structure. if hashdata_free_cb != NULL,
  * this function will be called to remove the elements inside of the hash.
@@ -52,7 +52,20 @@ void hash_delete(struct hashtable_t *hash, hashdata_free_cb free_cb) {
 			}
 		}
 	}
+	hash_destroy(hash);
 }
+
+
+
+/* free only the hashtable and the hash itself. */
+void hash_destroy(struct hashtable_t *hash) {
+
+	debugFree( hash->table, 1301 );
+	debugFree( hash, 1302 );
+
+}
+
+
 
 
 /* iterate though the hash. first element is selected with iter_in NULL.
@@ -80,7 +93,7 @@ struct hash_it_t *hash_iterate(struct hashtable_t *hash, struct hash_it_t *iter_
 			iter->index++;						/* else, go to the next */
 	}
 	/* nothing to iterate over anymore */
-	debugFree(iter, 1302);
+	debugFree(iter, 1303);
 	return(NULL);
 }
 
@@ -96,7 +109,7 @@ struct hashtable_t *hash_new(int size, hashdata_compare_cb compare, hashdata_cho
 	hash->size= size;
 	hash->table= debugMalloc( sizeof(struct element_t) * size, 303);
 	if ( hash->table == NULL ) {	/* could not allocate the table */
-		debugFree(hash, 1303);
+		debugFree(hash, 1304);
 		return(NULL);
 	}
 	hash->compare= compare;
@@ -186,7 +199,7 @@ void *hash_remove(struct hashtable_t *hash, void *data) {
 					}
 				} else { /* not the first entry */
 					last_bucket->next= bucket->next;
-					debugFree(bucket, 1304);
+					debugFree(bucket, 1305);
 				}
 
 				hash->elements--;
@@ -222,8 +235,9 @@ struct hashtable_t *hash_resize(struct hashtable_t *hash, int size) {
 			}
 		}
 	}
-	hash_delete(hash, NULL);		/* we don't want to remove the elements,
-									 * as we just reordered them in the new_hash */
+	hash_delete(hash, NULL );	/* remove hash and eventual overflow buckets,
+								 * but not the content itself. */
+
 	return( new_hash);
 
 }
