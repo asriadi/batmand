@@ -1,7 +1,7 @@
 /*
  * list.h
  *
- * Copyright (C) 2006 Andreas Langer <andreas_lbg@gmx.de>:
+ * Copyright (C) 2006 Andreas Langer <a.langer@q-dsl.de>:
  * 
  *
  * This program is free software; you can redistribute it and/or

@@ -1,7 +1,7 @@
 /*
  * vis.c
  *
- * Copyright (C) 2006 Andreas Langer <andreas_lbg@gmx.de>:
+ * Copyright (C) 2006 Andreas Langer <a.langer@q-dsl.de>:
  * 
  *
  * This program is free software; you can redistribute it and/or
@@ -36,7 +36,7 @@
 
 #define MAXCHAR 4096
 #define PORT 1967
-#define S3D_PORT 1968
+#define S3D_PORT 2004
 #define ADDR_STR_LEN 16
 #define PACKET_FIELDS 5
 
@@ -211,7 +211,7 @@ void *master( void *arg )
 		memset( new->buffer, '\0', strlen( begin ) );
 		strncpy( new->buffer, begin, strlen( begin ) + 1);
 		
-		printf( "vis.c buffer: %s\n-----Ende-----\n", new->buffer );
+		// printf( "vis.c buffer: %s\n-----Ende-----\n", new->buffer );
 		fillme = new;
 
 		write_data_in_buffer( root );
