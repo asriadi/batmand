@@ -1,7 +1,7 @@
 /*
  * list.c
  *
- * Copyright (C) 2006 Andreas Langer <andreas_lbg@gmx.de>:
+ * Copyright (C) 2006 Andreas Langer <a.langer@q-dsl.de>:
  * 
  *
  * This program is free software; you can redistribute it and/or
@@ -143,8 +143,8 @@ void write_data_in_buffer( struct node *node )
 		{
 			addr_to_string( node->addr, from_str, sizeof( from_str ) );
 			addr_to_string( neigh->node->addr, to_str, sizeof( to_str ) );
-			snprintf( tmp, sizeof( tmp ), "\"%s\" -> \"%s\"\n", from_str, to_str );
-			/*snprintf( tmp, sizeof( tmp ), "\"%s\" -> \"%s\"[label=\"%d\"]\n", from_str, to_str, ( int )neigh->packet_count );*/
+/*			snprintf( tmp, sizeof( tmp ), "\"%s\" -> \"%s\"[label=\"10.00\"]\n", from_str, to_str );*/
+			snprintf( tmp, sizeof( tmp ), "\"%s\" -> \"%s\"[label=\"%d\"]\n", from_str, to_str, ( int )neigh->packet_count );
 			fillme->buffer = (char *)realloc( fillme->buffer, strlen( tmp ) + strlen( fillme->buffer ) + 1 );
 
 			strncat( fillme->buffer, tmp, strlen( tmp ) );
