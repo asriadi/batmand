@@ -179,7 +179,7 @@ void *hash_find(struct hashtable_t *hash, void *keydata) {
  * we just need the key for comparing. */
 void *hash_remove(struct hashtable_t *hash, void *data) {
 	int index;
-	struct element_t *bucket, *last_bucket;
+	struct element_t *bucket, *last_bucket, *next_bucket;
 	void *data_save;
 
 	index = hash->choose( data , hash->size );
@@ -194,8 +194,11 @@ void *hash_remove(struct hashtable_t *hash, void *data) {
 					if ( bucket->next == NULL ) { 				/* there is no next bucket, nothing to preserve. */
 						bucket->data= NULL;
 					} else {									/* else, move the second bucket onto the first one */
-						bucket->data= bucket->next->data;
-						bucket->next= bucket->next->next;
+						next_bucket = bucket->next;
+						bucket->data= next_bucket->data;
+						bucket->next= next_bucket->next;
+						debugFree(next_bucket, 1304);			/* free the next_bucket, as we copied its data into our
+																 * first bucket. */
 					}
 				} else { /* not the first entry */
 					last_bucket->next= bucket->next;
