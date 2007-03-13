@@ -41,8 +41,28 @@
 
 #include "os.h"
 #include "batman-adv.h"
-#include "list.h"
-#include "allocate.h"
+#include "originator.h"
+
+
+
+static int8_t stop;
+
+
+
+int8_t is_aborted() {
+
+	return stop != 0;
+
+}
+
+
+
+void handler( int32_t sig ) {
+
+	stop = 1;
+
+}
+
 
 
 void debug_output( int8_t debug_prio, char *format, ... ) {
@@ -82,28 +102,40 @@ void debug_output( int8_t debug_prio, char *format, ... ) {
 
 	if ( debug_clients.clients_num[debug_prio_intern] > 0 ) {
 
-		va_start( args, format );
+		if ( pthread_mutex_trylock( (pthread_mutex_t *)debug_clients.mutex[debug_prio_intern] ) == 0 ) {
 
-		list_for_each( debug_pos, (struct list_head *)debug_clients.fd_list[debug_prio_intern] ) {
+			va_start( args, format );
 
-			debug_level_info = list_entry(debug_pos, struct debug_level_info, list);
+			list_for_each( debug_pos, (struct list_head *)debug_clients.fd_list[debug_prio_intern] ) {
 
-			if ( debug_prio_intern == 3 )
-				dprintf( debug_level_info->fd, "[%10u] ", get_time() );
+				debug_level_info = list_entry(debug_pos, struct debug_level_info, list);
 
-			if ( ( ( debug_level == 1 ) || ( debug_level == 2 ) ) && ( debug_level_info->fd == 1 ) && ( strcmp( format, "BOD\n" ) == 0 ) ) {
+				if ( debug_prio_intern == 3 )
+					dprintf( debug_level_info->fd, "[%10u] ", get_time() );
 
-				system( "clear" );
+				if ( ( ( debug_level == 1 ) || ( debug_level == 2 ) ) && ( debug_level_info->fd == 1 ) && ( strncmp( format, "BOD\n", 3 ) == 0 ) ) {
 
-			} else {
+					system( "clear" );
 
-				vdprintf( debug_level_info->fd, format, args );
+				} else {
+
+					if ( ( ( debug_level != 1 ) && ( debug_level != 2 ) ) || ( debug_level_info->fd != 1 ) || ( strncmp( format, "EOD\n", 3 ) == 0 ) )
+						vdprintf( debug_level_info->fd, format, args );
+
+				}
 
 			}
 
-		}
+			va_end( args );
 
-		va_end( args );
+			if ( pthread_mutex_unlock( (pthread_mutex_t *)debug_clients.mutex[debug_prio_intern] ) < 0 )
+				debug_output( 0, "Error - could not unlock mutex (debug_output): %s \n", strerror( errno ) );
+
+		} else {
+
+			debug_output( 0, "Error - could not trylock mutex (debug_output): %s \n", strerror( errno ) );
+
+		}
 
 	}
 
@@ -117,9 +149,10 @@ void *unix_listen( void *arg ) {
 	struct debug_level_info *debug_level_info;
 	struct list_head *unix_pos, *unix_pos_tmp, *debug_pos, *debug_pos_tmp;
 	struct timeval tv;
+	struct sockaddr_un sun_addr;
 	int32_t status, max_sock;
 	int8_t res;
-	unsigned char buff[1500];
+	unsigned char buff[10];
 	fd_set wait_sockets, tmp_wait_sockets;
 	socklen_t sun_size = sizeof(struct sockaddr_un);
 
@@ -131,11 +164,11 @@ void *unix_listen( void *arg ) {
 
 	max_sock = unix_if.unix_sock;
 
-	while (!is_aborted()) {
+	while ( !is_aborted() ) {
 
 		tv.tv_sec = 1;
 		tv.tv_usec = 0;
-		tmp_wait_sockets = wait_sockets;
+		memcpy( &tmp_wait_sockets, &wait_sockets, sizeof(fd_set) );
 
 		res = select( max_sock + 1, &tmp_wait_sockets, NULL, NULL, &tv );
 
@@ -147,22 +180,22 @@ void *unix_listen( void *arg ) {
 				unix_client = debugMalloc( sizeof(struct unix_client), 201 );
 				memset( unix_client, 0, sizeof(struct unix_client) );
 
-				if ( ( unix_client->sock = accept( unix_if.unix_sock, (struct sockaddr *)&unix_client->addr, &sun_size) ) == -1 ) {
+				if ( ( unix_client->sock = accept( unix_if.unix_sock, (struct sockaddr *)&sun_addr, &sun_size) ) == -1 ) {
 					debug_output( 0, "Error - can't accept unix client: %s\n", strerror(errno) );
 					continue;
 				}
 
-				INIT_LIST_HEAD(&unix_client->list);
+				INIT_LIST_HEAD( &unix_client->list );
 
-				FD_SET(unix_client->sock, &wait_sockets);
+				FD_SET( unix_client->sock, &wait_sockets );
 				if ( unix_client->sock > max_sock )
 					max_sock = unix_client->sock;
 
-				list_add_tail(&unix_client->list, &unix_if.client_list);
+				list_add_tail( &unix_client->list, &unix_if.client_list );
 
 				debug_output( 3, "Unix socket: got connection\n" );
 
-			/* client sent data */
+				/* client sent data */
 			} else {
 
 				max_sock = unix_if.unix_sock;
@@ -182,9 +215,12 @@ void *unix_listen( void *arg ) {
 
 							/* debug_output( 3, "gateway: client sent data via unix socket: %s\n", buff ); */
 
-							if ( ( buff[2] == '1' ) || ( buff[2] == '2' ) || ( buff[2] == '3' ) || ( buff[2] == '4' ) ) {
+							if ( ( status > 2 ) && ( ( buff[2] == '1' ) || ( buff[2] == '2' ) || ( buff[2] == '3' ) || ( buff[2] == '4' ) ) ) {
 
 								if ( unix_client->debug_level != 0 ) {
+
+									if ( pthread_mutex_lock( (pthread_mutex_t *)debug_clients.mutex[(int)unix_client->debug_level - '1'] ) != 0 )
+										debug_output( 0, "Error - could not lock mutex (unix_listen => 1): %s \n", strerror( errno ) );
 
 									list_for_each_safe( debug_pos, debug_pos_tmp, (struct list_head *)debug_clients.fd_list[(int)unix_client->debug_level - '1'] ) {
 
@@ -192,20 +228,26 @@ void *unix_listen( void *arg ) {
 
 										if ( debug_level_info->fd == unix_client->sock ) {
 
-											list_del( debug_pos );
-											debug_clients.clients_num[(int)unix_client->debug_level - '1']--;
+										list_del( debug_pos );
+										debug_clients.clients_num[(int)unix_client->debug_level - '1']--;
 
-											debugFree( debug_pos, 1201 );
+										debugFree( debug_pos, 1201 );
 
-											break;
+										break;
 
 										}
 
 									}
 
+									if ( pthread_mutex_unlock( (pthread_mutex_t *)debug_clients.mutex[(int)unix_client->debug_level - '1'] ) != 0 )
+										debug_output( 0, "Error - could not unlock mutex (unix_listen => 1): %s \n", strerror( errno ) );
+
 								}
 
 								if ( unix_client->debug_level != buff[2] ) {
+
+									if ( pthread_mutex_lock( (pthread_mutex_t *)debug_clients.mutex[(int)buff[2] - '1'] ) != 0 )
+										debug_output( 0, "Error - could not lock mutex (unix_listen => 2): %s \n", strerror( errno ) );
 
 									debug_level_info = debugMalloc( sizeof(struct debug_level_info), 202 );
 									INIT_LIST_HEAD( &debug_level_info->list );
@@ -215,11 +257,16 @@ void *unix_listen( void *arg ) {
 
 									unix_client->debug_level = (int)buff[2];
 
+									if ( pthread_mutex_unlock( (pthread_mutex_t *)debug_clients.mutex[(int)buff[2] - '1'] ) != 0 )
+										debug_output( 0, "Error - could not unlock mutex (unix_listen => 2): %s \n", strerror( errno ) );
+
 								} else {
 
 									unix_client->debug_level = 0;
 
 								}
+
+
 
 							}
 
@@ -233,22 +280,28 @@ void *unix_listen( void *arg ) {
 
 								if ( unix_client->debug_level != 0 ) {
 
+									if ( pthread_mutex_lock( (pthread_mutex_t *)debug_clients.mutex[(int)unix_client->debug_level - '1'] ) != 0 )
+										debug_output( 0, "Error - could not lock mutex (unix_listen => 3): %s \n", strerror( errno ) );
+
 									list_for_each_safe( debug_pos, debug_pos_tmp, (struct list_head *)debug_clients.fd_list[(int)unix_client->debug_level - '1'] ) {
 
 										debug_level_info = list_entry(debug_pos, struct debug_level_info, list);
 
 										if ( debug_level_info->fd == unix_client->sock ) {
 
-											list_del( debug_pos );
-											debug_clients.clients_num[(int)unix_client->debug_level - '1']--;
+										list_del( debug_pos );
+										debug_clients.clients_num[(int)unix_client->debug_level - '1']--;
 
-											debugFree( debug_pos, 1202 );
+										debugFree( debug_pos, 1202 );
 
-											break;
+										break;
 
 										}
 
 									}
+
+									if ( pthread_mutex_unlock( (pthread_mutex_t *)debug_clients.mutex[(int)unix_client->debug_level - '1'] ) != 0 )
+										debug_output( 0, "Error - could not unlock mutex (unix_listen => 3): %s \n", strerror( errno ) );
 
 								}
 
@@ -325,17 +378,17 @@ void apply_init_args( int argc, char *argv[] ) {
 	struct in_addr tmp_ip_holder;
 	struct batman_if *batman_if;
 	struct debug_level_info *debug_level_info;
-// 	struct timeval tv;
-	uint8_t found_args = 1, unix_client = 0, batch_mode = 0, batch_counter = 0;
+	uint8_t found_args = 1, unix_client = 0, batch_mode = 0;
 	uint16_t min_mtu = 2000, tmp_mtu;
 	int8_t res;
 
 	int32_t optchar, recv_buff_len, bytes_written;
-	char unix_string[100], buff[1500], *buff_ptr, *cr_ptr;
+	char *unix_buff, *buff_ptr, *cr_ptr;
 	uint32_t vis_server = 0;
-// 	fd_set wait_sockets, tmp_wait_sockets;
+
 
 	memset( &tmp_ip_holder, 0, sizeof (struct in_addr) );
+	stop = 0;
 
 
 	printf( "WARNING: You are using the unstable batman-advanced branch. If you are interested in *using* batman-advanced get the latest stable release !\n" );
@@ -503,14 +556,20 @@ void apply_init_args( int argc, char *argv[] ) {
 		if ( argc <= found_args ) {
 			fprintf( stderr, "Error - no interface specified\n" );
 			usage();
-			close_all_sockets();
+			restore_defaults();
 			exit(EXIT_FAILURE);
 		}
+
+		signal( SIGINT, handler );
+		signal( SIGTERM, handler );
+		signal( SIGSEGV, segmentation_fault );
 
 		for ( res = 0; res < 4; res++ ) {
 
 			debug_clients.fd_list[res] = debugMalloc( sizeof(struct list_head), 203 );
 			INIT_LIST_HEAD( (struct list_head *)debug_clients.fd_list[res] );
+			debug_clients.mutex[res] = debugMalloc( sizeof(pthread_mutex_t), 209 );
+			pthread_mutex_init( (pthread_mutex_t *)debug_clients.mutex[res], NULL );
 
 		}
 
@@ -522,7 +581,7 @@ void apply_init_args( int argc, char *argv[] ) {
 			if ( daemon( 0, 0 ) < 0 ) {
 
 				printf( "Error - can't fork to background: %s\n", strerror(errno) );
-				close_all_sockets();
+				restore_defaults();
 				exit(EXIT_FAILURE);
 
 			}
@@ -581,22 +640,13 @@ void apply_init_args( int argc, char *argv[] ) {
 
 		if ( ( tap_sock = tap_create( min_mtu ) ) < 0 ) {
 
-			close_all_sockets();
-			exit(EXIT_FAILURE);
-
-		}
-
-		if ( set_hw_addr( "bat0", ((struct batman_if *)if_list.next)->hw_addr ) < 0 ) {
-
-			close_all_sockets();
+			restore_defaults();
 			exit(EXIT_FAILURE);
 
 		}
 
 		if ( tap_sock > receive_max_sock )
 			receive_max_sock = tap_sock;
-
-		memcpy( my_hw_addr, ((struct batman_if *)if_list.next)->hw_addr, 6 );
 
 		FD_SET( tap_sock, &receive_wait_set );
 
@@ -622,13 +672,13 @@ void apply_init_args( int argc, char *argv[] ) {
 
 		if ( bind ( unix_if.unix_sock, (struct sockaddr *)&unix_if.addr, sizeof (struct sockaddr_un) ) < 0 ) {
 			debug_output( 0, "Error - can't bind unix socket: %s\n", strerror(errno) );
-			close_all_sockets();
+			restore_defaults();
 			exit(EXIT_FAILURE);
 		}
 
 		if ( listen( unix_if.unix_sock, 10 ) < 0 ) {
 			debug_output( 0, "Error - can't listen unix socket: %s\n", strerror(errno) );
-			close_all_sockets();
+			restore_defaults();
 			exit(EXIT_FAILURE);
 		}
 
@@ -682,46 +732,43 @@ void apply_init_args( int argc, char *argv[] ) {
 
 			}
 
-			snprintf( unix_string, sizeof( unix_string ), "d:%i", debug_level );
+			unix_buff = debugMalloc( 1500, 5001 );
+			snprintf( unix_buff, 10, "d:%i", debug_level );
 
-// 			FD_ZERO(&wait_sockets);
-// 			FD_SET(unix_if.unix_sock, &wait_sockets);
-
-			if ( write( unix_if.unix_sock, unix_string, strlen( unix_string ) ) < 0 ) {
+			if ( write( unix_if.unix_sock, unix_buff, 10 ) < 0 ) {
 
 				printf( "Error - can't write to unix socket: %s\n", strerror(errno) );
 				close( unix_if.unix_sock );
+				debugFree( unix_buff, 5101 );
 				exit(EXIT_FAILURE);
 
 			}
 
-			while ( ( recv_buff_len = read( unix_if.unix_sock, buff, sizeof( buff ) ) ) > 0 ) {
+			while ( ( recv_buff_len = read( unix_if.unix_sock, unix_buff, 1500 ) ) > 0 ) {
 
-				buff_ptr = buff;
+				unix_buff[recv_buff_len] = '\0';
+
+				buff_ptr = unix_buff;
 				bytes_written = 0;
 
 				while ( ( cr_ptr = strchr( buff_ptr, '\n' ) ) != NULL ) {
 
 					*cr_ptr = '\0';
 
-					if ( strcmp( buff_ptr, "BOD" ) == 0 ) {
+					if ( strncmp( buff_ptr, "EOD", 3 ) == 0 ) {
 
 						if ( batch_mode ) {
 
-							if ( batch_counter ) {
-
-								close( unix_if.unix_sock );
-								exit(EXIT_SUCCESS);
-
-							}
-
-							batch_counter++;
-
-						} else {
-
-							system( "clear" );
+							close( unix_if.unix_sock );
+							debugFree( unix_buff, 5102 );
+							exit(EXIT_SUCCESS);
 
 						}
+
+					} else if ( strncmp( buff_ptr, "BOD", 3 ) == 0 ) {
+
+						if ( !batch_mode )
+							system( "clear" );
 
 					} else {
 
@@ -739,10 +786,12 @@ void apply_init_args( int argc, char *argv[] ) {
 
 			}
 
+			close( unix_if.unix_sock );
+			debugFree( unix_buff, 5103 );
+
 			if ( recv_buff_len < 0 ) {
 
 				printf( "Error - can't read from unix socket: %s\n", strerror(errno) );
-				close( unix_if.unix_sock );
 				exit(EXIT_FAILURE);
 
 			} else {
@@ -750,65 +799,6 @@ void apply_init_args( int argc, char *argv[] ) {
 				printf( "Connection terminated by remote host\n" );
 
 			}
-
-// 			while ( 1 ) {
-//
-// 				if ( write( unix_if.unix_sock, unix_string, strlen( unix_string ) ) < 0 ) {
-//
-// 					printf( "Error - can't write to unix socket: %s\n", strerror(errno) );
-// 					close( unix_if.unix_sock );
-// 					exit(EXIT_FAILURE);
-//
-// 				}
-//
-// 				if ( ! batch_mode )
-// 					system( "clear" );
-//
-// 				while ( 1 ) {
-//
-// 					tv.tv_sec = 1;
-// 					tv.tv_usec = 0;
-// 					tmp_wait_sockets = wait_sockets;
-//
-// 					res = select( unix_if.unix_sock + 1, &tmp_wait_sockets, NULL, NULL, &tv );
-//
-// 					if ( res > 0 ) {
-//
-// 						if ( ( recv_buff_len = read( unix_if.unix_sock, buff, sizeof( buff ) ) ) < 0 ) {
-//
-// 							printf( "Error - can't read from unix socket: %s\n", strerror(errno) );
-// 							close( unix_if.unix_sock );
-// 							exit(EXIT_FAILURE);
-//
-// 						} else if ( recv_buff_len > 0 ) {
-//
-// 							printf( "%s", buff );
-//
-// 						}
-//
-// 					/* timeout reached */
-// 					} else if ( res == 0 ) {
-//
-// 						break;
-//
-// 					}  else if ( ( res < 0 ) && ( errno != EINTR ) ) {
-//
-// 						printf( "Error - can't select: %s\n", strerror(errno) );
-// 						close( unix_if.unix_sock );
-// 						exit(EXIT_FAILURE);
-//
-// 					}
-//
-// 				}
-//
-// 				if ( batch_mode )
-// 					break;
-//
-// 				sleep( 1 );
-//
-// 			}
-
-			close( unix_if.unix_sock );
 
 		}
 
@@ -828,14 +818,14 @@ int16_t init_interface ( struct batman_if *batman_if ) {
 
 	if ( strlen( batman_if->dev ) > IFNAMSIZ - 1 ) {
 		debug_output( 0, "Error - interface name too long: %s\n", batman_if->dev );
-		close_all_sockets();
+		restore_defaults();
 		exit(EXIT_FAILURE);
 	}
 
 	if ( ( tmp_socket = socket( AF_INET, SOCK_DGRAM, 0 ) ) < 0 ) {
 
 		debug_output( 0, "Error - can't create tmp socket: %s", strerror(errno) );
-		close_all_sockets();
+		restore_defaults();
 		exit(EXIT_FAILURE);
 
 	}
@@ -846,7 +836,7 @@ int16_t init_interface ( struct batman_if *batman_if ) {
 	if ( ioctl( tmp_socket, SIOCGIFHWADDR, &int_req ) < 0 ) {
 
 		debug_output( 0, "Error - can't get hardware address of interface %s: %s\n", batman_if->dev, strerror(errno) );
-		close_all_sockets();
+		restore_defaults();
 		close( tmp_socket );
 		exit(EXIT_FAILURE);
 
@@ -856,7 +846,7 @@ int16_t init_interface ( struct batman_if *batman_if ) {
 
 	if ( ( batman_if->raw_sock = rawsock_create( batman_if->dev ) ) < 0 ) {
 
-		close_all_sockets();
+		restore_defaults();
 		close( tmp_socket );
 		exit(EXIT_FAILURE);
 
@@ -866,7 +856,7 @@ int16_t init_interface ( struct batman_if *batman_if ) {
 	if ( ioctl( tmp_socket, SIOCGIFMTU, &int_req ) < 0 ) {
 
 		debug_output( 0, "Error - can't get mtu of interface %s: %s\n", batman_if->dev, strerror(errno) );
-		close_all_sockets();
+		restore_defaults();
 		close( tmp_socket );
 		exit(EXIT_FAILURE);
 
@@ -890,38 +880,38 @@ int16_t init_interface ( struct batman_if *batman_if ) {
 
 	if ( batman_if->tcp_gw_sock < 0 ) {
 		debug_output( 0, "Error - can't create socket: %s", strerror(errno) );
-		close_all_sockets();
+		restore_defaults();
 		exit(EXIT_FAILURE);
 	}
 
 	if ( setsockopt( batman_if->tcp_gw_sock, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(int) ) < 0 ) {
 		debug_output( 0, "Error - can't enable reuse of address: %s\n", strerror(errno) );
-		close_all_sockets();
+		restore_defaults();
 		exit(EXIT_FAILURE);
 	}
 
 	if ( bind( batman_if->tcp_gw_sock, (struct sockaddr*)&batman_if->addr, sizeof(struct sockaddr_in) ) < 0 ) {
 		debug_output( 0, "Error - can't bind socket: %s\n", strerror(errno) );
-		close_all_sockets();
+		restore_defaults();
 		exit(EXIT_FAILURE);
 	}
 
 	if ( listen( batman_if->tcp_gw_sock, 10 ) < 0 ) {
 		debug_output( 0, "Error - can't listen socket: %s\n", strerror(errno) );
-		close_all_sockets();
+		restore_defaults();
 		exit(EXIT_FAILURE);
 	}
 
 	batman_if->tunnel_sock = socket(PF_INET, SOCK_DGRAM, 0);
 	if ( batman_if->tunnel_sock < 0 ) {
 		debug_output( 0, "Error - can't create tunnel socket: %s", strerror(errno) );
-		close_all_sockets();
+		restore_defaults();
 		exit(EXIT_FAILURE);
 	}
 
 	if ( bind( batman_if->tunnel_sock, (struct sockaddr *)&batman_if->addr, sizeof (struct sockaddr_in) ) < 0 ) {
 		debug_output( 0, "Error - can't bind tunnel socket: %s\n", strerror(errno) );
-		close_all_sockets();
+		restore_defaults();
 		exit(EXIT_FAILURE);
 	}
 
@@ -1185,7 +1175,7 @@ int8_t add_default_route() {
 
 
 
-void close_all_sockets() {
+void restore_defaults() {
 
 	struct list_head *if_pos, *if_pos_tmp;
 	struct batman_if *batman_if;
@@ -1263,142 +1253,143 @@ int8_t receive_packet( unsigned char *packet_buff, int16_t packet_buff_len, int1
 
 	}
 
-	if ( res == 0 )
+// 	if ( res == 0 )
 		return 0;
 
-	if ( FD_ISSET( tap_sock, &tmp_wait_set ) ) {
-
-		if ( ( *pay_buff_len = read( tap_sock, packet_buff, packet_buff_len - 1 ) ) < 0 ) {
-
-			debug_output( 0, "Error - couldn't read data from tap interface: %s\n", strerror(errno) );
-			return -1;
-
-		} else {
-
-			/* ethernet packet should be broadcasted */
-			if ( memcmp( ((struct ether_header *)packet_buff)->ether_dhost, broadcastAddr, sizeof(ether_header.ether_dhost) ) == 0 ) {
-
-				/* get own orginator packet and send it with broadcast payload */
-				reschedule_own_packet( packet_buff, *pay_buff_len );
-
-			/* unicast packet */
-			} else {
-
-				/* get routing information */
-				orig_node = find_orig_node( ((struct ether_header *)packet_buff)->ether_dhost );
-
-				if ( ( orig_node != NULL ) && ( orig_node->batman_if != NULL ) ) {
-
-					memcpy( ether_header.ether_dhost, ((struct ether_header *)packet_buff)->ether_dhost, sizeof(ether_header.ether_dhost) );
-					memcpy( ether_header.ether_shost, my_hw_addr, sizeof(ether_header.ether_shost) );
-
-					if ( ( rawsock_write( orig_node->batman_if->raw_sock, &ether_header, packet_buff, *pay_buff_len ) ) < 0 ) {
-
-						debug_output( 0, "Error - can't send data through raw socket: %s\n", strerror(errno) );
-						return -1;
-
-					}
-
-				} else {
-
-					/*unsigned char *pay_buff = (unsigned char *)packet_buff + sizeof(struct packet);
-					printf( "not found: %s\n", addr_to_string( ((struct ether_header *)pay_buff)->ether_dhost ) );*/
-
-				}
-
-			}
-
-			return 0;
-
-		}
-
-	} else {
-
-		list_for_each( if_pos, &if_list ) {
-
-			batman_if = list_entry( if_pos, struct batman_if, list );
-
-			if ( FD_ISSET( batman_if->raw_sock, &tmp_wait_set ) ) {
-
-				if ( ( *pay_buff_len = rawsock_read( batman_if->raw_sock, &ether_header, packet_buff, packet_buff_len - 1 ) ) < 0 )
-					return -1;
-
-				/* ethernet packet should be broadcasted */
-				if ( memcmp( &ether_header.ether_dhost, broadcastAddr, sizeof(ether_header.ether_dhost) ) == 0 ) {
-
-					((struct packet *)packet_buff)->seqno = ntohs( ((struct packet *)packet_buff)->seqno ); /* network to host order for our 16bit seqno.*/
-					((struct packet *)packet_buff)->pay_len = htons( ((struct packet *)packet_buff)->pay_len ); /* change payload length to host order */
-
-
-					if ( *pay_buff_len < sizeof(struct packet) )
-						return 0;
-
-					if ( *pay_buff_len < sizeof(struct packet) + ((struct packet *)packet_buff)->pay_len ) {
-
-						debug_output( 0, "Error - drop packet due to false length field: received = %i, length = %i\n", *pay_buff_len - sizeof(struct packet), ((struct packet *)packet_buff)->pay_len );
-						return 0;
-
-					}
-
-					/*if ( ((struct packet *)packet_buff)->pay_len > 0 )
-						debug_output( 4, "broadcast with payload: %i\n", ((struct packet *)packet_buff)->pay_len );*/
-
-					(*if_incoming) = batman_if;
-					break;
-
-				/* unicast packet */
-				} else {
-
-					/* packet for me */
-					if ( memcmp( &ether_header.ether_dhost, my_hw_addr, sizeof(ether_header.ether_dhost) ) == 0 ) {
-
-						tap_write( tap_sock, packet_buff, *pay_buff_len );
-
-					/* route it */
-					} else {
-
-						/* get routing information */
-						orig_node = find_orig_node( ether_header.ether_dhost );
-
-						if ( ( orig_node != NULL ) && ( orig_node->batman_if != NULL ) ) {
-
-							memcpy( ether_header.ether_shost, my_hw_addr, ETH_ALEN );
-
-							if ( rawsock_write( orig_node->batman_if->raw_sock, &ether_header, packet_buff, *pay_buff_len ) < 0 ) {
-
-								debug_output( 0, "Error - can't send data through raw socket: %s\n", strerror(errno) );
-								return -1;
-
-							}
-
-						}
-
-					}
-
-					return 0;
-
-				}
-
-			}
-
-		}
-
-		memcpy( neigh, ether_header.ether_shost, sizeof(ether_header.ether_shost) );
-
-	}
-
-	return 1;
+		/* TODO: rewrite this part .. */
+// 	if ( FD_ISSET( tap_sock, &tmp_wait_set ) ) {
+//
+// 		if ( ( *pay_buff_len = read( tap_sock, packet_buff, packet_buff_len - 1 ) ) < 0 ) {
+//
+// 			debug_output( 0, "Error - couldn't read data from tap interface: %s\n", strerror(errno) );
+// 			return -1;
+//
+// 		} else {
+//
+// 			/* ethernet packet should be broadcasted */
+// 			if ( memcmp( ((struct ether_header *)packet_buff)->ether_dhost, broadcastAddr, sizeof(ether_header.ether_dhost) ) == 0 ) {
+//
+// 				/* get own orginator packet and send it with broadcast payload */
+// 				reschedule_own_packet( packet_buff, *pay_buff_len );
+//
+// 			/* unicast packet */
+// 			} else {
+//
+// 				/* get routing information */
+// 				orig_node = find_orig_node( ((struct ether_header *)packet_buff)->ether_dhost );
+//
+// 				if ( ( orig_node != NULL ) && ( orig_node->batman_if != NULL ) ) {
+//
+// 					memcpy( ether_header.ether_dhost, ((struct ether_header *)packet_buff)->ether_dhost, sizeof(ether_header.ether_dhost) );
+// 					memcpy( ether_header.ether_shost, my_hw_addr, sizeof(ether_header.ether_shost) );
+//
+// 					if ( ( rawsock_write( orig_node->batman_if->raw_sock, &ether_header, packet_buff, *pay_buff_len ) ) < 0 ) {
+//
+// 						debug_output( 0, "Error - can't send data through raw socket: %s\n", strerror(errno) );
+// 						return -1;
+//
+// 					}
+//
+// 				} else {
+//
+// 					/*unsigned char *pay_buff = (unsigned char *)packet_buff + sizeof(struct packet);
+// 					printf( "not found: %s\n", addr_to_string( ((struct ether_header *)pay_buff)->ether_dhost ) );*/
+//
+// 				}
+//
+// 			}
+//
+// 			return 0;
+//
+// 		}
+//
+// 	} else {
+//
+// 		list_for_each( if_pos, &if_list ) {
+//
+// 			batman_if = list_entry( if_pos, struct batman_if, list );
+//
+// 			if ( FD_ISSET( batman_if->raw_sock, &tmp_wait_set ) ) {
+//
+// 				if ( ( *pay_buff_len = rawsock_read( batman_if->raw_sock, &ether_header, packet_buff, packet_buff_len - 1 ) ) < 0 )
+// 					return -1;
+//
+// 				/* ethernet packet should be broadcasted */
+// 				if ( memcmp( &ether_header.ether_dhost, broadcastAddr, sizeof(ether_header.ether_dhost) ) == 0 ) {
+//
+// 					((struct packet *)packet_buff)->seqno = ntohs( ((struct packet *)packet_buff)->seqno ); /* network to host order for our 16bit seqno.*/
+// 					((struct packet *)packet_buff)->pay_len = htons( ((struct packet *)packet_buff)->pay_len ); /* change payload length to host order */
+//
+//
+// 					if ( *pay_buff_len < sizeof(struct packet) )
+// 						return 0;
+//
+// 					if ( *pay_buff_len < sizeof(struct packet) + ((struct packet *)packet_buff)->pay_len ) {
+//
+// 						debug_output( 0, "Error - drop packet due to false length field: received = %i, length = %i\n", *pay_buff_len - sizeof(struct packet), ((struct packet *)packet_buff)->pay_len );
+// 						return 0;
+//
+// 					}
+//
+// 					/*if ( ((struct packet *)packet_buff)->pay_len > 0 )
+// 						debug_output( 4, "broadcast with payload: %i\n", ((struct packet *)packet_buff)->pay_len );*/
+//
+// 					(*if_incoming) = batman_if;
+// 					break;
+//
+// 				/* unicast packet */
+// 				} else {
+//
+// 					/* packet for me */
+// 					if ( memcmp( &ether_header.ether_dhost, my_hw_addr, sizeof(ether_header.ether_dhost) ) == 0 ) {
+//
+// 						tap_write( tap_sock, packet_buff, *pay_buff_len );
+//
+// 					/* route it */
+// 					} else {
+//
+// 						/* get routing information */
+// 						orig_node = find_orig_node( ether_header.ether_dhost );
+//
+// 						if ( ( orig_node != NULL ) && ( orig_node->batman_if != NULL ) ) {
+//
+// 							memcpy( ether_header.ether_shost, my_hw_addr, ETH_ALEN );
+//
+// 							if ( rawsock_write( orig_node->batman_if->raw_sock, &ether_header, packet_buff, *pay_buff_len ) < 0 ) {
+//
+// 								debug_output( 0, "Error - can't send data through raw socket: %s\n", strerror(errno) );
+// 								return -1;
+//
+// 							}
+//
+// 						}
+//
+// 					}
+//
+// 					return 0;
+//
+// 				}
+//
+// 			}
+//
+// 		}
+//
+// 		memcpy( neigh, ether_header.ether_shost, sizeof(ether_header.ether_shost) );
+//
+// 	}
+//
+// 	return 1;
 
 }
 
 
 
-int8_t send_packet( unsigned char *packet_buff, int16_t packet_buff_len, uint8_t *recv_addr, int32_t send_sock ) {
+int8_t send_packet( unsigned char *packet_buff, int16_t packet_buff_len, uint8_t *send_addr, uint8_t *recv_addr, int32_t send_sock ) {
 
 	struct ether_header ether_header;
 
 	memcpy( ether_header.ether_dhost, recv_addr, ETH_ALEN );
-	memcpy( ether_header.ether_shost, my_hw_addr, ETH_ALEN );
+	memcpy( ether_header.ether_shost, send_addr, ETH_ALEN );
 
 	if ( rawsock_write( send_sock, &ether_header, packet_buff, packet_buff_len ) < 0 )
 		return -1;
@@ -1649,70 +1640,92 @@ void tap_write( int32_t tap_fd, unsigned char *buff, int16_t buff_len ) {
 
 
 
-int8_t set_hw_addr( char *dev, uint8_t *hw_addr ) {
+// int8_t set_hw_addr( char *dev, uint8_t *hw_addr ) {
+//
+// 	struct ifreq int_req;
+// 	int32_t tmp_socket;
+//
+//
+// 	strncpy( int_req.ifr_name, dev, IFNAMSIZ - 1 );
+//
+// 	if ( ( tmp_socket = socket( AF_INET, SOCK_DGRAM, 0 ) ) < 0 ) {
+//
+// 		debug_output( 0, "Error - can't create tmp socket: %s", strerror(errno) );
+// 		return -1;
+//
+// 	}
+//
+// 	if ( ioctl( tmp_socket, SIOCGIFFLAGS, &int_req ) < 0 ) {
+//
+// 		debug_output( 0, "Error - can't set hardware address of interface %s (SIOCGIFFLAGS): %s\n", dev, strerror(errno) );
+// 		close( tmp_socket );
+// 		return -1;
+//
+// 	}
+//
+// 	int_req.ifr_flags &= ~IFF_UP;
+// 	int_req.ifr_flags &= ~IFF_RUNNING;
+//
+// 	if ( ioctl( tmp_socket, SIOCSIFFLAGS, &int_req ) < 0 ) {
+//
+// 		debug_output( 0, "Error - can't set hardware address of interface %s (SIOCSIFFLAGS): %s\n", dev, strerror(errno) );
+// 		close( tmp_socket );
+// 		return -1;
+//
+// 	}
+//
+// 	if ( ioctl( tmp_socket, SIOCGIFHWADDR, &int_req ) < 0 ) {
+//
+// 		debug_output( 0, "Error - can't set hardware address of interface %s (SIOCGIFHWADDR): %s\n", dev, strerror(errno) );
+// 		close( tmp_socket );
+// 		return -1;
+//
+// 	}
+//
+// 	memcpy( int_req.ifr_hwaddr.sa_data, hw_addr, 6 );
+//
+// 	if ( ioctl( tmp_socket, SIOCSIFHWADDR, &int_req ) < 0 ) {
+//
+// 		debug_output( 0, "Error - can't set hardware address of interface %s (SIOCSIFHWADDR): %s\n", dev, strerror(errno) );
+// 		close( tmp_socket );
+// 		return -1;
+//
+// 	}
+//
+// 	int_req.ifr_flags |= IFF_UP;
+// 	int_req.ifr_flags |= IFF_RUNNING;
+//
+// 	if ( ioctl( tmp_socket, SIOCSIFFLAGS, &int_req ) < 0 ) {
+//
+// 		debug_output( 0, "Error - can't set hardware address of interface %s (SIOCSIFFLAGS): %s\n", dev, strerror(errno) );
+// 		close( tmp_socket );
+// 		return -1;
+//
+// 	}
+//
+// 	return 0;
+//
+// }
 
-	struct ifreq int_req;
-	int32_t tmp_socket;
 
 
-	strncpy( int_req.ifr_name, dev, IFNAMSIZ - 1 );
+void restore_and_exit() {
 
-	if ( ( tmp_socket = socket( AF_INET, SOCK_DGRAM, 0 ) ) < 0 ) {
+	purge_orig( get_time() + ( 5 * TIMEOUT ) + orginator_interval );
 
-		debug_output( 0, "Error - can't create tmp socket: %s", strerror(errno) );
-		return -1;
+	restore_defaults();
 
-	}
+	exit(EXIT_FAILURE);
 
-	if ( ioctl( tmp_socket, SIOCGIFFLAGS, &int_req ) < 0 ) {
+}
 
-		debug_output( 0, "Error - can't set hardware address of interface %s (SIOCGIFFLAGS): %s\n", dev, strerror(errno) );
-		close( tmp_socket );
-		return -1;
 
-	}
 
-	int_req.ifr_flags &= ~IFF_UP;
-	int_req.ifr_flags &= ~IFF_RUNNING;
+void segmentation_fault( int32_t sig ) {
 
-	if ( ioctl( tmp_socket, SIOCSIFFLAGS, &int_req ) < 0 ) {
+	debug_output( 0, "Error - SIGSEGV received !\n" );
 
-		debug_output( 0, "Error - can't set hardware address of interface %s (SIOCSIFFLAGS): %s\n", dev, strerror(errno) );
-		close( tmp_socket );
-		return -1;
-
-	}
-
-	if ( ioctl( tmp_socket, SIOCGIFHWADDR, &int_req ) < 0 ) {
-
-		debug_output( 0, "Error - can't set hardware address of interface %s (SIOCGIFHWADDR): %s\n", dev, strerror(errno) );
-		close( tmp_socket );
-		return -1;
-
-	}
-
-	memcpy( int_req.ifr_hwaddr.sa_data, hw_addr, 6 );
-
-	if ( ioctl( tmp_socket, SIOCSIFHWADDR, &int_req ) < 0 ) {
-
-		debug_output( 0, "Error - can't set hardware address of interface %s (SIOCSIFHWADDR): %s\n", dev, strerror(errno) );
-		close( tmp_socket );
-		return -1;
-
-	}
-
-	int_req.ifr_flags |= IFF_UP;
-	int_req.ifr_flags |= IFF_RUNNING;
-
-	if ( ioctl( tmp_socket, SIOCSIFFLAGS, &int_req ) < 0 ) {
-
-		debug_output( 0, "Error - can't set hardware address of interface %s (SIOCSIFFLAGS): %s\n", dev, strerror(errno) );
-		close( tmp_socket );
-		return -1;
-
-	}
-
-	return 0;
+	restore_and_exit();
 
 }
 

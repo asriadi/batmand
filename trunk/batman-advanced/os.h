@@ -39,14 +39,14 @@ void tap_write( int32_t tap_fd, unsigned char *buff, int16_t buff_len );
 int8_t set_hw_addr( char *dev, uint8_t *hw_addr );
 
 int8_t receive_packet( unsigned char *packet_buff, int16_t packet_buff_len, int16_t *pay_buff_len, uint8_t *neigh, uint32_t timeout, struct batman_if **if_incoming );
-int8_t send_packet( unsigned char *packet_buff, int16_t packet_buff_len, uint8_t *recv_addr, int32_t send_sock );
+int8_t send_packet( unsigned char *packet_buff, int16_t packet_buff_len, uint8_t *send_addr, uint8_t *recv_addr, int32_t send_sock );
 
 void apply_init_args( int argc, char *argv[] );
 int16_t init_interface ( struct batman_if *batman_if );
 void init_interface_gw ( struct batman_if *batman_if );
 
 void print_animation( void );
-void close_all_sockets();
+void restore_defaults();
 void *gw_listen( void *arg );
 
 void *client_to_gw_tun( void *arg );
@@ -55,6 +55,8 @@ void debug();
 void debug_output( int8_t debug_prio, char *format, ... );
 void cleanup();
 
+void segmentation_fault( int32_t sig );
+void restore_and_exit();
 
 
 #endif
