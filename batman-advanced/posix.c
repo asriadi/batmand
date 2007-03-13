@@ -51,7 +51,6 @@
 extern struct vis_if vis_if;
 
 static struct timeval start_time;
-static int8_t stop;
 
 
 static void get_time_internal( struct timeval *tv ) {
@@ -213,14 +212,6 @@ void print_animation( void ) {
 
 
 
-int8_t is_aborted() {
-
-	return stop != 0;
-
-}
-
-
-
 char *addr_to_string( uint8_t *hw_addr ) {
 
 	return ether_ntoa( (struct ether_addr *)hw_addr );
@@ -237,17 +228,9 @@ int32_t rand_num( int32_t limit ) {
 
 
 
-static void handler( int32_t sig ) {
-
-	stop = 1;
-
-}
-
-
 int main( int argc, char *argv[] ) {
 
 	int8_t res;
-	stop = 0;
 
 
 	/* check if user is root */
@@ -260,10 +243,6 @@ int main( int argc, char *argv[] ) {
 
 	apply_init_args( argc, argv );
 
-
-	signal( SIGINT, handler );
-	signal( SIGTERM, handler );
-
 	gettimeofday( &start_time, NULL );
 	srand( getpid() );
 
@@ -271,7 +250,7 @@ int main( int argc, char *argv[] ) {
 	res = batman();
 
 
-	close_all_sockets();
+	restore_defaults();
 	cleanup();
 	checkLeak();
 	return res;

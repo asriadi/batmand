@@ -33,7 +33,7 @@
 #include "allocate.h"
 
 
-#define SOURCE_VERSION "0.1 alpha"
+#define SOURCE_VERSION "0.1 pre-alpha"
 #define COMPAT_VERSION 1
 #define UNIDIRECTIONAL 0x80
 #define DIRECTLINK 0x40
@@ -41,7 +41,10 @@
 
 #define UNIX_PATH "/var/run/batmand.socket"
 
-#define ETH_P_BATMAN 0x0842
+#define ETH_P_BATMAN  0x0842
+#define ETH_BATMAN    0x10
+#define ETH_BROADCAST 0x20
+#define ETH_UNICAST   0x30
 
 
 /*
@@ -77,14 +80,17 @@ extern uint8_t found_ifs;
 extern int32_t receive_max_sock;
 extern fd_set receive_wait_set;
 extern int32_t tap_sock;
-extern uint8_t my_hw_addr[6];
 
 extern struct hashtable_t *orig_hash;
 
 extern struct list_head if_list;
+extern struct list_head gw_list;
+extern struct list_head forw_list;
 extern struct vis_if vis_if;
 extern struct unix_if unix_if;
 extern struct debug_clients debug_clients;
+
+extern char *gw2string[];
 
 struct packet
 {
@@ -94,13 +100,11 @@ struct packet
 	uint16_t seqno;
 	uint8_t  gwflags;  /* flags related to gateway functions: gateway class */
 	uint8_t  version;  /* batman version field */
-	uint16_t pay_len;
 } __attribute__((packed));
 
 struct orig_node                 /* structure for orig_list maintaining nodes of mesh */
 {
 	uint8_t  orig[6];			/* important, must be first entry! (for faster hash comparison) */
-	struct list_head list;
 	struct neigh_node *router;
 	struct batman_if *batman_if;
 	uint32_t *bidirect_link;    /* if node is a bidrectional neighbour, when my originator packet was broadcasted (replied) by this node and received by me */
@@ -177,12 +181,12 @@ struct unix_client {
 	struct list_head list;
 	int32_t sock;
 	uint8_t debug_level;
-	struct sockaddr_un addr;
 };
 
 struct debug_clients {
 	void *fd_list[4];
 	int16_t clients_num[4];
+	pthread_mutex_t *mutex[4];
 };
 
 struct debug_level_info {
@@ -202,8 +206,7 @@ void   usage( void );
 void   verbose_usage( void );
 void   del_default_route();
 int8_t add_default_route();
-struct orig_node *find_orig_node( uint8_t *addr );
-struct orig_node *get_orig_node( uint8_t *addr );
-void reschedule_own_packet( unsigned char *pay_buff, int16_t pay_buff_len );
+void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node );
+void update_gw_list( struct orig_node *orig_node, uint8_t new_gwflags );
 
 #endif
