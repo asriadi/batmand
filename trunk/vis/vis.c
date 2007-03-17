@@ -178,12 +178,6 @@ void clean_buffer()
 		debugFree( rm, 1405 );
 		rm = NULL;
 	}
-	if( first != NULL ) debugFree( first, 1406 );
-	first = NULL;
-	if( current != NULL ) debugFree( current, 1407 );
-	current = NULL;
-	if( fillme != NULL ) debugFree( fillme, 1408 );
-	fillme = NULL;
 }
 
 static void add_neighbour_node(struct node *orig, unsigned char packet_count, struct neighbour **neigh)
@@ -302,7 +296,7 @@ void *udp_server( void *srv_dev )
 	struct sockaddr_in server, client;
 	int sock, n, packet_count,i;
 	socklen_t len;
-	
+	sd++;
 	sock = socket(PF_INET, SOCK_DGRAM,0 );
 	memset( &server, 0, sizeof (server));
 
@@ -367,7 +361,7 @@ static void *tcp_server( void *arg )
 {
 	int con = *( ( int *) arg );
 	buffer_t *last_send = NULL;
-
+	sd++;
 	debugFree( arg, 1401 );
 
 	while( !is_aborted() )
@@ -404,7 +398,7 @@ void *master( void *arg )
 	buffer_t *new, *tmp;
 	char begin[] = "digraph topology\n{\n";
 	char end[] = "}\n";
-	
+	sd++;
 	while( !is_aborted() )
 	{
 		tmp = first;
@@ -463,7 +457,7 @@ int main( int argc, char **argv )
 	fd_set wait_sockets;
 	
 	stop = 0;
-	sd = 3;
+	sd = 0;
 	signal( SIGINT, handler );
 	signal( SIGTERM, handler );
 	
@@ -515,17 +509,14 @@ int main( int argc, char **argv )
 	
 	printf("sender listen on ip %s port %d\n", str1, ntohs( sa.sin_port ) );
 
-	FD_ZERO(&wait_sockets);
-	FD_SET(sock, &wait_sockets);
-
-	clnt_socket = NULL;
 	while( !is_aborted() )
 	{
+		FD_ZERO(&wait_sockets);
+		FD_SET(sock, &wait_sockets);
 		tv.tv_sec = 1;
 		tv.tv_usec = 0;
 		len_inet = sizeof( adr_client );
-		if( clnt_socket == NULL )
-			clnt_socket = debugMalloc( sizeof( int ), 406 );
+		clnt_socket = debugMalloc( sizeof( int ), 406 );
 		if( select( sock + 1, &wait_sockets, NULL, NULL, &tv) > 0 ) {
 			*clnt_socket = accept( sock, (struct sockaddr*)&adr_client, &len_inet );
 			pthread_create( &tcp_server_thread, NULL, &tcp_server, clnt_socket );
@@ -534,9 +525,11 @@ int main( int argc, char **argv )
 			printf("sender: client %s connected\n",client_ip);
 		}
 	}
+	printf( "shutdown mainloop....");
 	debugFree( clnt_socket, 1403 );
 	while( sd ) {}
-	printf( "shutdown mainloop %d\n",sd);
+	close( sock );
+	printf("ok\n");
 	checkLeak();
 	return EXIT_SUCCESS;
 }
