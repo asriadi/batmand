@@ -74,7 +74,7 @@ buffer_t *current = NULL;
 buffer_t *first = NULL;
 buffer_t *fillme = NULL;
 
-static int8_t stop;
+static int8_t stop, sd;
 struct hashtable_t *node_hash;
 
 void handler( int32_t sig ) {
@@ -161,7 +161,7 @@ void clean_hash()
 			neigh = neigh->next;
 			debugFree( neigh_delete, 1404 );
 		}
-		debugFree( node, 1406 );
+		debugFree( node, 1410 );
 	}
 	return;
 }
@@ -169,19 +169,21 @@ void clean_hash()
 void clean_buffer()
 {
 	buffer_t *i , *rm ;
-	if( first != NULL )
+	i = first;		
+	while( i != NULL )
 	{
-		i = first->next;
-		while( NULL != i )
-		{
-			rm = i;
-			i = i->next;
-			debugFree( rm, 1405 );
-		}	
+		rm = i;
+		i = i->next;
+		debugFree( rm->buffer, 1410 );
+		debugFree( rm, 1405 );
+		rm = NULL;
 	}
-	debugFree( first, 1406 );
-	debugFree( current, 1407 );
-	debugFree( fillme, 1408 );
+	if( first != NULL ) debugFree( first, 1406 );
+	first = NULL;
+	if( current != NULL ) debugFree( current, 1407 );
+	current = NULL;
+	if( fillme != NULL ) debugFree( fillme, 1408 );
+	fillme = NULL;
 }
 
 static void add_neighbour_node(struct node *orig, unsigned char packet_count, struct neighbour **neigh)
@@ -352,10 +354,12 @@ void *udp_server( void *srv_dev )
 
 		}
 	}
+	printf( "shutdown udp server.....");
+	close(sock);
 	clean_hash();
 	hash_destroy(node_hash);
-	printf( "shutdown udp server\n");
-	close(sock);
+	printf( "ok\n");
+	sd--;
 	return( NULL );
 }
 
@@ -388,8 +392,10 @@ static void *tcp_server( void *arg )
 		}
 		sleep(5);
 	}
-	printf( "shutdown tcp server\n");
+	printf( "shutdown tcp server....");
 	close( con );
+	printf( "ok\n");
+	sd--;
 	return( NULL );
 }
 
@@ -438,8 +444,10 @@ void *master( void *arg )
 		current = new;
 		sleep( 3 );
 	}
+	printf( "shutdown buffer writer....");
 	clean_buffer();
-	printf( "shutdown master\n");
+	printf( "ok\n");
+	sd--;
 	return NULL;
 }
 
@@ -452,9 +460,10 @@ int main( int argc, char **argv )
 	socklen_t len_inet;
 	
 	struct timeval tv;
-	fd_set wait_sockets, tmp_wait_sockets;
+	fd_set wait_sockets;
 	
 	stop = 0;
+	sd = 3;
 	signal( SIGINT, handler );
 	signal( SIGTERM, handler );
 	
@@ -508,15 +517,16 @@ int main( int argc, char **argv )
 
 	FD_ZERO(&wait_sockets);
 	FD_SET(sock, &wait_sockets);
-	tv.tv_sec = 1;
-	tv.tv_usec = 0;
+
 	clnt_socket = NULL;
 	while( !is_aborted() )
 	{
+		tv.tv_sec = 1;
+		tv.tv_usec = 0;
 		len_inet = sizeof( adr_client );
 		if( clnt_socket == NULL )
 			clnt_socket = debugMalloc( sizeof( int ), 406 );
-		if( select( 1, &tmp_wait_sockets, NULL, NULL, &tv) > 0 ) {
+		if( select( sock + 1, &wait_sockets, NULL, NULL, &tv) > 0 ) {
 			*clnt_socket = accept( sock, (struct sockaddr*)&adr_client, &len_inet );
 			pthread_create( &tcp_server_thread, NULL, &tcp_server, clnt_socket );
 			pthread_detach( tcp_server_thread );
@@ -525,7 +535,8 @@ int main( int argc, char **argv )
 		}
 	}
 	debugFree( clnt_socket, 1403 );
-	printf( "shutdown mainloop\n");
+	while( sd ) {}
+	printf( "shutdown mainloop %d\n",sd);
 	checkLeak();
 	return EXIT_SUCCESS;
 }
