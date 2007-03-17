@@ -221,7 +221,7 @@ void purge_orig( uint32_t curr_time ) {
 
 			debug_output( 4, "Orginator timeout: originator %s, last_aware %u) \n", addr_to_string( orig_node->orig ), orig_node->last_aware );
 
-			hash_remove( orig_hash, orig_node );
+			hash_remove_bucket( orig_hash, hashit->bucket );
 
 			/* for all neighbours towards this orginator ... */
 			list_for_each_safe( neigh_pos, neigh_temp, &orig_node->neigh_list ) {
