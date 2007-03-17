@@ -516,8 +516,8 @@ int main( int argc, char **argv )
 		tv.tv_sec = 1;
 		tv.tv_usec = 0;
 		len_inet = sizeof( adr_client );
-		clnt_socket = debugMalloc( sizeof( int ), 406 );
 		if( select( sock + 1, &wait_sockets, NULL, NULL, &tv) > 0 ) {
+			clnt_socket = debugMalloc( sizeof( int ), 406 );
 			*clnt_socket = accept( sock, (struct sockaddr*)&adr_client, &len_inet );
 			pthread_create( &tcp_server_thread, NULL, &tcp_server, clnt_socket );
 			pthread_detach( tcp_server_thread );
@@ -525,9 +525,8 @@ int main( int argc, char **argv )
 			printf("sender: client %s connected\n",client_ip);
 		}
 	}
-	printf( "shutdown mainloop....");
-	debugFree( clnt_socket, 1403 );
 	while( sd ) {}
+	printf( "shutdown mainloop....");
 	close( sock );
 	printf("ok\n");
 	checkLeak();
