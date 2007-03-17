@@ -20,7 +20,7 @@ CC =		gcc
 CFLAGS =	-Wall -O0 -g3
 LDFLAGS = -lpthread
 
-vis:		list.o
+vis:		allocate.o hash.o
 
 clean:
 		rm -f vis *.o *~

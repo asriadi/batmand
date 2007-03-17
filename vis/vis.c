@@ -20,7 +20,8 @@
  *
  */
 
-#include <net/if.h> 
+#include <net/if.h>
+#include <arpa/inet.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -31,8 +32,10 @@
 #include <errno.h>
 #include <pthread.h>
 #include <stdarg.h>
-
-#include "list.h"
+#include <string.h>
+#include <stdint.h>
+#include "hash.h"
+#include "allocate.h"
 
 #define MAXCHAR 4096
 #define PORT 1967
@@ -40,12 +43,57 @@
 #define ADDR_STR_LEN 16
 #define PACKET_FIELDS 5
 
+struct neighbour {
+	struct node *node;
+	unsigned char packet_count;
+	struct neighbour *next;	
+};
+
+struct node {
+	unsigned int addr;
+	unsigned char packet_count_average;
+	unsigned char last_seen;
+	struct neighbour *neighbour;
+	pthread_mutex_t mutex;
+};
+
+typedef struct _buffer {
+	char *buffer;
+	int counter;
+	struct _buffer *next;
+	pthread_mutex_t mutex;
+} buffer_t;
 
 static int on = 1;
 struct node *root = NULL;
+
 buffer_t *current = NULL;
 buffer_t *first = NULL;
 buffer_t *fillme = NULL;
+
+struct hashtable_t *node_hash;
+
+int32_t orig_comp(void *data1, void *data2) {
+	return(memcmp(data1, data2, 4));
+}
+
+/* hashfunction to choose an entry in a hash table of given size */
+/* hash algorithm from http://en.wikipedia.org/wiki/Hash_table */
+int32_t orig_choose(void *data, int32_t size) {
+	unsigned char *key= data;
+	uint32_t hash = 0;
+	size_t i;
+
+	for (i = 0; i < 4; i++) {
+		hash += key[i];
+		hash += (hash << 10);
+		hash ^= (hash >> 6);
+	}
+	hash += (hash << 3);
+	hash ^= (hash >> 11);
+	hash += (hash << 15);
+	return (hash%size);
+}
 
 void exit_error(char *format, ...)
 {
@@ -57,30 +105,136 @@ void exit_error(char *format, ...)
 	exit( EXIT_FAILURE );
 }
 
+static int calc_packet_count_average(struct node *node)
+{
+	struct neighbour *neigh;
+	int pc = 0, cnt = 0;
+	
+	if(node->neighbour == NULL)
+		return(0);
+	
+	for(neigh = node->neighbour; neigh != NULL; neigh = neigh->next)
+	{
+		pc += neigh->packet_count;
+		cnt++;	
+	}
+	return(pc/cnt);
+}
 
-/*void generate_buffer( char **buffer )*/
-/*{*/
-	/*size_t len;*/
-	/*char test[] = "digraph topology\n{\n";*/
-	/*char end[] = "}\n";*/
+static void add_neighbour_node(struct node *orig, unsigned char packet_count, struct neighbour **neigh)
+{		
+	struct neighbour *prev = NULL;
+		
+	while( (*neigh) != NULL)
+	{
+		if( (*neigh)->node == orig)
+		{
+			(*neigh)->packet_count = packet_count;
+			return;	
+		}
+		prev = (*neigh);
+		neigh = &(*neigh)->next;
+	}
+		
+	(*neigh) = (struct neighbour*) debugMalloc( sizeof(struct neighbour), 401 );
+	memset( (*neigh), 0, sizeof( struct neighbour ) ); 
+	(*neigh)->node = orig;
+	(*neigh)->packet_count = packet_count;
+	(*neigh)->next = NULL;
+	if(prev != NULL)
+		prev->next = (*neigh);
+	return;
+}
 
-	/*if( *buffer != NULL )*/
-		/*free( *buffer );*/
+void handle_node(unsigned int addr,unsigned int sender, unsigned char packet_count )
+{
+	struct node *src_node, *orig_node;
+	
+	/* the neighbour */
+	orig_node = (struct node *) hash_find( node_hash, &addr );
+	
+	if( NULL == orig_node )			/* node not found */
+	{
+		orig_node = (struct node *)debugMalloc( sizeof(struct node), 402 );
+		orig_node->addr = addr;
+		orig_node->neighbour = NULL;
+		orig_node->packet_count_average = 0;
+		orig_node->last_seen = 50;
 
-	/*len = strlen( test ) + 1;*/
+		if(pthread_mutex_init(&orig_node->mutex, NULL) != 0)
+			exit_error( "can't create mutex.\n");
+			
+		hash_add( node_hash, orig_node );
 
-	/**buffer = malloc( len * sizeof( char ) );*/
+	} else {
+		pthread_mutex_lock(&orig_node->mutex);
+		orig_node->last_seen = 50;
+		pthread_mutex_unlock(&orig_node->mutex);
+	}
 
-	/*strncpy( *buffer, test, strlen( test ) );*/
+	/* the node which send the packet */
+	src_node  = (struct node *) hash_find( node_hash, &sender );
+	
+	if( NULL == src_node )			/* node not found */
+	{
+		src_node = (struct node *)debugMalloc( sizeof(struct node), 403 );
+		src_node->addr = addr;
+		src_node->neighbour = NULL;
+		src_node->packet_count_average = 0;
+		src_node->last_seen = 50;
 
-	/*write_data_in_buffer( root, &(*buffer) );*/
+		if(pthread_mutex_init(&src_node->mutex, NULL) != 0)
+			exit_error( "can't create mutex.\n");
+			
+		hash_add( node_hash, src_node );
+	} else {
+		pthread_mutex_lock(&src_node->mutex);
+		src_node->last_seen = 50;
+		pthread_mutex_unlock(&src_node->mutex);
+	}
 
-	/**buffer = realloc( *buffer, strlen( *buffer ) + strlen( end ) + 1 );*/
+	add_neighbour_node( orig_node, packet_count, &src_node->neighbour );
+	src_node->packet_count_average = calc_packet_count_average( src_node );
+	return;
+}
 
-	/*strncat( *buffer, end, strlen( end ) );*/
+void addr_to_string(unsigned int addr, char *str, int len)
+{
+	inet_ntop(AF_INET, &addr, str, len);
+	return;
+}
 
-	/*return;*/
-/*}*/
+void write_data_in_buffer()
+{
+	struct neighbour *neigh;
+	struct node *node;
+	struct hash_it_t *hashit;
+	
+	char from_str[16];
+	char to_str[16];
+	char tmp[100];
+
+	if( node_hash->elements == 0 )
+		return;
+	memset( tmp, '\0', sizeof( tmp ) );
+	
+	hashit = NULL;
+	while ( NULL != ( hashit = hash_iterate( node_hash, hashit ) ) )
+	{
+		node = (struct node *) hashit->bucket->data;
+		
+		for( neigh = node->neighbour; neigh != NULL; neigh = neigh->next )
+		{
+			addr_to_string( node->addr, from_str, sizeof( from_str ) );
+			addr_to_string( neigh->node->addr, to_str, sizeof( to_str ) );
+			snprintf( tmp, sizeof( tmp ), "\"%s\" -> \"%s\"[label=\"%d\"]\n", from_str, to_str, ( int )neigh->packet_count );
+			fillme->buffer = (char *)debugRealloc( fillme->buffer, strlen( tmp ) + strlen( fillme->buffer ) + 1, 408 );
+
+			strncat( fillme->buffer, tmp, strlen( tmp ) );
+		}
+	}
+	return;
+}
 
 void *udp_server( void *srv_dev )
 {
@@ -94,7 +248,6 @@ void *udp_server( void *srv_dev )
 	sock = socket(PF_INET, SOCK_DGRAM,0 );
 	memset( &server, 0, sizeof (server));
 
-	
 	memset( &int_req, 0, sizeof ( struct ifreq ) );
 	strncpy( int_req.ifr_name, srv_dev, IFNAMSIZ - 1 );
 
@@ -139,7 +292,7 @@ void *udp_server( void *srv_dev )
 		for( i=0;i < packet_count; i++)
 		{
 			memmove(&orig,(unsigned int*)&recive_dgram[i*PACKET_FIELDS],4);
-			handle_node(orig,client.sin_addr.s_addr,(unsigned char)recive_dgram[i*PACKET_FIELDS+4], &root);
+			handle_node(orig,client.sin_addr.s_addr,(unsigned char)recive_dgram[i*PACKET_FIELDS+4]);
 
 		}
 	}
@@ -152,7 +305,7 @@ static void *tcp_server( void *arg )
 	int con = *( ( int *) arg );
 	buffer_t *last_send = NULL;
 
-	free( arg );
+	debugFree( arg, 1401 );
 
 	for( ; ; )
 	{
@@ -196,27 +349,27 @@ void *master( void *arg )
 				break;
 			
 			first = tmp->next;
-			free( tmp->buffer );
-			free( tmp );
+			debugFree( tmp->buffer, 1402 );
+			debugFree( tmp, 1403 );
 			tmp = first;
 
 		}
 
-		new = malloc( sizeof( buffer_t ) );
+		new = debugMalloc( sizeof( buffer_t ), 404 );
 		new->counter = -1;
 		new->next = NULL;
 		pthread_mutex_init( &new->mutex, NULL );
 
-		new->buffer = (char *)malloc( strlen( begin ) + 1 );
+		new->buffer = (char *) debugMalloc( strlen( begin ) + 1, 405 );
 		memset( new->buffer, '\0', strlen( begin ) );
 		strncpy( new->buffer, begin, strlen( begin ) + 1);
 		
-		// printf( "vis.c buffer: %s\n-----Ende-----\n", new->buffer );
+		/* printf( "vis.c buffer: %s\n-----Ende-----\n", new->buffer ); */
 		fillme = new;
 
-		write_data_in_buffer( root );
+		write_data_in_buffer();
 		
-		new->buffer = (char *)realloc( new->buffer, strlen( new->buffer ) + strlen( end ) + 1 );
+		new->buffer = (char *)debugRealloc( new->buffer, strlen( new->buffer ) + strlen( end ) + 1, 407 );
 		strncat( new->buffer, end, strlen( end ) );
 		
 		if( first == NULL )
@@ -237,11 +390,15 @@ int main( int argc, char **argv )
 	struct ifreq int_req;
 	char str1[ADDR_STR_LEN], client_ip[ADDR_STR_LEN];
 	socklen_t len_inet;
-	
+		
 	pthread_t udp_server_thread, tcp_server_thread, master_thread;
 
 	if(argc < 3)
 		exit_error( "Usage: vis <receive interface> <send interface>\n" );
+
+	/* init hashtable for node struct */
+	if ( NULL == ( node_hash = hash_new( 1600, orig_comp, orig_choose ) ) )
+		exit_error( "Can't create hashtable\n");
 
 	pthread_create( &udp_server_thread, NULL, &udp_server, argv[1] );
 	pthread_create( &master_thread, NULL, &master, NULL );
@@ -285,7 +442,7 @@ int main( int argc, char **argv )
 	for( ; ; )
 	{
 		len_inet = sizeof( adr_client );
-		clnt_socket = malloc( sizeof( int ) );
+		clnt_socket = debugMalloc( sizeof( int ), 406 );
 		*clnt_socket = accept( sock, (struct sockaddr*)&adr_client, &len_inet );
 		pthread_create( &tcp_server_thread, NULL, &tcp_server, clnt_socket );
 		pthread_detach( tcp_server_thread );
