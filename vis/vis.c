@@ -25,6 +25,8 @@
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/select.h>
+#include <sys/time.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -135,6 +137,52 @@ static int calc_packet_count_average(struct node *node)
 		cnt++;	
 	}
 	return(pc/cnt);
+}
+
+void clean_hash()
+{
+	struct neighbour *neigh, *neigh_delete;
+	struct node *node;
+	struct hash_it_t *hashit;
+	
+	if( node_hash->elements == 0 )
+		return;
+
+	hashit = NULL;
+	while ( NULL != ( hashit = hash_iterate( node_hash, hashit ) ) )
+	{
+		node = (struct node *) hashit->bucket->data;
+		
+		neigh = node->neighbour;
+		while( NULL != neigh  )
+		{
+			neigh_delete = neigh;
+			if( neigh->next != NULL )
+				neigh = neigh->next;
+			debugFree( neigh_delete, 1404 );
+		}
+		hash_remove( node_hash, node );
+	}
+
+	return;
+}
+
+void clean_buffer()
+{
+	buffer_t *i , *rm ;
+	if( first != NULL )
+	{
+		i = first->next;
+		while( NULL != i )
+		{
+			rm = i;
+			i = i->next;
+			debugFree( rm, 1405 );
+		}	
+	}
+	debugFree( first, 1406 );
+	debugFree( current, 1407 );
+	debugFree( fillme, 1408 );
 }
 
 static void add_neighbour_node(struct node *orig, unsigned char packet_count, struct neighbour **neigh)
@@ -305,6 +353,8 @@ void *udp_server( void *srv_dev )
 
 		}
 	}
+	clean_hash();
+	hash_destroy(node_hash);
 	printf( "shutdown udp server\n");
 	close(sock);
 	return( NULL );
@@ -389,6 +439,7 @@ void *master( void *arg )
 		current = new;
 		sleep( 3 );
 	}
+	clean_buffer();
 	printf( "shutdown master\n");
 	return NULL;
 }
@@ -400,6 +451,9 @@ int main( int argc, char **argv )
 	struct ifreq int_req;
 	char str1[ADDR_STR_LEN], client_ip[ADDR_STR_LEN];
 	socklen_t len_inet;
+	
+	struct timeval tv;
+	fd_set wait_sockets, tmp_wait_sockets;
 	
 	stop = 0;
 	signal( SIGINT, handler );
@@ -453,16 +507,25 @@ int main( int argc, char **argv )
 	
 	printf("sender listen on ip %s port %d\n", str1, ntohs( sa.sin_port ) );
 
+	FD_ZERO(&wait_sockets);
+	FD_SET(sock, &wait_sockets);
+	tv.tv_sec = 1;
+	tv.tv_usec = 0;
+	clnt_socket = NULL;
 	while( !is_aborted() )
 	{
 		len_inet = sizeof( adr_client );
-		clnt_socket = debugMalloc( sizeof( int ), 406 );
-		*clnt_socket = accept( sock, (struct sockaddr*)&adr_client, &len_inet );
-		pthread_create( &tcp_server_thread, NULL, &tcp_server, clnt_socket );
-		pthread_detach( tcp_server_thread );
-		addr_to_string( adr_client.sin_addr.s_addr, client_ip, sizeof( client_ip ) );
-		printf("sender: client %s connected\n",client_ip);
+		if( clnt_socket == NULL )
+			clnt_socket = debugMalloc( sizeof( int ), 406 );
+		if( select( 1, &tmp_wait_sockets, NULL, NULL, &tv) > 0 ) {
+			*clnt_socket = accept( sock, (struct sockaddr*)&adr_client, &len_inet );
+			pthread_create( &tcp_server_thread, NULL, &tcp_server, clnt_socket );
+			pthread_detach( tcp_server_thread );
+			addr_to_string( adr_client.sin_addr.s_addr, client_ip, sizeof( client_ip ) );
+			printf("sender: client %s connected\n",client_ip);
+		}
 	}
+	debugFree( clnt_socket, 1403 );
 	printf( "shutdown mainloop\n");
 	checkLeak();
 	return EXIT_SUCCESS;
