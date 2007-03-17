@@ -34,6 +34,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include <stdint.h>
+#include <signal.h>
 #include "hash.h"
 #include "allocate.h"
 
@@ -71,7 +72,16 @@ buffer_t *current = NULL;
 buffer_t *first = NULL;
 buffer_t *fillme = NULL;
 
+static int8_t stop;
 struct hashtable_t *node_hash;
+
+void handler( int32_t sig ) {
+	stop = 1;
+}
+
+int8_t is_aborted() {
+	return stop != 0;
+}
 
 int32_t orig_comp(void *data1, void *data2) {
 	return(memcmp(data1, data2, 4));
@@ -281,7 +291,7 @@ void *udp_server( void *srv_dev )
 	}
 	
 	printf( "receiver listen on ip %s port %d\n", str1, ntohs( server.sin_port ) );
-	while(1)
+	while( !is_aborted() )
 	{
 		int orig;
 		len = sizeof(client);
@@ -295,6 +305,7 @@ void *udp_server( void *srv_dev )
 
 		}
 	}
+	printf( "shutdown udp server\n");
 	close(sock);
 	return( NULL );
 }
@@ -306,7 +317,7 @@ static void *tcp_server( void *arg )
 
 	debugFree( arg, 1401 );
 
-	for( ; ; )
+	while( !is_aborted() )
 	{
 		if( current != NULL && current != last_send )
 		{
@@ -328,7 +339,7 @@ static void *tcp_server( void *arg )
 		}
 		sleep(5);
 	}
-
+	printf( "shutdown tcp server\n");
 	close( con );
 	return( NULL );
 }
@@ -339,7 +350,7 @@ void *master( void *arg )
 	char begin[] = "digraph topology\n{\n";
 	char end[] = "}\n";
 	
-	for( ; ; )
+	while( !is_aborted() )
 	{
 		tmp = first;
 		while( tmp != NULL )
@@ -378,7 +389,7 @@ void *master( void *arg )
 		current = new;
 		sleep( 3 );
 	}
-
+	printf( "shutdown master\n");
 	return NULL;
 }
 
@@ -389,7 +400,11 @@ int main( int argc, char **argv )
 	struct ifreq int_req;
 	char str1[ADDR_STR_LEN], client_ip[ADDR_STR_LEN];
 	socklen_t len_inet;
-		
+	
+	stop = 0;
+	signal( SIGINT, handler );
+	signal( SIGTERM, handler );
+	
 	pthread_t udp_server_thread, tcp_server_thread, master_thread;
 
 	if(argc < 3)
@@ -438,7 +453,7 @@ int main( int argc, char **argv )
 	
 	printf("sender listen on ip %s port %d\n", str1, ntohs( sa.sin_port ) );
 
-	for( ; ; )
+	while( !is_aborted() )
 	{
 		len_inet = sizeof( adr_client );
 		clnt_socket = debugMalloc( sizeof( int ), 406 );
@@ -448,7 +463,8 @@ int main( int argc, char **argv )
 		addr_to_string( adr_client.sin_addr.s_addr, client_ip, sizeof( client_ip ) );
 		printf("sender: client %s connected\n",client_ip);
 	}
-
+	printf( "shutdown mainloop\n");
+	checkLeak();
 	return EXIT_SUCCESS;
 }
 
