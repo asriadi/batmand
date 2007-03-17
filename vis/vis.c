@@ -105,6 +105,12 @@ void exit_error(char *format, ...)
 	exit( EXIT_FAILURE );
 }
 
+void addr_to_string(unsigned int addr, char *str, int len)
+{
+	inet_ntop(AF_INET, &addr, str, len);
+	return;
+}
+
 static int calc_packet_count_average(struct node *node)
 {
 	struct neighbour *neigh;
@@ -178,7 +184,7 @@ void handle_node(unsigned int addr,unsigned int sender, unsigned char packet_cou
 	if( NULL == src_node )			/* node not found */
 	{
 		src_node = (struct node *)debugMalloc( sizeof(struct node), 403 );
-		src_node->addr = addr;
+		src_node->addr = sender;
 		src_node->neighbour = NULL;
 		src_node->packet_count_average = 0;
 		src_node->last_seen = 50;
@@ -187,20 +193,14 @@ void handle_node(unsigned int addr,unsigned int sender, unsigned char packet_cou
 			exit_error( "can't create mutex.\n");
 			
 		hash_add( node_hash, src_node );
+		
 	} else {
 		pthread_mutex_lock(&src_node->mutex);
 		src_node->last_seen = 50;
 		pthread_mutex_unlock(&src_node->mutex);
 	}
-
 	add_neighbour_node( orig_node, packet_count, &src_node->neighbour );
 	src_node->packet_count_average = calc_packet_count_average( src_node );
-	return;
-}
-
-void addr_to_string(unsigned int addr, char *str, int len)
-{
-	inet_ntop(AF_INET, &addr, str, len);
 	return;
 }
 
@@ -217,7 +217,6 @@ void write_data_in_buffer()
 	if( node_hash->elements == 0 )
 		return;
 	memset( tmp, '\0', sizeof( tmp ) );
-	
 	hashit = NULL;
 	while ( NULL != ( hashit = hash_iterate( node_hash, hashit ) ) )
 	{
