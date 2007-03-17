@@ -152,18 +152,17 @@ void clean_hash()
 	while ( NULL != ( hashit = hash_iterate( node_hash, hashit ) ) )
 	{
 		node = (struct node *) hashit->bucket->data;
+		hash_remove_bucket( node_hash, hashit->bucket );
 		
 		neigh = node->neighbour;
 		while( NULL != neigh  )
 		{
 			neigh_delete = neigh;
-			if( neigh->next != NULL )
-				neigh = neigh->next;
+			neigh = neigh->next;
 			debugFree( neigh_delete, 1404 );
 		}
-		hash_remove( node_hash, node );
+		debugFree( node, 1406 );
 	}
-
 	return;
 }
 
