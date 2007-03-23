@@ -57,6 +57,7 @@ struct node {
 	unsigned char packet_count_average;
 	unsigned char last_seen;
 	struct neighbour *neighbour;
+	struct neighbour *is_neighbour;
 	pthread_mutex_t mutex;
 };
 
@@ -141,7 +142,7 @@ static int calc_packet_count_average(struct node *node)
 
 void clean_hash()
 {
-	struct neighbour *neigh, *neigh_delete;
+	struct neighbour *neigh, *neigh_delete, *is_neigh, *is_neigh_delete;
 	struct node *node;
 	struct hash_it_t *hashit;
 	
@@ -160,6 +161,13 @@ void clean_hash()
 			neigh_delete = neigh;
 			neigh = neigh->next;
 			debugFree( neigh_delete, 1404 );
+		}
+		is_neigh = node->is_neighbour;
+		while( NULL != is_neigh  )
+		{
+			is_neigh_delete = is_neigh;
+			is_neigh = is_neigh->next;
+			debugFree( is_neigh_delete, 1414 );
 		}
 		debugFree( node, 1410 );
 	}
@@ -205,6 +213,28 @@ static void add_neighbour_node(struct node *orig, unsigned char packet_count, st
 	return;
 }
 
+static void add_is_neighbour_node(struct node *node, struct neighbour **is_neigh)
+{		
+	struct neighbour *prev = NULL;
+	
+	while( (*is_neigh) != NULL)
+	{
+		if( (*is_neigh)->node == node)
+			return;	
+		prev = (*is_neigh);
+		is_neigh = &(*is_neigh)->next;
+	}
+		
+	(*is_neigh) = (struct neighbour*) debugMalloc( sizeof(struct neighbour), 413 );
+	memset( (*is_neigh), 0, sizeof( struct neighbour ) ); 
+	(*is_neigh)->node = node;
+	(*is_neigh)->packet_count = 0;
+	(*is_neigh)->next = NULL;
+	if(prev != NULL)
+		prev->next = (*is_neigh);
+	return;
+}
+
 void handle_node(unsigned int addr,unsigned int sender, unsigned char packet_count )
 {
 	struct node *src_node, *orig_node;
@@ -218,7 +248,7 @@ void handle_node(unsigned int addr,unsigned int sender, unsigned char packet_cou
 		orig_node->addr = addr;
 		orig_node->neighbour = NULL;
 		orig_node->packet_count_average = 0;
-		orig_node->last_seen = 50;
+		orig_node->last_seen = 10;
 
 		if(pthread_mutex_init(&orig_node->mutex, NULL) != 0)
 			exit_error( "can't create mutex.\n");
@@ -227,7 +257,7 @@ void handle_node(unsigned int addr,unsigned int sender, unsigned char packet_cou
 
 	} else {
 		pthread_mutex_lock(&orig_node->mutex);
-		orig_node->last_seen = 50;
+		orig_node->last_seen = 10;
 		pthread_mutex_unlock(&orig_node->mutex);
 	}
 
@@ -240,7 +270,7 @@ void handle_node(unsigned int addr,unsigned int sender, unsigned char packet_cou
 		src_node->addr = sender;
 		src_node->neighbour = NULL;
 		src_node->packet_count_average = 0;
-		src_node->last_seen = 50;
+		src_node->last_seen = 10;
 
 		if(pthread_mutex_init(&src_node->mutex, NULL) != 0)
 			exit_error( "can't create mutex.\n");
@@ -249,10 +279,11 @@ void handle_node(unsigned int addr,unsigned int sender, unsigned char packet_cou
 		
 	} else {
 		pthread_mutex_lock(&src_node->mutex);
-		src_node->last_seen = 50;
+		src_node->last_seen = 10;
 		pthread_mutex_unlock(&src_node->mutex);
 	}
 	add_neighbour_node( orig_node, packet_count, &src_node->neighbour );
+	add_is_neighbour_node( src_node, &orig_node->is_neighbour );
 	src_node->packet_count_average = calc_packet_count_average( src_node );
 	return;
 }
@@ -279,7 +310,7 @@ void write_data_in_buffer()
 		{
 			addr_to_string( node->addr, from_str, sizeof( from_str ) );
 			addr_to_string( neigh->node->addr, to_str, sizeof( to_str ) );
-			snprintf( tmp, sizeof( tmp ), "\"%s\" -> \"%s\"[label=\"%d\"]\n", from_str, to_str, ( int )neigh->packet_count );
+			snprintf( tmp, sizeof( tmp ), "\"%s\" -> \"%s\"[label=\"%.2f\"]\n", from_str, to_str, (float)( 64 / ( int )neigh->packet_count ) );
 			fillme->buffer = (char *)debugRealloc( fillme->buffer, strlen( tmp ) + strlen( fillme->buffer ) + 1, 408 );
 
 			strncat( fillme->buffer, tmp, strlen( tmp ) );
@@ -296,6 +327,9 @@ void *udp_server( void *srv_dev )
 	struct sockaddr_in server, client;
 	int sock, n, packet_count,i;
 	socklen_t len;
+	struct timeval tv;
+	fd_set wait_sockets;
+	
 	sd++;
 	sock = socket(PF_INET, SOCK_DGRAM,0 );
 	memset( &server, 0, sizeof (server));
@@ -338,16 +372,21 @@ void *udp_server( void *srv_dev )
 	{
 		int orig;
 		len = sizeof(client);
-
-		n = recvfrom(sock, recive_dgram, sizeof(recive_dgram), 0, (struct sockaddr*) &client, &len);
-		packet_count = n / PACKET_FIELDS;
-		for( i=0;i < packet_count; i++)
-		{
-			memmove(&orig,(unsigned int*)&recive_dgram[i*PACKET_FIELDS],4);
-			handle_node(orig,client.sin_addr.s_addr,(unsigned char)recive_dgram[i*PACKET_FIELDS+4]);
-
+		FD_ZERO(&wait_sockets);
+		FD_SET(sock, &wait_sockets);
+		tv.tv_sec = 1;
+		tv.tv_usec = 0;
+		if( select( sock + 1, &wait_sockets, NULL, NULL, &tv) > 0 ) {
+			n = recvfrom(sock, recive_dgram, sizeof(recive_dgram), 0, (struct sockaddr*) &client, &len);
+			packet_count = n / PACKET_FIELDS;
+			for( i=0;i < packet_count; i++)
+			{
+				memmove(&orig,(unsigned int*)&recive_dgram[i*PACKET_FIELDS],4);
+				handle_node(orig,client.sin_addr.s_addr,(unsigned char)recive_dgram[i*PACKET_FIELDS+4]);
+			}
 		}
 	}
+	
 	printf( "shutdown udp server.....");
 	close(sock);
 	clean_hash();
@@ -357,7 +396,7 @@ void *udp_server( void *srv_dev )
 	return( NULL );
 }
 
-static void *tcp_server( void *arg )
+void *tcp_server( void *arg )
 {
 	int con = *( ( int *) arg );
 	buffer_t *last_send = NULL;
@@ -445,6 +484,85 @@ void *master( void *arg )
 	return NULL;
 }
 
+void *cleaner( void *arg)
+{
+	struct neighbour *tmp, *rm, *rm_neigh, *tmp_neigh, *prev;
+	struct node *node, *tmp_node;
+	struct hash_it_t *hashit;
+	char str1[ADDR_STR_LEN];
+	
+	sd++;
+	while( !is_aborted() )
+	{
+		hashit = NULL;
+		while ( NULL != ( hashit = hash_iterate( node_hash, hashit ) ) )
+		{
+			node = (struct node *) hashit->bucket->data;
+			addr_to_string( node->addr, str1, sizeof (str1));
+			printf( "node %s....", str1);
+			if( node->last_seen > 0 )
+			{
+				pthread_mutex_lock(&node->mutex);
+				node->last_seen--;
+				pthread_mutex_unlock(&node->mutex);
+				printf("last_seen = %d\n",node->last_seen); 
+			} else {
+				printf("start delete\n");
+				tmp = node->is_neighbour;
+				
+				while( tmp != NULL )
+				{
+					char str1[ADDR_STR_LEN];
+					addr_to_string( tmp->node->addr, str1, sizeof(str1));
+					printf("is_neighbour %s\n", str1);
+					
+					rm = tmp;
+					tmp_node = tmp->node;
+					tmp_neigh = tmp_node->neighbour;
+					prev = NULL;
+					while( tmp_neigh != NULL )
+					{
+						addr_to_string( tmp_neigh->node->addr, str1, sizeof(str1));
+						printf("\tin is_neighbour %s %d\n", str1, (int) tmp_neigh->next);
+						rm_neigh = NULL;
+						
+						if( tmp_neigh->node == node )
+						{
+							printf( "\ttmp->node == node\n");
+							rm_neigh = tmp_neigh;
+							if( prev != NULL )
+								prev->next = tmp_neigh->next;
+						} else {
+							printf( "\ttmp->node != node\n");
+							prev = tmp_neigh;
+						}
+						
+						tmp_neigh = tmp_neigh->next;
+						
+						if( rm_neigh != NULL )
+						{
+							addr_to_string( rm_neigh->node->addr, str1, sizeof(str1));
+							printf( "\t\tremove %s\n", str1);
+							debugFree( rm_neigh, 1412 );
+							rm_neigh = NULL;
+						}
+					}					
+					tmp = tmp->next;
+					debugFree( rm, 1413 );
+					rm = NULL;
+				}
+				hash_remove_bucket( node_hash, hashit->bucket);
+				debugFree( node, 1414 );
+			}
+			sleep(2);
+		}
+	}
+	printf("shutdown cleaner....");
+	printf("ok\n");
+	sd--;
+	return NULL;
+}
+
 int main( int argc, char **argv )
 {
 	int sock, *clnt_socket;
@@ -461,7 +579,7 @@ int main( int argc, char **argv )
 	signal( SIGINT, handler );
 	signal( SIGTERM, handler );
 	
-	pthread_t udp_server_thread, tcp_server_thread, master_thread;
+	pthread_t udp_server_thread, tcp_server_thread, master_thread, cleaner_thread;
 
 	if(argc < 3)
 		exit_error( "Usage: vis <receive interface> <send interface>\n" );
@@ -472,6 +590,7 @@ int main( int argc, char **argv )
 
 	pthread_create( &udp_server_thread, NULL, &udp_server, argv[1] );
 	pthread_create( &master_thread, NULL, &master, NULL );
+	pthread_create( &cleaner_thread, NULL, &cleaner, NULL );
 
 	if( ( sock = socket( AF_INET, SOCK_STREAM, 0 ) ) < 0 )
 		exit_error( "socket() failed: %s\n", strerror( errno ) );
