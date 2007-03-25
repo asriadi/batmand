@@ -238,6 +238,16 @@ static void add_is_neighbour_node(struct node *node, struct neighbour **is_neigh
 void handle_node(unsigned int addr,unsigned int sender, unsigned char packet_count )
 {
 	struct node *src_node, *orig_node;
+	struct hashtable_t *swaphash;
+
+	if ( node_hash->elements * 4 > node_hash->size )
+	{
+		swaphash = hash_resize( node_hash, node_hash->size * 2 );
+
+		if ( swaphash == NULL )
+			exit_error("Couldn't resize hash table \n" );
+		node_hash = swaphash;
+	}
 	
 	/* the neighbour */
 	orig_node = (struct node *) hash_find( node_hash, &addr );
