@@ -94,7 +94,7 @@ extern char *gw2string[];
 
 struct packet
 {
-	uint8_t  flags;    /* 0xF0: UNIDIRECTIONAL link, 0x80: DIRECTLINK flag, ... */
+	uint8_t  flags;    /* 0x80: UNIDIRECTIONAL link, 0x40: DIRECTLINK flag, ... */
 	uint8_t  ttl;
 	uint8_t  orig[6];
 	uint16_t seqno;
