@@ -81,6 +81,8 @@ extern int32_t receive_max_sock;
 extern fd_set receive_wait_set;
 extern int32_t tap_sock;
 
+extern uint8_t unix_client;
+
 extern struct hashtable_t *orig_hash;
 
 extern struct list_head if_list;
@@ -118,7 +120,7 @@ struct neigh_node
 {
 	struct list_head list;
 	uint8_t  addr[6];
-	uint16_t packet_count;
+	uint8_t packet_count;
 	uint8_t  last_ttl;         /* ttl of last received packet */
 	uint32_t last_aware;            /* when last packet via this neighbour was received */
 	TYPE_OF_WORD seq_bits[ NUM_WORDS ];

@@ -378,7 +378,7 @@ void apply_init_args( int argc, char *argv[] ) {
 	struct in_addr tmp_ip_holder;
 	struct batman_if *batman_if;
 	struct debug_level_info *debug_level_info;
-	uint8_t found_args = 1, unix_client = 0, batch_mode = 0;
+	uint8_t found_args = 1, batch_mode = 0;
 	uint16_t min_mtu = 2000, tmp_mtu;
 	int8_t res;
 
@@ -1711,9 +1711,23 @@ void tap_write( int32_t tap_fd, unsigned char *buff, int16_t buff_len ) {
 
 void restore_and_exit() {
 
-	purge_orig( get_time() + ( 5 * TIMEOUT ) + orginator_interval );
+	if ( !unix_client ) {
 
-	restore_defaults();
+		/* remove tap interface first */
+		stop = 1;
+
+		if ( tap_sock ) {
+
+			tap_destroy( tap_sock );
+			tap_sock = 0;
+
+		}
+
+		purge_orig( get_time() + ( 5 * TIMEOUT ) + orginator_interval );
+
+		restore_defaults();
+
+	}
 
 	exit(EXIT_FAILURE);
 
@@ -1722,6 +1736,8 @@ void restore_and_exit() {
 
 
 void segmentation_fault( int32_t sig ) {
+
+	signal( SIGSEGV, SIG_DFL );
 
 	debug_output( 0, "Error - SIGSEGV received !\n" );
 

@@ -101,6 +101,8 @@ uint8_t my_hw_addr[6];
 
 unsigned char broadcastAddr[] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 
+uint8_t unix_client = 0;
+
 
 struct hashtable_t *orig_hash;
 
