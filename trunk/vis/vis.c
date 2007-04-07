@@ -56,6 +56,7 @@ struct node {
 	unsigned int addr;
 	unsigned char packet_count_average;
 	unsigned char last_seen;
+	unsigned char gw_class;
 	struct neighbour *neighbour;
 	struct neighbour *is_neighbour;
 	pthread_mutex_t mutex;
@@ -235,7 +236,7 @@ static void add_is_neighbour_node(struct node *node, struct neighbour **is_neigh
 	return;
 }
 
-void handle_node(unsigned int addr,unsigned int sender, unsigned char packet_count )
+void handle_node(unsigned int addr,unsigned int sender, unsigned char packet_count,unsigned char gw_class )
 {
 	struct node *src_node, *orig_node;
 	struct hashtable_t *swaphash;
@@ -281,7 +282,7 @@ void handle_node(unsigned int addr,unsigned int sender, unsigned char packet_cou
 		src_node->neighbour = NULL;
 		src_node->packet_count_average = 0;
 		src_node->last_seen = 10;
-
+		src_node->gw_class = gw_class;
 		if(pthread_mutex_init(&src_node->mutex, NULL) != 0)
 			exit_error( "can't create mutex.\n");
 
@@ -290,6 +291,7 @@ void handle_node(unsigned int addr,unsigned int sender, unsigned char packet_cou
 	} else {
 		pthread_mutex_lock(&src_node->mutex);
 		src_node->last_seen = 10;
+		src_node->gw_class = gw_class;
 		pthread_mutex_unlock(&src_node->mutex);
 	}
 	add_neighbour_node( orig_node, packet_count, &src_node->neighbour );
@@ -315,16 +317,22 @@ void write_data_in_buffer()
 	while ( NULL != ( hashit = hash_iterate( node_hash, hashit ) ) )
 	{
 		node = (struct node *) hashit->bucket->data;
-
+		addr_to_string( node->addr, from_str, sizeof( from_str ) );
 		for( neigh = node->neighbour; neigh != NULL; neigh = neigh->next )
 		{
-			addr_to_string( node->addr, from_str, sizeof( from_str ) );
 			addr_to_string( neigh->node->addr, to_str, sizeof( to_str ) );
 			snprintf( tmp, sizeof( tmp ), "\"%s\" -> \"%s\"[label=\"%.2f\"]\n", from_str, to_str, (float)( 64 / ( int )neigh->packet_count ) );
 			fillme->buffer = (char *)debugRealloc( fillme->buffer, strlen( tmp ) + strlen( fillme->buffer ) + 1, 408 );
 
 			strncat( fillme->buffer, tmp, strlen( tmp ) );
 		}
+		/*printf("gw_class %d\n",(unsigned int)node->gw_class);*/
+		if( node->gw_class != 0 ) {
+			snprintf( tmp, sizeof( tmp ), "\"%s\" -> \"0.0.0.0/0.0.0.0\"[label=\"HNA\"]\n", from_str );
+			fillme->buffer = (char *)debugRealloc( fillme->buffer, strlen( tmp ) + strlen( fillme->buffer ) + 1, 409 );
+			strncat( fillme->buffer, tmp, strlen( tmp ) );
+		}
+
 	}
 	return;
 }
@@ -388,11 +396,11 @@ void *udp_server( void *srv_dev )
 		tv.tv_usec = 0;
 		if( select( sock + 1, &wait_sockets, NULL, NULL, &tv) > 0 ) {
 			n = recvfrom(sock, recive_dgram, sizeof(recive_dgram), 0, (struct sockaddr*) &client, &len);
-			packet_count = n / PACKET_FIELDS;
+			packet_count = ( n - 1 ) / PACKET_FIELDS;
 			for( i=0;i < packet_count; i++)
 			{
 				memmove(&orig,(unsigned int*)&recive_dgram[i*PACKET_FIELDS],4);
-				handle_node(orig,client.sin_addr.s_addr,(unsigned char)recive_dgram[i*PACKET_FIELDS+4]);
+				handle_node(orig,client.sin_addr.s_addr,(unsigned char)recive_dgram[i*PACKET_FIELDS+4], (unsigned char)recive_dgram[ n - 1 ]);
 			}
 		}
 	}
@@ -509,22 +517,22 @@ void *cleaner( void *arg)
 		{
 			node = (struct node *) hashit->bucket->data;
 			addr_to_string( node->addr, str1, sizeof (str1));
-			printf( "node %s....", str1);
+			/*printf( "node %s....", str1);*/
 			if( node->last_seen > 0 )
 			{
 				pthread_mutex_lock(&node->mutex);
 				node->last_seen--;
 				pthread_mutex_unlock(&node->mutex);
-				printf("last_seen = %d\n",node->last_seen);
+				/*printf("last_seen = %d\n",node->last_seen);*/
 			} else {
-				printf("start delete\n");
+				/*printf("start delete\n");*/
 				tmp = node->is_neighbour;
 
 				while( tmp != NULL )
 				{
 					char str1[ADDR_STR_LEN];
 					addr_to_string( tmp->node->addr, str1, sizeof(str1));
-					printf("is_neighbour %s\n", str1);
+					/*printf("is_neighbour %s\n", str1);*/
 
 					rm = tmp;
 					tmp_node = tmp->node;
@@ -533,17 +541,17 @@ void *cleaner( void *arg)
 					while( tmp_neigh != NULL )
 					{
 						addr_to_string( tmp_neigh->node->addr, str1, sizeof(str1));
-						printf("\tin is_neighbour %s %d\n", str1, (int) tmp_neigh->next);
+						/*printf("\tin is_neighbour %s %d\n", str1, (int) tmp_neigh->next);*/
 						rm_neigh = NULL;
 
 						if( tmp_neigh->node == node )
 						{
-							printf( "\ttmp->node == node\n");
+							/*printf( "\ttmp->node == node\n");*/
 							rm_neigh = tmp_neigh;
 							if( prev != NULL )
 								prev->next = tmp_neigh->next;
 						} else {
-							printf( "\ttmp->node != node\n");
+							/*printf( "\ttmp->node != node\n");*/
 							prev = tmp_neigh;
 						}
 
@@ -552,7 +560,7 @@ void *cleaner( void *arg)
 						if( rm_neigh != NULL )
 						{
 							addr_to_string( rm_neigh->node->addr, str1, sizeof(str1));
-							printf( "\t\tremove %s\n", str1);
+							/*printf( "\t\tremove %s\n", str1);*/
 							debugFree( rm_neigh, 1412 );
 							rm_neigh = NULL;
 						}
