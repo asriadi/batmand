@@ -37,6 +37,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <signal.h>
+#include <getopt.h>
 #include "hash.h"
 #include "allocate.h"
 
@@ -45,7 +46,7 @@
 #define S3D_PORT 2004
 #define ADDR_STR_LEN 16
 #define PACKET_FIELDS 5
-
+#define VERSION "0.1 alpha"
 struct neighbour {
 	struct node *node;
 	unsigned char packet_count;
@@ -385,7 +386,7 @@ void *udp_server( void *srv_dev )
 		exit_error( "Error by bind => %s\n", strerror( errno ) );
 	}
 
-	printf( "receiver listen on ip %s port %d\n", str1, ntohs( server.sin_port ) );
+	printf( "listen for b.a.t.m.a.n. telegrams on ip %s port %d\n", str1, ntohs( server.sin_port ) );
 	while( !is_aborted() )
 	{
 		int orig;
@@ -581,6 +582,15 @@ void *cleaner( void *arg)
 	return NULL;
 }
 
+int print_usage() {
+	printf("\nVisualisation Server %s\n", VERSION);
+	printf("Usage: vis <interface for b.a.t.m.a.n. telegrams> <interface for meshs3d connections>\n");
+	printf("\t-v Version\n");
+	printf("\t-h help\n\n");
+	printf("Olsrs3d / Meshs3d is a application to visualize a mesh network.\nIt is a part of s3d, look at s3d.berlios.de\n\n");
+	exit(0);
+}
+
 int main( int argc, char **argv )
 {
 	int sock, *clnt_socket;
@@ -591,6 +601,22 @@ int main( int argc, char **argv )
 
 	struct timeval tv;
 	fd_set wait_sockets;
+	int optchar;
+
+	while ( ( optchar = getopt ( argc, argv, "hv" ) ) != -1 ) {
+		switch( optchar ) {
+			case 'h':
+				print_usage();
+				break;
+			case 'v':
+				printf("Visualisation Server %s\n", VERSION);
+				exit(0);
+				break;
+		}
+	}
+
+// 	for (index = optind; index < argc; index++)
+//          printf ("Non-option argument %s %d %d\n", argv[index],index,argc);
 
 	stop = 0;
 	sd = 0;
@@ -600,7 +626,7 @@ int main( int argc, char **argv )
 	pthread_t udp_server_thread, tcp_server_thread, master_thread, cleaner_thread;
 
 	if(argc < 3)
-		exit_error( "Usage: vis <receive interface> <send interface>\n" );
+		print_usage();
 
 	/* init hashtable for node struct */
 	if ( NULL == ( node_hash = hash_new( 1600, orig_comp, orig_choose ) ) )
@@ -643,8 +669,8 @@ int main( int argc, char **argv )
 		close( sock );
 		exit_error( "listen() failed: %s\n", strerror( errno ) );
 	}
-
-	printf("sender listen on ip %s port %d\n", str1, ntohs( sa.sin_port ) );
+	printf("shutdown with Ctrl-c\n");
+	printf("wait for s3d connections on ip %s port %d\n", str1, ntohs( sa.sin_port ) );
 
 	while( !is_aborted() )
 	{
