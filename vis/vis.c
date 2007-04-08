@@ -587,7 +587,7 @@ int print_usage() {
 	printf("Usage: vis <interface for b.a.t.m.a.n. telegrams> <interface for meshs3d connections>\n");
 	printf("\t-v Version\n");
 	printf("\t-h help\n\n");
-	printf("Olsrs3d / Meshs3d is a application to visualize a mesh network.\nIt is a part of s3d, look at s3d.berlios.de\n\n");
+	printf("Olsrs3d / Meshs3d is an application to visualize a mesh network.\nIt is a part of s3d, look at s3d.berlios.de\n\n");
 	exit(0);
 }
 
