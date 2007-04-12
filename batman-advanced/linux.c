@@ -182,7 +182,7 @@ int8_t tap_probe() {
 
 int32_t tap_create( int16_t mtu ) {
 
-	int32_t fd, tmp_fd;
+	int32_t fd, tmp_fd, tap_opts;
 	struct ifreq ifr_tap, ifr_if;
 
 	/* set up tunnel device */
@@ -244,6 +244,10 @@ int32_t tap_create( int16_t mtu ) {
 		return -1;
 
 	}
+
+	/* make tap interface non blocking */
+	tap_opts = fnctl( fd, F_GETFL, 0 );
+	fnctl( fd, F_SETFL, tap_opts | O_NONBLOCK );
 
 	/* set MTU of tap interface: real MTU - 28 */
 	if ( mtu < 100 ) {
