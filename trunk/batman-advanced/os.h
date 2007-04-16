@@ -36,6 +36,9 @@ int32_t tap_create( int16_t mtu );
 void tap_destroy( int32_t tap_fd );
 void tap_write( int32_t tap_fd, unsigned char *buff, int16_t buff_len );
 
+void del_default_route();
+int8_t add_default_route();
+
 int8_t set_hw_addr( char *dev, uint8_t *hw_addr );
 
 int8_t receive_packet( unsigned char *packet_buff, int16_t packet_buff_len, int16_t *pay_buff_len, uint8_t *neigh, uint32_t timeout, struct batman_if **if_incoming );
