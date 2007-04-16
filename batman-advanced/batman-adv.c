@@ -416,6 +416,25 @@ int isBidirectionalNeigh( struct orig_node *orig_neigh_node, struct batman_if *i
 
 }
 
+int isMyMac( uint8_t *addr ) {
+
+	struct list_head *if_pos;
+	struct batman_if *batman_if;
+
+
+	list_for_each( if_pos, &if_list ) {
+
+		batman_if = list_entry(if_pos, struct batman_if, list);
+
+		if ( compare_orig( batman_if->hw_addr, addr ) == 0 )
+			return 1;
+
+	}
+
+	return 0;
+
+}
+
 
 
 // void send_vis_packet()
@@ -475,6 +494,8 @@ int8_t batman() {
 		batman_if->out.seqno = 1;
 		batman_if->out.gwflags = gateway_class;
 		batman_if->out.version = COMPAT_VERSION;
+
+		batman_if->bcast_seqno = 1;
 
 		schedule_own_packet( batman_if );
 

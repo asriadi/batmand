@@ -246,8 +246,8 @@ int32_t tap_create( int16_t mtu ) {
 	}
 
 	/* make tap interface non blocking */
-	tap_opts = fnctl( fd, F_GETFL, 0 );
-	fnctl( fd, F_SETFL, tap_opts | O_NONBLOCK );
+	tap_opts = fcntl( fd, F_GETFL, 0 );
+	fcntl( fd, F_SETFL, tap_opts | O_NONBLOCK );
 
 	/* set MTU of tap interface: real MTU - 28 */
 	if ( mtu < 100 ) {
