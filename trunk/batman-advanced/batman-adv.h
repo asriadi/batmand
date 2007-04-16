@@ -111,7 +111,9 @@ struct orig_node                 /* structure for orig_list maintaining nodes of
 	struct batman_if *batman_if;
 	uint32_t *bidirect_link;    /* if node is a bidrectional neighbour, when my originator packet was broadcasted (replied) by this node and received by me */
 	uint32_t last_aware;        /* when last packet from this node was received */
-	uint16_t last_seqno;        /* last and best known squence number */
+	uint16_t last_seqno;        /* last and best known sequence number */
+	uint16_t last_bcast_seqno;  /* last broadcast sequence number received by this host */
+	TYPE_OF_WORD seq_bits[ NUM_WORDS ];
 	struct list_head neigh_list;
 	uint8_t  gwflags;      /* flags related to gateway functions: gateway class */
 } __attribute((packed));
@@ -153,6 +155,7 @@ struct batman_if
 	int32_t raw_sock;
 	int16_t if_num;
 	uint8_t  hw_addr[6];
+	uint16_t bcast_seqno;
 	pthread_t listen_thread_id;
 	struct packet out;
 	struct list_head client_list;
@@ -206,9 +209,8 @@ struct curr_gw_data {
 int8_t batman( void );
 void   usage( void );
 void   verbose_usage( void );
-void   del_default_route();
-int8_t add_default_route();
 void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node );
 void update_gw_list( struct orig_node *orig_node, uint8_t new_gwflags );
+int isMyMac( uint8_t *addr );
 
 #endif
