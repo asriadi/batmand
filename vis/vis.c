@@ -396,7 +396,6 @@ void *udp_server( void *srv_dev )
 		tv.tv_sec = 1;
 		tv.tv_usec = 0;
 		if( select( sock + 1, &wait_sockets, NULL, NULL, &tv) > 0 ) {
-			printf("packet received\n");
 			n = recvfrom(sock, recive_dgram, sizeof(recive_dgram), 0, (struct sockaddr*) &client, &len);
 			packet_count = ( n - 1 ) / PACKET_FIELDS;
 			for( i=0;i < packet_count; i++)
