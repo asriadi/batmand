@@ -42,7 +42,7 @@
 #include "allocate.h"
 
 #define MAXCHAR 4096
-#define PORT 1967
+#define PORT 1968
 #define S3D_PORT 2004
 #define ADDR_STR_LEN 16
 #define PACKET_FIELDS 5
@@ -396,6 +396,7 @@ void *udp_server( void *srv_dev )
 		tv.tv_sec = 1;
 		tv.tv_usec = 0;
 		if( select( sock + 1, &wait_sockets, NULL, NULL, &tv) > 0 ) {
+			printf("packet received\n");
 			n = recvfrom(sock, recive_dgram, sizeof(recive_dgram), 0, (struct sockaddr*) &client, &len);
 			packet_count = ( n - 1 ) / PACKET_FIELDS;
 			for( i=0;i < packet_count; i++)
