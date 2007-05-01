@@ -39,7 +39,7 @@
 #define DIRECTLINK 0x40
 #define ADDR_STR_LEN 16
 
-#define UNIX_PATH "/var/run/batmand.socket"
+#define UNIX_PATH "/var/run/batmand-adv.socket"
 
 #define ETH_P_BATMAN  0x0842
 #define ETH_BATMAN    0x10
@@ -56,6 +56,7 @@
 
 #define JITTER 100
 #define TTL 50             /* Time To Live of broadcast messages */
+#define BIDIRECT_TIMEOUT 2
 #define TIMEOUT 60000      /* sliding window size of received orginator messages in ms */
 #define SEQ_RANGE 64       /* sliding packet range of received orginator messages in squence numbers (should be a multiple of our word size) */
 
@@ -109,7 +110,7 @@ struct orig_node                 /* structure for orig_list maintaining nodes of
 	uint8_t  orig[6];			/* important, must be first entry! (for faster hash comparison) */
 	struct neigh_node *router;
 	struct batman_if *batman_if;
-	uint32_t *bidirect_link;    /* if node is a bidrectional neighbour, when my originator packet was broadcasted (replied) by this node and received by me */
+	uint16_t *bidirect_link;    /* if node is a bidrectional neighbour, when my originator packet was broadcasted (replied) by this node and received by me */
 	uint32_t last_aware;        /* when last packet from this node was received */
 	uint16_t last_seqno;        /* last and best known sequence number */
 	uint16_t last_bcast_seqno;  /* last broadcast sequence number received by this host */
