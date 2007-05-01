@@ -150,7 +150,7 @@ void *unix_listen( void *arg ) {
 	struct list_head *unix_pos, *unix_pos_tmp, *debug_pos, *debug_pos_tmp;
 	struct timeval tv;
 	struct sockaddr_un sun_addr;
-	int32_t status, max_sock;
+	int32_t status, max_sock, unix_opts;
 	int8_t res;
 	unsigned char buff[10];
 	fd_set wait_sockets, tmp_wait_sockets;
@@ -256,6 +256,10 @@ void *unix_listen( void *arg ) {
 									debug_clients.clients_num[(int)buff[2] - '1']++;
 
 									unix_client->debug_level = (int)buff[2];
+
+									/* make unix socket non blocking */
+									unix_opts = fcntl( debug_level_info->fd, F_GETFL, 0 );
+									fcntl( debug_level_info->fd, F_SETFL, unix_opts | O_NONBLOCK );
 
 									if ( pthread_mutex_unlock( (pthread_mutex_t *)debug_clients.mutex[(int)buff[2] - '1'] ) != 0 )
 										debug_output( 0, "Error - could not unlock mutex (unix_listen => 2): %s \n", strerror( errno ) );
@@ -1215,8 +1219,6 @@ void restore_defaults() {
 
 	if ( unix_if.listen_thread_id != 0 )
 		pthread_join( unix_if.listen_thread_id, NULL );
-
-	unlink( UNIX_PATH );
 
 	if ( debug_level == 0 )
 		closelog();
