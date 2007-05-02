@@ -19,5 +19,5 @@
 
 
 void schedule_own_packet( struct batman_if *batman_if );
-void schedule_forward_packet( struct packet *in, uint8_t unidirectional, uint8_t directlink, struct batman_if *if_outgoing );
+void schedule_forward_packet( struct batman_packet *in, uint8_t unidirectional, uint8_t directlink, struct batman_if *if_outgoing );
 void send_outstanding_packets();

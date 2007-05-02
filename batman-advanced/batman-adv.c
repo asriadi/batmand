@@ -498,6 +498,7 @@ int8_t batman() {
 		batman_if = list_entry( if_pos, struct batman_if, list );
 
 		memcpy( batman_if->out.orig, batman_if->hw_addr, 6 );
+		batman_if->out.packet_type = 0;
 		batman_if->out.flags = 0x00;
 		batman_if->out.ttl = ( batman_if->if_num == 0 ? TTL : 2 );
 		batman_if->out.seqno = 1;
@@ -528,7 +529,7 @@ int8_t batman() {
 
 		if ( res > 0 ) {
 
-			debug_output( 4, "Received BATMAN packet from %s (originator %s, seqno %d, TTL %d) \n", addr_to_string( neigh ), addr_to_string( ((struct packet *)&in)->orig ), ((struct packet *)&in)->seqno, ((struct packet *)&in)->ttl );
+			debug_output( 4, "Received BATMAN packet from %s (originator %s, seqno %d, TTL %d) \n", addr_to_string( neigh ), addr_to_string( ((struct batman_packet *)&in)->orig ), ((struct batman_packet *)&in)->seqno, ((struct batman_packet *)&in)->ttl );
 
 			is_my_addr = is_my_orig = is_broadcast = is_duplicate = is_bidirectional = is_bntog = forward_duplicate_packet = 0;
 
@@ -539,7 +540,7 @@ int8_t batman() {
 				if ( compare_orig( neigh, batman_if->hw_addr ) == 0 )
 					is_my_addr = 1;
 
-				if ( compare_orig( ((struct packet *)&in)->orig, batman_if->hw_addr ) == 0 )
+				if ( compare_orig( ((struct batman_packet *)&in)->orig, batman_if->hw_addr ) == 0 )
 					is_my_orig = 1;
 
 				if ( compare_orig( neigh, broadcastAddr ) == 0 )
@@ -547,13 +548,13 @@ int8_t batman() {
 
 			}
 
-			if ( ((struct packet *)&in)->gwflags != 0 )
-				debug_output( 4, "Is an internet gateway (class %i) \n", ((struct packet *)&in)->gwflags );
+			if ( ((struct batman_packet *)&in)->gwflags != 0 )
+				debug_output( 4, "Is an internet gateway (class %i) \n", ((struct batman_packet *)&in)->gwflags );
 
 
-			if ( ((struct packet *)&in)->version != COMPAT_VERSION ) {
+			if ( ((struct batman_packet *)&in)->version != COMPAT_VERSION ) {
 
-				debug_output( 4, "Drop packet: incompatible batman version (%i) \n", ((struct packet *)&in)->version );
+				debug_output( 4, "Drop packet: incompatible batman version (%i) \n", ((struct batman_packet *)&in)->version );
 
 			} else if ( is_my_addr ) {
 
@@ -571,9 +572,9 @@ int8_t batman() {
 
 				/* neighbour has to indicate direct link and it has to come via the corresponding interface */
 				/* if received seqno bigger than last received seqno save new seqno for bidirectional check */
-				if ( ( ((struct packet *)&in)->flags & DIRECTLINK ) && ( compare_orig( if_incoming->hw_addr, ((struct packet *)&in)->orig ) == 0 ) && ( ((struct packet *)&in)->seqno - orig_neigh_node->bidirect_link[if_incoming->if_num] < SEQ_RANGE ) ) {
+				if ( ( ((struct batman_packet *)&in)->flags & DIRECTLINK ) && ( compare_orig( if_incoming->hw_addr, ((struct batman_packet *)&in)->orig ) == 0 ) && ( ((struct batman_packet *)&in)->seqno - orig_neigh_node->bidirect_link[if_incoming->if_num] < SEQ_RANGE ) ) {
 
-					orig_neigh_node->bidirect_link[if_incoming->if_num] = ((struct packet *)&in)->seqno;
+					orig_neigh_node->bidirect_link[if_incoming->if_num] = ((struct batman_packet *)&in)->seqno;
 
 					debug_output( 4, "received my own packet from neighbour indicating bidirectional link, updating bidirect_link seqno \n");
 
@@ -581,33 +582,33 @@ int8_t batman() {
 
 				debug_output( 4, "Drop packet: originator packet from myself (via neighbour) \n" );
 
-			} else if ( ((struct packet *)&in)->flags & UNIDIRECTIONAL ) {
+			} else if ( ((struct batman_packet *)&in)->flags & UNIDIRECTIONAL ) {
 
 				debug_output( 4, "Drop packet: originator packet with unidirectional flag \n" );
 
 			} else {
 
-				orig_node = get_orig_node( ((struct packet *)&in)->orig );
+				orig_node = get_orig_node( ((struct batman_packet *)&in)->orig );
 				orig_node->last_aware = get_time();
 
 				orig_neigh_node = get_orig_node( neigh );
 
-				is_duplicate = isDuplicate( orig_node, ((struct packet *)&in)->seqno );
+				is_duplicate = isDuplicate( orig_node, ((struct batman_packet *)&in)->seqno );
 				is_bidirectional = isBidirectionalNeigh( orig_neigh_node, if_incoming );
 				is_bntog = isBntog( neigh, orig_node );
 
 				/* update ranking */
 				if ( ( is_bidirectional ) && ( !is_duplicate ) )
-					update_orig( orig_node, (struct packet *)&in, neigh, if_incoming );
+					update_orig( orig_node, (struct batman_packet *)&in, neigh, if_incoming );
 
 				/* is single hop (direct) neighbour */
-				if ( compare_orig( ((struct packet *)&in)->orig, neigh ) == 0 ) {
+				if ( compare_orig( ((struct batman_packet *)&in)->orig, neigh ) == 0 ) {
 
 					/* it is our best route towards him */
 					if ( is_bidirectional && is_bntog ) {
 
 						/* mark direct link on incoming interface */
-						schedule_forward_packet( (struct packet *)&in, 0, 1, if_incoming );
+						schedule_forward_packet( (struct batman_packet *)&in, 0, 1, if_incoming );
 
 						debug_output( 4, "Forward packet: rebroadcast neighbour packet with direct link flag \n" );
 
@@ -615,7 +616,7 @@ int8_t batman() {
 					/* if a bidirectional neighbour sends us a packet - retransmit it with unidirectional flag if it is not our best link to it in order to prevent routing problems */
 					} else if ( ( is_bidirectional && !is_bntog ) || ( !is_bidirectional ) ) {
 
-						schedule_forward_packet( (struct packet *)&in, 1, 1, if_incoming );
+						schedule_forward_packet( (struct batman_packet *)&in, 1, 1, if_incoming );
 
 						debug_output( 4, "Forward packet: rebroadcast neighbour packet with direct link and unidirectional flag \n" );
 
@@ -628,7 +629,7 @@ int8_t batman() {
 
 						if ( !is_duplicate ) {
 
-							schedule_forward_packet( (struct packet *)&in, 0, 0, if_incoming );
+							schedule_forward_packet( (struct batman_packet *)&in, 0, 0, if_incoming );
 
 							debug_output( 4, "Forward packet: rebroadcast orginator packet \n" );
 
@@ -640,7 +641,7 @@ int8_t batman() {
 
 								if ( ( compare_orig( neigh_node->addr, neigh ) == 0 ) && ( neigh_node->if_incoming == if_incoming ) ) {
 
-									if ( neigh_node->last_ttl == ((struct packet *)&in)->ttl )
+									if ( neigh_node->last_ttl == ((struct batman_packet *)&in)->ttl )
 										forward_duplicate_packet = 1;
 
 									break;
@@ -652,7 +653,7 @@ int8_t batman() {
 							/* we are forwarding duplicate o-packets if they come via our best neighbour and ttl is valid */
 							if ( forward_duplicate_packet ) {
 
-								schedule_forward_packet( (struct packet *)&in, 0, 0, if_incoming );
+								schedule_forward_packet( (struct batman_packet *)&in, 0, 0, if_incoming );
 
 								debug_output( 4, "Forward packet: duplicate packet received via best neighbour with best ttl \n" );
 
