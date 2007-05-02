@@ -95,14 +95,31 @@ extern struct debug_clients debug_clients;
 
 extern char *gw2string[];
 
-struct packet
+struct batman_packet
 {
+	uint8_t  packet_type;
 	uint8_t  flags;    /* 0x80: UNIDIRECTIONAL link, 0x40: DIRECTLINK flag, ... */
 	uint8_t  ttl;
 	uint8_t  orig[6];
 	uint16_t seqno;
 	uint8_t  gwflags;  /* flags related to gateway functions: gateway class */
 	uint8_t  version;  /* batman version field */
+} __attribute__((packed));
+
+struct unicast_packet
+{
+	uint8_t  packet_type;
+	uint8_t  ttl;
+	unsigned char *payload;
+} __attribute__((packed));
+
+struct bcast_packet
+{
+	uint8_t  packet_type;
+	uint8_t  padding;
+	uint8_t  orig[6];
+	uint16_t seqno;
+	unsigned char *payload;
 } __attribute__((packed));
 
 struct orig_node                 /* structure for orig_list maintaining nodes of mesh */
@@ -158,7 +175,7 @@ struct batman_if
 	uint8_t  hw_addr[6];
 	uint16_t bcast_seqno;
 	pthread_t listen_thread_id;
-	struct packet out;
+	struct batman_packet out;
 	struct list_head client_list;
 };
 

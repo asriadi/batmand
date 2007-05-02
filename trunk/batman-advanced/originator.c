@@ -112,7 +112,7 @@ struct orig_node *get_orig_node( uint8_t *addr ) {
 
 
 
-void update_orig( struct orig_node *orig_node, struct packet *in, uint8_t *neigh, struct batman_if *if_incoming ) {
+void update_orig( struct orig_node *orig_node, struct batman_packet *in, uint8_t *neigh, struct batman_if *if_incoming ) {
 
 	struct list_head *neigh_pos;
 	struct neigh_node *neigh_node = NULL, *tmp_neigh_node, *best_neigh_node;
@@ -372,7 +372,7 @@ void debug_orig() {
 
 			list_for_each( forw_pos, &forw_list ) {
 				forw_node = list_entry( forw_pos, struct forw_node, list );
-				debug_output( 4, "    %s at %u \n", addr_to_string( ((struct packet *)forw_node->pack_buff)->orig ), forw_node->send_time );
+				debug_output( 4, "    %s at %u \n", addr_to_string( ((struct batman_packet *)forw_node->pack_buff)->orig ), forw_node->send_time );
 			}
 
 			debug_output( 4, "Originator list \n" );
