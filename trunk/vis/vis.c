@@ -19,7 +19,7 @@
  * 02110-1301, USA
  *
  */
-
+#include <fcntl.h>
 #include <net/if.h>
 #include <arpa/inet.h>
 #include <sys/ioctl.h>
@@ -47,6 +47,12 @@
 #define ADDR_STR_LEN 16
 #define PACKET_FIELDS 5
 #define VERSION "0.1 alpha"
+
+struct thread_data {
+	int socket;
+	char ip[ADDR_STR_LEN];
+};
+
 struct neighbour {
 	struct node *node;
 	unsigned char packet_count;
@@ -81,7 +87,14 @@ static int8_t stop, sd;
 struct hashtable_t *node_hash;
 
 void handler( int32_t sig ) {
-	stop = 1;
+	switch( sig ) {
+		case SIGINT:
+		case SIGTERM:
+			stop =1;
+			break;
+		default:
+			break;
+	}
 }
 
 int8_t is_aborted() {
@@ -417,10 +430,11 @@ void *udp_server( void *srv_dev )
 
 void *tcp_server( void *arg )
 {
-	int con = *( ( int *) arg );
+	struct thread_data t = *((struct thread_data*) arg);
 	buffer_t *last_send = NULL;
+	ssize_t ret;
 	sd++;
-	debugFree( arg, 1401 );
+	printf("client %s connected on port %d\n",t.ip,S3D_PORT );
 
 	while( !is_aborted() )
 	{
@@ -429,13 +443,14 @@ void *tcp_server( void *arg )
 			pthread_mutex_lock( &current->mutex );
 			current->counter = current->counter == -1 ? 1 : current->counter + 1;
 			pthread_mutex_unlock( &current->mutex );
-			if( write( con, current->buffer, strlen( current->buffer ) ) != strlen( current->buffer ) )
+			ret = write( t.socket, current->buffer, strlen( current->buffer ) );
+			if( ret != strlen( current->buffer ) )
 			{
-				close( con );
+				close( t.socket );
 				pthread_mutex_lock( &current->mutex );
 				current->counter--;
 				pthread_mutex_unlock( &current->mutex );
-				return( NULL );
+				break;
 			}
 			pthread_mutex_lock( &current->mutex );
 			current->counter--;
@@ -444,8 +459,8 @@ void *tcp_server( void *arg )
 		}
 		sleep(5);
 	}
-	printf( "shutdown tcp server....");
-	close( con );
+	printf( "shutdown tcp connection to %s....",t.ip);
+	close( t.socket );
 	printf( "ok\n");
 	sd--;
 	return( NULL );
@@ -593,12 +608,12 @@ int print_usage() {
 
 int main( int argc, char **argv )
 {
-	int sock, *clnt_socket;
+	int sock;
 	struct sockaddr_in sa, adr_client;
 	struct ifreq int_req;
-	char str1[ADDR_STR_LEN], client_ip[ADDR_STR_LEN];
+	char str1[ADDR_STR_LEN];
 	socklen_t len_inet;
-
+	struct thread_data t_data;
 	struct timeval tv;
 	fd_set wait_sockets;
 	int optchar;
@@ -615,13 +630,11 @@ int main( int argc, char **argv )
 		}
 	}
 
-// 	for (index = optind; index < argc; index++)
-//          printf ("Non-option argument %s %d %d\n", argv[index],index,argc);
-
 	stop = 0;
 	sd = 0;
 	signal( SIGINT, handler );
 	signal( SIGTERM, handler );
+	signal( SIGPIPE,handler );
 
 	pthread_t udp_server_thread, tcp_server_thread, master_thread, cleaner_thread;
 
@@ -679,13 +692,13 @@ int main( int argc, char **argv )
 		tv.tv_sec = 1;
 		tv.tv_usec = 0;
 		len_inet = sizeof( adr_client );
+
+		
 		if( select( sock + 1, &wait_sockets, NULL, NULL, &tv) > 0 ) {
-			clnt_socket = debugMalloc( sizeof( int ), 406 );
-			*clnt_socket = accept( sock, (struct sockaddr*)&adr_client, &len_inet );
-			pthread_create( &tcp_server_thread, NULL, &tcp_server, clnt_socket );
+			t_data.socket = accept( sock, (struct sockaddr*)&adr_client, &len_inet );
+			addr_to_string( adr_client.sin_addr.s_addr, t_data.ip, sizeof( t_data.ip ) );
+			pthread_create( &tcp_server_thread, NULL, &tcp_server, &t_data );
 			pthread_detach( tcp_server_thread );
-			addr_to_string( adr_client.sin_addr.s_addr, client_ip, sizeof( client_ip ) );
-			printf("sender: client %s connected\n",client_ip);
 		}
 	}
 	while( sd ) {}
