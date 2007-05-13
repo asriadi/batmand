@@ -31,18 +31,36 @@ LDFLAGS =		-lpthread
 UNAME=$(shell uname)
 
 ifeq ($(UNAME),Linux)
-OS_OBJ=	originator.o schedule.o posix-specific.o posix.o linux.o allocate.o bitarray.o hash.o
+OS_C=	 linux.c
 endif
 
-LINUX_SRC_C= batman-adv.c originator.c schedule.c posix-specific.c posix.c linux.c allocate.c bitarray.c hash.c
-LINUX_SRC_H= batman-adv.h originator.h schedule.h list.h os.h allocate.h hash.h
+ifeq ($(UNAME),Darwin)
+OS_C=	bsd.c
+endif
 
-all:	batmand-adv
+ifeq ($(UNAME),FreeBSD)
+OS_C=	bsd.c
+endif
+
+ifeq ($(UNAME),OpenBSD)
+OS_C=	bsd.c
+endif
+
+LINUX_SRC_C= batman-adv.c originator.c schedule.c posix-specific.c posix.c allocate.c bitarray.c hash.c $(OS_C)
+LINUX_SRC_H= batman-adv.h originator.h schedule.h list-batman.h os.h allocate.h bitarray.h hash.h
+
+
+REVISION=		$(shell svn info | grep Revision | sed -e '1p' -n | awk '{print $$2}')
+REVISION_VERSION=	\"\ rv$(REVISION)\"
+
+
+all:		batmand-adv
+
+
+batmand-adv:	$(LINUX_SRC_C) $(LINUX_SRC_H) Makefile
+		$(CC) $(CFLAGS) -DDEBUG_MALLOC -DMEMORY_USAGE -o $@ $(LINUX_SRC_C) $(LDFLAGS)
 
 mips:	batmand-mips-static batmand-mips-dynamic
-
-batmand-adv:	batman-adv.o $(OS_OBJ) Makefile batman-adv.h
-	$(CC) -o $@ batman-adv.o $(OS_OBJ) $(LDFLAGS)
 
 batmand-mips-static:	$(LINUX_SRC_C) $(LINUX_SRC_H) Makefile
 	$(CC_MIPS) $(CFLAGS_MIPS) -o $@ $(LINUX_SRC_C) $(LDFLAGS_MIPS) -static

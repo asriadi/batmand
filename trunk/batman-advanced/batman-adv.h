@@ -27,13 +27,13 @@
 #include <sys/un.h>
 #include <netinet/in.h>
 #include <netinet/ether.h>      /* ether_ntoa() */
-#include "list.h"
+#include "list-batman.h"
 #include "bitarray.h"
 #include "hash.h"
 #include "allocate.h"
 
 
-#define SOURCE_VERSION "0.1 pre-alpha"
+#define SOURCE_VERSION "III 0.1 pre-alpha"
 #define COMPAT_VERSION 1
 #define UNIDIRECTIONAL 0x80
 #define DIRECTLINK 0x40
@@ -47,6 +47,24 @@
 #define ETH_UNICAST   0x30
 
 
+
+/***
+ *
+ * Things you should enable via your make file:
+ *
+ * DEBUG_MALLOC   enables malloc() / free() wrapper functions to detect memory leaks / buffer overflows / etc
+ * MEMORY_USAGE   allows you to monitor the internal memory usage (needs DEBUG_MALLOC to work)
+ * PROFILE_DATA   allows you to monitor the cpu usage for each function
+ *
+ ***/
+
+
+#ifndef REVISION_VERSION
+#define REVISION_VERSION "0"
+#endif
+
+
+
 /*
  * No configuration files or fancy command line switches yet
  * To experiment with B.A.T.M.A.N. settings change them here
@@ -58,7 +76,7 @@
 #define TTL 50             /* Time To Live of broadcast messages */
 #define BIDIRECT_TIMEOUT 2
 #define TIMEOUT 60000      /* sliding window size of received orginator messages in ms */
-#define SEQ_RANGE 64       /* sliding packet range of received orginator messages in squence numbers (should be a multiple of our word size) */
+#define SEQ_RANGE 128      /* sliding packet range of received orginator messages in squence numbers (should be a multiple of our word size) */
 
 
 
@@ -69,6 +87,7 @@
 extern unsigned char broadcastAddr[];
 
 extern uint8_t debug_level;
+extern uint8_t debug_level_max;
 extern uint8_t gateway_class;
 extern uint8_t routing_class;
 extern int16_t orginator_interval;
@@ -86,9 +105,9 @@ extern uint8_t unix_client;
 
 extern struct hashtable_t *orig_hash;
 
-extern struct list_head if_list;
-extern struct list_head gw_list;
-extern struct list_head forw_list;
+extern struct list_head_first if_list;
+extern struct list_head_first gw_list;
+extern struct list_head_first forw_list;
 extern struct vis_if vis_if;
 extern struct unix_if unix_if;
 extern struct debug_clients debug_clients;
@@ -132,7 +151,7 @@ struct orig_node                 /* structure for orig_list maintaining nodes of
 	uint16_t last_seqno;        /* last and best known sequence number */
 	uint16_t last_bcast_seqno;  /* last broadcast sequence number received by this host */
 	TYPE_OF_WORD seq_bits[ NUM_WORDS ];
-	struct list_head neigh_list;
+	struct list_head_first neigh_list;
 	uint8_t  gwflags;      /* flags related to gateway functions: gateway class */
 } __attribute((packed));
 
@@ -176,7 +195,7 @@ struct batman_if
 	uint16_t bcast_seqno;
 	pthread_t listen_thread_id;
 	struct batman_packet out;
-	struct list_head client_list;
+	struct list_head_first client_list;
 };
 
 // struct gw_client
@@ -197,7 +216,7 @@ struct unix_if {
 	int32_t unix_sock;
 	pthread_t listen_thread_id;
 	struct sockaddr_un addr;
-	struct list_head client_list;
+	struct list_head_first client_list;
 };
 
 struct unix_client {
@@ -207,9 +226,9 @@ struct unix_client {
 };
 
 struct debug_clients {
-	void *fd_list[4];
-	int16_t clients_num[4];
-	pthread_mutex_t *mutex[4];
+	void *fd_list[5];
+	int16_t clients_num[5];
+	pthread_mutex_t *mutex[5];
 };
 
 struct debug_level_info {

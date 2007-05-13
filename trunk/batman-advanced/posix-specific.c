@@ -38,6 +38,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <syslog.h>
+#include <paths.h>
 
 #include "os.h"
 #include "batman-adv.h"
@@ -60,6 +61,50 @@ int8_t is_aborted() {
 void handler( int32_t sig ) {
 
 	stop = 1;
+
+}
+
+
+
+int my_daemon() {
+
+	int fd;
+
+	switch( fork() ) {
+
+		case -1:
+			return(-1);
+
+		case 0:
+			break;
+
+		default:
+			exit(EXIT_SUCCESS);
+
+	}
+
+	if ( setsid() == -1 )
+		return(-1);
+
+	/* Make certain we are not a session leader, or else we
+	* might reacquire a controlling terminal */
+	if ( fork() )
+		exit(EXIT_SUCCESS);
+
+	chdir("/");
+
+	if ( ( fd = open(_PATH_DEVNULL, O_RDWR, 0) ) != -1 ) {
+
+		dup2(fd, STDIN_FILENO);
+		dup2(fd, STDOUT_FILENO);
+		dup2(fd, STDERR_FILENO);
+
+		if (fd > 2)
+			close(fd);
+
+	}
+
+	return(0);
 
 }
 
@@ -147,7 +192,7 @@ void *unix_listen( void *arg ) {
 
 	struct unix_client *unix_client;
 	struct debug_level_info *debug_level_info;
-	struct list_head *unix_pos, *unix_pos_tmp, *debug_pos, *debug_pos_tmp;
+	struct list_head *unix_pos, *unix_pos_tmp, *debug_pos, *debug_pos_tmp, *prev_list_head, *prev_list_head_unix;
 	struct timeval tv;
 	struct sockaddr_un sun_addr;
 	int32_t status, max_sock, unix_opts;
@@ -157,7 +202,7 @@ void *unix_listen( void *arg ) {
 	socklen_t sun_size = sizeof(struct sockaddr_un);
 
 
-	INIT_LIST_HEAD(&unix_if.client_list);
+	INIT_LIST_HEAD_FIRST( unix_if.client_list );
 
 	FD_ZERO(&wait_sockets);
 	FD_SET(unix_if.unix_sock, &wait_sockets);
@@ -200,6 +245,8 @@ void *unix_listen( void *arg ) {
 
 				max_sock = unix_if.unix_sock;
 
+				prev_list_head_unix = (struct list_head *)&unix_if.client_list;
+
 				list_for_each_safe(unix_pos, unix_pos_tmp, &unix_if.client_list) {
 
 					unix_client = list_entry(unix_pos, struct unix_client, list);
@@ -215,9 +262,11 @@ void *unix_listen( void *arg ) {
 
 							/* debug_output( 3, "gateway: client sent data via unix socket: %s\n", buff ); */
 
-							if ( ( status > 2 ) && ( ( buff[2] == '1' ) || ( buff[2] == '2' ) || ( buff[2] == '3' ) || ( buff[2] == '4' ) ) ) {
+							if ( ( status > 2 ) && ( ( buff[2] == '1' ) || ( buff[2] == '2' ) || ( buff[2] == '3' ) || ( buff[2] == '4' ) || ( buff[2] == '5' ) ) ) {
 
 								if ( unix_client->debug_level != 0 ) {
+
+									prev_list_head = (struct list_head *)debug_clients.fd_list[(int)unix_client->debug_level - '1'];
 
 									if ( pthread_mutex_lock( (pthread_mutex_t *)debug_clients.mutex[(int)unix_client->debug_level - '1'] ) != 0 )
 										debug_output( 0, "Error - could not lock mutex (unix_listen => 1): %s \n", strerror( errno ) );
@@ -228,14 +277,16 @@ void *unix_listen( void *arg ) {
 
 										if ( debug_level_info->fd == unix_client->sock ) {
 
-										list_del( debug_pos );
-										debug_clients.clients_num[(int)unix_client->debug_level - '1']--;
+											list_del( prev_list_head, debug_pos, debug_clients.fd_list[(int)unix_client->debug_level - '1'] );
+											debug_clients.clients_num[(int)unix_client->debug_level - '1']--;
 
-										debugFree( debug_pos, 1201 );
+											debugFree( debug_pos, 1201 );
 
-										break;
+											break;
 
 										}
+
+										prev_list_head = &debug_level_info->list;
 
 									}
 
@@ -252,7 +303,7 @@ void *unix_listen( void *arg ) {
 									debug_level_info = debugMalloc( sizeof(struct debug_level_info), 202 );
 									INIT_LIST_HEAD( &debug_level_info->list );
 									debug_level_info->fd = unix_client->sock;
-									list_add( &debug_level_info->list, (struct list_head *)debug_clients.fd_list[(int)buff[2] - '1'] );
+									list_add( &debug_level_info->list, (struct list_head_first *)debug_clients.fd_list[(int)buff[2] - '1'] );
 									debug_clients.clients_num[(int)buff[2] - '1']++;
 
 									unix_client->debug_level = (int)buff[2];
@@ -284,6 +335,8 @@ void *unix_listen( void *arg ) {
 
 								if ( unix_client->debug_level != 0 ) {
 
+									prev_list_head = (struct list_head *)debug_clients.fd_list[(int)unix_client->debug_level - '1'];
+
 									if ( pthread_mutex_lock( (pthread_mutex_t *)debug_clients.mutex[(int)unix_client->debug_level - '1'] ) != 0 )
 										debug_output( 0, "Error - could not lock mutex (unix_listen => 3): %s \n", strerror( errno ) );
 
@@ -293,14 +346,16 @@ void *unix_listen( void *arg ) {
 
 										if ( debug_level_info->fd == unix_client->sock ) {
 
-										list_del( debug_pos );
-										debug_clients.clients_num[(int)unix_client->debug_level - '1']--;
+											list_del( prev_list_head, debug_pos, debug_clients.fd_list[(int)unix_client->debug_level - '1'] );
+											debug_clients.clients_num[(int)unix_client->debug_level - '1']--;
 
-										debugFree( debug_pos, 1202 );
+											debugFree( debug_pos, 1202 );
 
-										break;
+											break;
 
 										}
+
+										prev_list_head = &debug_level_info->list;
 
 									}
 
@@ -316,7 +371,7 @@ void *unix_listen( void *arg ) {
 							FD_CLR(unix_client->sock, &wait_sockets);
 							close( unix_client->sock );
 
-							list_del( unix_pos );
+							list_del( prev_list_head_unix, unix_pos, &unix_if.client_list );
 							debugFree( unix_pos, 1203 );
 
 						}
@@ -353,7 +408,7 @@ void *unix_listen( void *arg ) {
 
 				if ( debug_level_info->fd == unix_client->sock ) {
 
-					list_del( debug_pos );
+					list_del( (struct list_head *)debug_clients.fd_list[(int)unix_client->debug_level - '1'], debug_pos, debug_clients.fd_list[(int)unix_client->debug_level - '1'] );
 					debug_clients.clients_num[(int)unix_client->debug_level - '1']--;
 
 					debugFree( debug_pos, 1204 );
@@ -366,7 +421,7 @@ void *unix_listen( void *arg ) {
 
 		}
 
-		list_del( unix_pos );
+		list_del( (struct list_head *)&unix_if.client_list, unix_pos, &unix_if.client_list );
 		debugFree( unix_pos, 1205 );
 
 	}
@@ -419,8 +474,8 @@ void apply_init_args( int argc, char *argv[] ) {
 					exit(EXIT_FAILURE);
 				}
 
-				if ( debug_level > 4 ) {
-					printf( "Invalid debug level: %i\nDebug level has to be between 0 and 4.\n", debug_level );
+				if ( debug_level > debug_level_max ) {
+					printf( "Invalid debug level: %i\nDebug level has to be between 0 and %i.\n", debug_level, debug_level_max );
 					exit(EXIT_FAILURE);
 				}
 
@@ -568,10 +623,12 @@ void apply_init_args( int argc, char *argv[] ) {
 		signal( SIGTERM, handler );
 		signal( SIGSEGV, segmentation_fault );
 
-		for ( res = 0; res < 4; res++ ) {
+		for ( res = 0; res < debug_level_max; res++ ) {
 
-			debug_clients.fd_list[res] = debugMalloc( sizeof(struct list_head), 203 );
-			INIT_LIST_HEAD( (struct list_head *)debug_clients.fd_list[res] );
+			debug_clients.fd_list[res] = debugMalloc( sizeof(struct list_head_first), 203 );
+			((struct list_head_first *)debug_clients.fd_list[res])->next = debug_clients.fd_list[res];
+			((struct list_head_first *)debug_clients.fd_list[res])->prev = debug_clients.fd_list[res];
+
 			debug_clients.mutex[res] = debugMalloc( sizeof(pthread_mutex_t), 204 );
 			pthread_mutex_init( (pthread_mutex_t *)debug_clients.mutex[res], NULL );
 
@@ -582,7 +639,7 @@ void apply_init_args( int argc, char *argv[] ) {
 		/* daemonize */
 		if ( debug_level == 0 ) {
 
-			if ( daemon( 0, 0 ) < 0 ) {
+			if ( my_daemon() < 0 ) {
 
 				printf( "Error - can't fork to background: %s\n", strerror(errno) );
 				restore_defaults();
@@ -600,7 +657,7 @@ void apply_init_args( int argc, char *argv[] ) {
 			debug_level_info = debugMalloc( sizeof(struct debug_level_info), 205 );
 			INIT_LIST_HEAD( &debug_level_info->list );
 			debug_level_info->fd = 1;
-			list_add( &debug_level_info->list, (struct list_head *)debug_clients.fd_list[debug_level - 1] );
+			list_add( &debug_level_info->list, (struct list_head_first *)debug_clients.fd_list[debug_level - 1] );
 
 		}
 
@@ -611,7 +668,7 @@ void apply_init_args( int argc, char *argv[] ) {
 			batman_if = debugMalloc( sizeof(struct batman_if), 206 );
 			memset( batman_if, 0, sizeof(struct batman_if) );
 			INIT_LIST_HEAD( &batman_if->list );
-			INIT_LIST_HEAD( &batman_if->client_list );
+			INIT_LIST_HEAD_FIRST( batman_if->client_list );
 
 			batman_if->dev = argv[found_args];
 			batman_if->if_num = found_ifs;
@@ -717,9 +774,9 @@ void apply_init_args( int argc, char *argv[] ) {
 	/* connect to running batmand via unix socket */
 	} else {
 
-		if ( ( debug_level == 1 ) || ( debug_level == 2 ) || ( debug_level == 3 ) || ( debug_level == 4 ) ) {
+		if ( ( debug_level > 0 ) && ( debug_level <= debug_level_max ) ) {
 
-			if ( ( ( debug_level == 3 ) || ( debug_level == 4 ) ) && ( batch_mode ) )
+			if ( ( debug_level > 2 ) && ( batch_mode ) )
 				printf( "WARNING: Your chosen debug level (%i) does not support batch mode !\n", debug_level );
 
 			unix_if.unix_sock = socket(AF_LOCAL, SOCK_STREAM, 0);
@@ -1200,7 +1257,7 @@ void restore_defaults() {
 
 		close( batman_if->raw_sock );
 
-		list_del( if_pos );
+		list_del( (struct list_head *)&if_list, if_pos, &if_list );
 		debugFree( if_pos, 1206 );
 
 	}
@@ -1362,7 +1419,7 @@ int8_t receive_packet( unsigned char *packet_buff, int16_t packet_buff_len, int1
 			while ( ( *pay_buff_len = rawsock_read( batman_if->raw_sock, &ether_header, packet_buff, packet_buff_len - 1 ) ) > -1 ) {
 
 				/* drop packet if it has no batman packet type field */
-				if ( *pay_buff_len <  1 )
+				if ( *pay_buff_len < 1 )
 					continue;
 
 				/* batman packet */
@@ -1372,7 +1429,7 @@ int8_t receive_packet( unsigned char *packet_buff, int16_t packet_buff_len, int1
 					if ( *pay_buff_len < sizeof(struct batman_packet) )
 						continue;
 
-					((struct batman_packet *)packet_buff)->seqno = ntohs( ((struct batman_packet *)packet_buff)->seqno ); /* network to host order for our 16bit seqno.*/
+					((struct batman_packet *)packet_buff)->seqno = ntohs( ((struct batman_packet *)packet_buff)->seqno ); /* network to host order for our 16bit seqno. */
 
 					(*if_incoming) = batman_if;
 					memcpy( neigh, ether_header.ether_shost, ETH_ALEN );
@@ -1878,7 +1935,7 @@ void cleanup() {
 	struct list_head *debug_pos, *debug_pos_tmp;
 
 
-	for ( i = 0; i < 4; i++ ) {
+	for ( i = 0; i < debug_level_max; i++ ) {
 
 		if ( debug_clients.clients_num[i] > 0 ) {
 
@@ -1886,7 +1943,7 @@ void cleanup() {
 
 				debug_level_info = list_entry(debug_pos, struct debug_level_info, list);
 
-				list_del( debug_pos );
+				list_del( (struct list_head *)debug_clients.fd_list[i], debug_pos, (struct list_head_first *)debug_clients.fd_list[i] );
 				debugFree( debug_pos, 1207 );
 
 			}
