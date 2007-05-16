@@ -231,6 +231,7 @@ int32_t rand_num( int32_t limit ) {
 int main( int argc, char *argv[] ) {
 
 	int8_t res;
+	uint8_t i;
 
 
 	/* check if user is root */
@@ -245,6 +246,11 @@ int main( int argc, char *argv[] ) {
 	INIT_LIST_HEAD_FIRST( forw_list );
 	INIT_LIST_HEAD_FIRST( gw_list );
 	INIT_LIST_HEAD_FIRST( if_list );
+
+
+	for ( i = 0; i < 255; i++ ) {
+		unix_packet[i] = NULL;
+	}
 
 
 	apply_init_args( argc, argv );

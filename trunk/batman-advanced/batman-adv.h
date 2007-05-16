@@ -31,6 +31,7 @@
 #include "bitarray.h"
 #include "hash.h"
 #include "allocate.h"
+#include "packet.h"
 
 
 #define SOURCE_VERSION "III 0.1 pre-alpha"
@@ -102,6 +103,7 @@ extern fd_set receive_wait_set;
 extern int32_t tap_sock;
 
 extern uint8_t unix_client;
+extern struct unix_client *unix_packet[256];
 
 extern struct hashtable_t *orig_hash;
 
@@ -114,32 +116,6 @@ extern struct debug_clients debug_clients;
 
 extern char *gw2string[];
 
-struct batman_packet
-{
-	uint8_t  packet_type;
-	uint8_t  flags;    /* 0x80: UNIDIRECTIONAL link, 0x40: DIRECTLINK flag, ... */
-	uint8_t  ttl;
-	uint8_t  orig[6];
-	uint16_t seqno;
-	uint8_t  gwflags;  /* flags related to gateway functions: gateway class */
-	uint8_t  version;  /* batman version field */
-} __attribute__((packed));
-
-struct unicast_packet
-{
-	uint8_t  packet_type;
-	uint8_t  ttl;
-	unsigned char *payload;
-} __attribute__((packed));
-
-struct bcast_packet
-{
-	uint8_t  packet_type;
-	uint8_t  padding;
-	uint8_t  orig[6];
-	uint16_t seqno;
-	unsigned char *payload;
-} __attribute__((packed));
 
 struct orig_node                 /* structure for orig_list maintaining nodes of mesh */
 {
@@ -223,12 +199,13 @@ struct unix_client {
 	struct list_head list;
 	int32_t sock;
 	uint8_t debug_level;
+	uint8_t uid;
 };
 
 struct debug_clients {
-	void *fd_list[5];
-	int16_t clients_num[5];
-	pthread_mutex_t *mutex[5];
+	void **fd_list;
+	int16_t *clients_num;
+	pthread_mutex_t **mutex;
 };
 
 struct debug_level_info {

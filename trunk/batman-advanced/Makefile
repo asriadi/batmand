@@ -47,7 +47,7 @@ OS_C=	bsd.c
 endif
 
 LINUX_SRC_C= batman-adv.c originator.c schedule.c posix-specific.c posix.c allocate.c bitarray.c hash.c $(OS_C)
-LINUX_SRC_H= batman-adv.h originator.h schedule.h list-batman.h os.h allocate.h bitarray.h hash.h
+LINUX_SRC_H= batman-adv.h originator.h schedule.h list-batman.h os.h allocate.h bitarray.h hash.h packet.h
 
 
 REVISION=		$(shell svn info | grep Revision | sed -e '1p' -n | awk '{print $$2}')
