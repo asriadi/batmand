@@ -188,6 +188,48 @@ void debug_output( int8_t debug_prio, char *format, ... ) {
 
 
 
+void handle_packet( unsigned char *buff, int32_t buff_len, struct unix_client *unix_client ) {
+
+	struct ether_header ether_header;
+	struct orig_node *orig_node;
+
+	if ( ( ((struct icmp_packet *)buff)->packet_type == 1 ) && ( ((struct icmp_packet *)buff)->msg_type == ECHO_REQUEST ) ) {
+
+		/* get routing information */
+		orig_node = find_orig_node( ((struct icmp_packet *)buff)->dst );
+
+		if ( ( orig_node != NULL ) && ( orig_node->batman_if != NULL ) && ( orig_node->router != NULL ) ) {
+
+			memcpy( ether_header.ether_shost, orig_node->batman_if->hw_addr, ETH_ALEN );
+			memcpy( ether_header.ether_dhost, orig_node->router->addr, ETH_ALEN );
+
+			((struct icmp_packet *)buff)->uid = unix_client->uid;
+			memcpy( ((struct icmp_packet *)buff)->orig, orig_node->batman_if->hw_addr, ETH_ALEN );
+
+			if ( rawsock_write( orig_node->batman_if->raw_sock, &ether_header, buff, buff_len ) < 0 ) {
+
+				debug_output( 0, "Error - can't send data from unix socket through raw socket: %s \n", strerror(errno) );
+
+			}
+
+		} else {
+
+			((struct icmp_packet *)buff)->msg_type = DESTINATION_UNREACHABLE;
+
+			write( unix_client->sock, buff, buff_len );
+
+		}
+
+	} else {
+
+		debug_output( 0, "Error - can't send data from unix socket: got bogus packet \n" );
+
+	}
+
+}
+
+
+
 void *unix_listen( void *arg ) {
 
 	struct unix_client *unix_client;
@@ -197,6 +239,7 @@ void *unix_listen( void *arg ) {
 	struct sockaddr_un sun_addr;
 	int32_t status, max_sock, unix_opts;
 	int8_t res;
+	uint8_t i;
 	unsigned char buff[10];
 	fd_set wait_sockets, tmp_wait_sockets;
 	socklen_t sun_size = sizeof(struct sockaddr_un);
@@ -236,11 +279,15 @@ void *unix_listen( void *arg ) {
 				if ( unix_client->sock > max_sock )
 					max_sock = unix_client->sock;
 
+				/* make unix socket non blocking */
+				unix_opts = fcntl( unix_client->sock, F_GETFL, 0 );
+				fcntl( unix_client->sock, F_SETFL, unix_opts | O_NONBLOCK );
+
 				list_add_tail( &unix_client->list, &unix_if.client_list );
 
 				debug_output( 3, "Unix socket: got connection\n" );
 
-				/* client sent data */
+			/* client sent data */
 			} else {
 
 				max_sock = unix_if.unix_sock;
@@ -262,66 +309,98 @@ void *unix_listen( void *arg ) {
 
 							/* debug_output( 3, "gateway: client sent data via unix socket: %s\n", buff ); */
 
-							if ( ( status > 2 ) && ( ( buff[2] == '1' ) || ( buff[2] == '2' ) || ( buff[2] == '3' ) || ( buff[2] == '4' ) || ( buff[2] == '5' ) ) ) {
+							if ( buff[0] == 'p' ) {
 
-								if ( unix_client->debug_level != 0 ) {
+								if ( status == sizeof(struct icmp_packet) + 2 ) {
 
-									prev_list_head = (struct list_head *)debug_clients.fd_list[(int)unix_client->debug_level - '1'];
+									if ( unix_client->uid == 0 ) {
 
-									if ( pthread_mutex_lock( (pthread_mutex_t *)debug_clients.mutex[(int)unix_client->debug_level - '1'] ) != 0 )
-										debug_output( 0, "Error - could not lock mutex (unix_listen => 1): %s \n", strerror( errno ) );
+										for ( i = 0; i < 255; i++ ) {
 
-									list_for_each_safe( debug_pos, debug_pos_tmp, (struct list_head *)debug_clients.fd_list[(int)unix_client->debug_level - '1'] ) {
+											if ( unix_packet[i] != NULL ) {
 
-										debug_level_info = list_entry(debug_pos, struct debug_level_info, list);
+												unix_packet[i] = unix_client;
+												unix_client->uid = i;
+												break;
 
-										if ( debug_level_info->fd == unix_client->sock ) {
-
-											list_del( prev_list_head, debug_pos, debug_clients.fd_list[(int)unix_client->debug_level - '1'] );
-											debug_clients.clients_num[(int)unix_client->debug_level - '1']--;
-
-											debugFree( debug_pos, 1201 );
-
-											break;
+											}
 
 										}
 
-										prev_list_head = &debug_level_info->list;
+									}
+
+									if ( unix_client->uid != 0 ) {
+
+										handle_packet( buff + 2, status - 2, unix_client );
+
+									} else {
+
+										debug_output( 0, "Error - can't add another packet client: maximum number of clients reached \n" );
 
 									}
 
-									if ( pthread_mutex_unlock( (pthread_mutex_t *)debug_clients.mutex[(int)unix_client->debug_level - '1'] ) != 0 )
-										debug_output( 0, "Error - could not unlock mutex (unix_listen => 1): %s \n", strerror( errno ) );
-
 								}
 
-								if ( unix_client->debug_level != buff[2] ) {
+							} else if ( buff[0] == 'd' ) {
 
-									if ( pthread_mutex_lock( (pthread_mutex_t *)debug_clients.mutex[(int)buff[2] - '1'] ) != 0 )
-										debug_output( 0, "Error - could not lock mutex (unix_listen => 2): %s \n", strerror( errno ) );
+								if ( ( status > 2 ) && ( ( buff[2] > 48 ) && ( buff[2] <= debug_level_max + 48 ) ) ) {
 
-									debug_level_info = debugMalloc( sizeof(struct debug_level_info), 202 );
-									INIT_LIST_HEAD( &debug_level_info->list );
-									debug_level_info->fd = unix_client->sock;
-									list_add( &debug_level_info->list, (struct list_head_first *)debug_clients.fd_list[(int)buff[2] - '1'] );
-									debug_clients.clients_num[(int)buff[2] - '1']++;
+									if ( unix_client->debug_level != 0 ) {
 
-									unix_client->debug_level = (int)buff[2];
+										prev_list_head = (struct list_head *)debug_clients.fd_list[(int)unix_client->debug_level - '1'];
 
-									/* make unix socket non blocking */
-									unix_opts = fcntl( debug_level_info->fd, F_GETFL, 0 );
-									fcntl( debug_level_info->fd, F_SETFL, unix_opts | O_NONBLOCK );
+										if ( pthread_mutex_lock( (pthread_mutex_t *)debug_clients.mutex[(int)unix_client->debug_level - '1'] ) != 0 )
+											debug_output( 0, "Error - could not lock mutex (unix_listen => 1): %s \n", strerror( errno ) );
 
-									if ( pthread_mutex_unlock( (pthread_mutex_t *)debug_clients.mutex[(int)buff[2] - '1'] ) != 0 )
-										debug_output( 0, "Error - could not unlock mutex (unix_listen => 2): %s \n", strerror( errno ) );
+										list_for_each_safe( debug_pos, debug_pos_tmp, (struct list_head *)debug_clients.fd_list[(int)unix_client->debug_level - '1'] ) {
 
-								} else {
+											debug_level_info = list_entry(debug_pos, struct debug_level_info, list);
 
-									unix_client->debug_level = 0;
+											if ( debug_level_info->fd == unix_client->sock ) {
+
+												list_del( prev_list_head, debug_pos, debug_clients.fd_list[(int)unix_client->debug_level - '1'] );
+												debug_clients.clients_num[(int)unix_client->debug_level - '1']--;
+
+												debugFree( debug_pos, 1201 );
+
+												break;
+
+											}
+
+											prev_list_head = &debug_level_info->list;
+
+										}
+
+										if ( pthread_mutex_unlock( (pthread_mutex_t *)debug_clients.mutex[(int)unix_client->debug_level - '1'] ) != 0 )
+											debug_output( 0, "Error - could not unlock mutex (unix_listen => 1): %s \n", strerror( errno ) );
+
+									}
+
+									if ( unix_client->debug_level != buff[2] ) {
+
+										if ( pthread_mutex_lock( (pthread_mutex_t *)debug_clients.mutex[(int)buff[2] - '1'] ) != 0 )
+											debug_output( 0, "Error - could not lock mutex (unix_listen => 2): %s \n", strerror( errno ) );
+
+										debug_level_info = debugMalloc( sizeof(struct debug_level_info), 202 );
+										INIT_LIST_HEAD( &debug_level_info->list );
+										debug_level_info->fd = unix_client->sock;
+										list_add( &debug_level_info->list, (struct list_head_first *)debug_clients.fd_list[(int)buff[2] - '1'] );
+										debug_clients.clients_num[(int)buff[2] - '1']++;
+
+										unix_client->debug_level = (int)buff[2];
+
+										if ( pthread_mutex_unlock( (pthread_mutex_t *)debug_clients.mutex[(int)buff[2] - '1'] ) != 0 )
+											debug_output( 0, "Error - could not unlock mutex (unix_listen => 2): %s \n", strerror( errno ) );
+
+									} else {
+
+										unix_client->debug_level = 0;
+
+									}
+
+
 
 								}
-
-
 
 							}
 
@@ -363,6 +442,9 @@ void *unix_listen( void *arg ) {
 										debug_output( 0, "Error - could not unlock mutex (unix_listen => 3): %s \n", strerror( errno ) );
 
 								}
+
+								if ( unix_client->uid != 0 )
+									unix_packet[unix_client->uid] = NULL;
 
 								debug_output( 3, "Unix client closed connection ...\n" );
 
@@ -623,6 +705,10 @@ void apply_init_args( int argc, char *argv[] ) {
 		signal( SIGTERM, handler );
 		signal( SIGSEGV, segmentation_fault );
 
+		debug_clients.fd_list = debugMalloc( sizeof(struct list_head_first *) * debug_level_max, 203 );
+		debug_clients.mutex = debugMalloc( sizeof(pthread_mutex_t *) * debug_level_max, 204 );
+		debug_clients.clients_num = debugMalloc( sizeof(int16_t) * debug_level_max, 204 );
+
 		for ( res = 0; res < debug_level_max; res++ ) {
 
 			debug_clients.fd_list[res] = debugMalloc( sizeof(struct list_head_first), 203 );
@@ -632,9 +718,9 @@ void apply_init_args( int argc, char *argv[] ) {
 			debug_clients.mutex[res] = debugMalloc( sizeof(pthread_mutex_t), 204 );
 			pthread_mutex_init( (pthread_mutex_t *)debug_clients.mutex[res], NULL );
 
-		}
+			debug_clients.clients_num[res] = 0;
 
-		memset( &debug_clients.clients_num, 0, sizeof(debug_clients.clients_num) );
+		}
 
 		/* daemonize */
 		if ( debug_level == 0 ) {
@@ -1294,6 +1380,7 @@ int8_t receive_packet( unsigned char *packet_buff, int16_t packet_buff_len, int1
 	struct unicast_packet *unicast_packet;
 	struct bcast_packet *bcast_packet;
 	int8_t res;
+	unsigned char *payload_ptr;
 	fd_set tmp_wait_set;
 
 
@@ -1323,12 +1410,15 @@ int8_t receive_packet( unsigned char *packet_buff, int16_t packet_buff_len, int1
 
 	if ( FD_ISSET( tap_sock, &tmp_wait_set ) ) {
 
-		while ( ( *pay_buff_len = read( tap_sock, packet_buff, packet_buff_len - 1 ) ) > 0 ) {
+		/* save data from kernel into a buffer but spare space for the header information */
+		while ( ( *pay_buff_len = read( tap_sock, packet_buff + sizeof(struct bcast_packet), packet_buff_len - 1 - sizeof(struct bcast_packet) ) ) > 0 ) {
+
+			payload_ptr = packet_buff - sizeof(struct bcast_packet);
 
 			/* ethernet packet should be broadcasted */
-			if ( memcmp( ((struct ether_header *)packet_buff)->ether_dhost, broadcastAddr, ETH_ALEN ) == 0 ) {
+			if ( memcmp( ((struct ether_header *)payload_ptr)->ether_dhost, broadcastAddr, ETH_ALEN ) == 0 ) {
 
-				bcast_packet = debugMalloc( sizeof(struct bcast_packet), 207 );
+				bcast_packet = (struct bcast_packet *)packet_buff;
 
 				/* batman packet type: broadcast */
 				bcast_packet->packet_type = 3;
@@ -1336,8 +1426,6 @@ int8_t receive_packet( unsigned char *packet_buff, int16_t packet_buff_len, int1
 				memcpy( bcast_packet->orig, ((struct batman_if *)if_list.next)->hw_addr, 6 );
 				/* set broadcast sequence number */
 				bcast_packet->seqno = ((struct batman_if *)if_list.next)->bcast_seqno;
-				/* add broadcast payload */
-				bcast_packet->payload = packet_buff;
 
 				memcpy( ether_header.ether_dhost, broadcastAddr, ETH_ALEN );
 
@@ -1358,26 +1446,23 @@ int8_t receive_packet( unsigned char *packet_buff, int16_t packet_buff_len, int1
 				}
 
 				((struct batman_if *)if_list.next)->bcast_seqno++;
-				debugFree( bcast_packet, 1209 );
 
 			/* unicast packet */
 			} else {
 
 				/* get routing information */
-				orig_node = find_orig_node( ((struct ether_header *)packet_buff)->ether_dhost );
+				orig_node = find_orig_node( ((struct ether_header *)payload_ptr)->ether_dhost );
 
-				if ( ( orig_node != NULL ) && ( orig_node->batman_if != NULL ) ) {
+				if ( ( orig_node != NULL ) && ( orig_node->batman_if != NULL ) && ( orig_node->router != NULL ) ) {
 
-					unicast_packet = debugMalloc( sizeof(struct unicast_packet), 208 );
+					unicast_packet = (struct unicast_packet *)(packet_buff + sizeof(struct bcast_packet) - sizeof(struct unicast_packet) );
 
 					/* batman packet type: unicast */
 					unicast_packet->packet_type = 2;
 					/* set unicast ttl */
-					unicast_packet->ttl = 255;
-					/* add unicast payload */
-					unicast_packet->payload = packet_buff;
+					unicast_packet->ttl = TTL;
 
-					memcpy( ether_header.ether_dhost, ((struct ether_header *)packet_buff)->ether_dhost, ETH_ALEN );
+					memcpy( ether_header.ether_dhost, orig_node->router->addr, ETH_ALEN );
 					memcpy( ether_header.ether_shost, orig_node->batman_if->hw_addr, ETH_ALEN );
 
 					if ( ( rawsock_write( orig_node->batman_if->raw_sock, &ether_header, (unsigned char *)&unicast_packet, *pay_buff_len + sizeof(struct unicast_packet) ) ) < 0 ) {
@@ -1386,8 +1471,6 @@ int8_t receive_packet( unsigned char *packet_buff, int16_t packet_buff_len, int1
 						return -1;
 
 					}
-
-					debugFree( unicast_packet, 1210 );
 
 				} else {
 
@@ -1436,13 +1519,8 @@ int8_t receive_packet( unsigned char *packet_buff, int16_t packet_buff_len, int1
 
 					return 1;
 
-				/* batman message system packet */
-				} else if ( packet_buff[0] == 1 ) {
-
-					/* TODO: ttl exceeded, ping, traceroute */
-
-				/* unicast */
-				} else if ( packet_buff[0] == 2 ) {
+				/* batman icmp packet or unicast packet */
+				} else if ( ( packet_buff[0] == 1 ) || ( packet_buff[0] == 2 ) ) {
 
 					/* packet with unicast indication but broadcast recipient */
 					if ( memcmp( &ether_header.ether_dhost, broadcastAddr, ETH_ALEN ) == 0 )
@@ -1452,38 +1530,112 @@ int8_t receive_packet( unsigned char *packet_buff, int16_t packet_buff_len, int1
 					if ( memcmp( &ether_header.ether_shost, broadcastAddr, ETH_ALEN ) == 0 )
 						continue;
 
+					/* drop packet if it has not neccessary minimum size */
+					if ( ( packet_buff[0] == 1 ) && ( *pay_buff_len < sizeof(struct icmp_packet) ) )
+						continue;
+
 					/* drop packet if it has not neccessary minimum size - 1 byte ttl, 1 byte payload */
-					if ( *pay_buff_len < sizeof(struct unicast_packet) )
+					if ( ( packet_buff[0] == 2 ) && ( *pay_buff_len < sizeof(struct unicast_packet) ) )
 						continue;
 
-					/* TTL exceeded */
-					if ( ((struct unicast_packet *)packet_buff)->ttl == 1 ) {
-
-						debug_output( 0, "Error - can't send packet from %s to %s: ttl exceeded\n", addr_to_string( ether_header.ether_shost ), addr_to_string( ether_header.ether_dhost ) );
-
-						/* TODO: send batman ttl exceed message*/
-
-						continue;
-
-					}
 
 					/* packet for me */
-					if ( isMyMac( ether_header.ether_dhost ) == 1 ) {
+					if ( isMyMac( ( packet_buff[0] == 1 ? ((struct icmp_packet *)packet_buff)->dst : ((struct ether_header *)(packet_buff + sizeof(struct unicast_packet)))->ether_dhost ) ) == 1 ) {
 
-						tap_write( tap_sock, packet_buff + sizeof(struct unicast_packet), *pay_buff_len - sizeof(struct unicast_packet) );
+						if ( packet_buff[0] == 2 ) {
+
+							tap_write( tap_sock, packet_buff + sizeof(struct unicast_packet), *pay_buff_len - sizeof(struct unicast_packet) );
+
+						} else {
+
+							/* answer ping request (ping) */
+							if ( ((struct icmp_packet *)packet_buff)->msg_type == ECHO_REQUEST ) {
+
+								/* get routing information */
+								orig_node = find_orig_node( ((struct icmp_packet *)packet_buff)->orig );
+
+								if ( ( orig_node != NULL ) && ( orig_node->batman_if != NULL ) && ( orig_node->router != NULL ) ) {
+
+									memcpy( ((struct icmp_packet *)packet_buff)->dst, ((struct icmp_packet *)packet_buff)->orig, ETH_ALEN );
+									memcpy( ((struct icmp_packet *)packet_buff)->orig, ether_header.ether_dhost, ETH_ALEN );
+									((struct icmp_packet *)packet_buff)->msg_type = ECHO_REPLY;
+									((struct icmp_packet *)packet_buff)->ttl = TTL;
+
+									memcpy( ether_header.ether_shost, orig_node->batman_if->hw_addr, ETH_ALEN );
+									memcpy( ether_header.ether_dhost, orig_node->router->addr, ETH_ALEN );
+
+									if ( rawsock_write( orig_node->batman_if->raw_sock, &ether_header, packet_buff, *pay_buff_len ) < 0 ) {
+
+										debug_output( 0, "Error - can't send data through raw socket: %s\n", strerror(errno) );
+										return -1;
+
+									}
+
+								}
+
+							} else {
+
+								/* give data to unix client */
+								if ( unix_packet[((struct icmp_packet *)packet_buff)->uid] != NULL )
+									write( ((struct unix_client *)(unix_packet[((struct icmp_packet *)packet_buff)->uid]))->sock, packet_buff, *pay_buff_len );
+
+							}
+
+						}
 
 					/* route it */
 					} else {
 
+						/* TTL exceeded */
+						if ( ((struct unicast_packet *)packet_buff)->ttl == 1 ) {
+
+							debug_output( 0, "Error - can't send packet from %s to %s: ttl exceeded\n", addr_to_string( ( packet_buff[0] == 1 ? ((struct icmp_packet *)packet_buff)->orig : ((struct ether_header *)(packet_buff + sizeof(struct unicast_packet)))->ether_shost ) ), addr_to_string( ( packet_buff[0] == 1 ? ((struct icmp_packet *)packet_buff)->dst : ((struct ether_header *)(packet_buff + sizeof(struct unicast_packet)))->ether_dhost ) ) );
+
+							/* send TTL exceed if packet is an echo request (traceroute) */
+							if ( ( packet_buff[0] == 1 ) && ( ((struct icmp_packet *)packet_buff)->msg_type == ECHO_REQUEST ) ) {
+
+								/* get routing information */
+								orig_node = find_orig_node( ((struct icmp_packet *)packet_buff)->orig );
+
+								if ( ( orig_node != NULL ) && ( orig_node->batman_if != NULL ) && ( orig_node->router != NULL ) ) {
+
+									memcpy( ((struct icmp_packet *)packet_buff)->dst, ((struct icmp_packet *)packet_buff)->orig, ETH_ALEN );
+									memcpy( ((struct icmp_packet *)packet_buff)->orig, ether_header.ether_dhost, ETH_ALEN );
+									((struct icmp_packet *)packet_buff)->msg_type = TTL_EXCEEDED;
+									((struct icmp_packet *)packet_buff)->ttl = TTL;
+
+									memcpy( ether_header.ether_shost, orig_node->batman_if->hw_addr, ETH_ALEN );
+									memcpy( ether_header.ether_dhost, orig_node->router->addr, ETH_ALEN );
+
+									if ( rawsock_write( orig_node->batman_if->raw_sock, &ether_header, packet_buff, *pay_buff_len ) < 0 ) {
+
+										debug_output( 0, "Error - can't send data through raw socket: %s\n", strerror(errno) );
+										return -1;
+
+									}
+
+								}
+
+							}
+
+							continue;
+
+						}
+
 						/* get routing information */
-						orig_node = find_orig_node( ether_header.ether_dhost );
+						orig_node = find_orig_node( ( packet_buff[0] == 1 ? ((struct icmp_packet *)packet_buff)->dst : ((struct ether_header *)(packet_buff + sizeof(struct unicast_packet)))->ether_dhost ) );
 
-						if ( ( orig_node != NULL ) && ( orig_node->batman_if != NULL ) ) {
+						if ( ( orig_node != NULL ) && ( orig_node->batman_if != NULL ) && ( orig_node->router != NULL ) ) {
 
+							memcpy( ether_header.ether_dhost, orig_node->router->addr, ETH_ALEN );
 							memcpy( ether_header.ether_shost, orig_node->batman_if->hw_addr, ETH_ALEN );
 
 							/* decrement ttl */
-							((struct unicast_packet *)packet_buff)->ttl--;
+							if ( packet_buff[0] == 1 ) {
+								((struct icmp_packet *)packet_buff)->ttl--;
+							} else {
+								((struct unicast_packet *)packet_buff)->ttl--;
+							}
 
 							if ( rawsock_write( orig_node->batman_if->raw_sock, &ether_header, packet_buff, *pay_buff_len ) < 0 ) {
 
@@ -1522,6 +1674,9 @@ int8_t receive_packet( unsigned char *packet_buff, int16_t packet_buff_len, int1
 						/* check flood history */
 						if ( get_bit_status( orig_node->seq_bits, orig_node->last_bcast_seqno, htons( ((struct bcast_packet *)packet_buff)->seqno ) ) )
 							continue;
+
+						/* mark broadcast in flood history */
+						bit_get_packet( orig_node->seq_bits, htons( ((struct bcast_packet *)packet_buff)->seqno ) - orig_node->last_bcast_seqno, 1 );
 
 						/* broadcast for me */
 						tap_write( tap_sock, packet_buff + sizeof(struct bcast_packet), *pay_buff_len - sizeof(struct bcast_packet) );
@@ -1951,8 +2106,13 @@ void cleanup() {
 		}
 
 		debugFree( debug_clients.fd_list[i], 1208 );
+		debugFree( debug_clients.mutex[i], 1209 );
 
 	}
+
+	debugFree( debug_clients.fd_list, 1210 );
+	debugFree( debug_clients.mutex, 1211 );
+	debugFree( debug_clients.clients_num, 1212 );
 
 }
 

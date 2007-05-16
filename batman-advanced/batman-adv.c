@@ -117,6 +117,8 @@ unsigned char broadcastAddr[] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 
 uint8_t unix_client = 0;
 
+struct unix_client *unix_packet[256];
+
 
 struct hashtable_t *orig_hash;
 
@@ -594,7 +596,7 @@ int8_t batman() {
 
 				/* neighbour has to indicate direct link and it has to come via the corresponding interface */
 				/* if received seqno equals last send seqno save new seqno for bidirectional check */
-				if ( ( ((struct batman_packet *)&in)->flags & DIRECTLINK ) && ( compare_orig( if_incoming->hw_addr, ((struct batman_packet *)&in)->orig ) == 0 ) && ( ((struct batman_packet *)&in)->seqno - if_incoming->out.seqno + 2 == 0 ) ) {
+				if ( ( ((struct batman_packet *)&in)->flags & DIRECTLINK ) && ( compare_orig( if_incoming->hw_addr, ((struct batman_packet *)&in)->orig ) == 0 ) && ( ((struct batman_packet *)&in)->seqno + 2 == if_incoming->out.seqno ) ) {
 
 					orig_neigh_node->bidirect_link[if_incoming->if_num] = ((struct batman_packet *)&in)->seqno;
 
@@ -621,11 +623,12 @@ int8_t batman() {
 
 				is_duplicate = isDuplicate( orig_node, ((struct batman_packet *)&in)->seqno );
 				is_bidirectional = isBidirectionalNeigh( orig_neigh_node, if_incoming );
-				is_bntog = isBntog( neigh, orig_node );
 
 				/* update ranking */
 				if ( ( is_bidirectional ) && ( !is_duplicate ) )
 					update_orig( orig_node, (struct batman_packet *)&in, neigh, if_incoming );
+
+				is_bntog = isBntog( neigh, orig_node );
 
 				/* is single hop (direct) neighbour */
 				if ( compare_orig( ((struct batman_packet *)&in)->orig, neigh ) == 0 ) {

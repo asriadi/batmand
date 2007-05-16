@@ -135,7 +135,8 @@ void update_orig( struct orig_node *orig_node, struct batman_packet *in, uint8_t
 			bit_get_packet( tmp_neigh_node->seq_bits, in->seqno - orig_node->last_seqno, 0 );
 			tmp_neigh_node->packet_count = bit_packet_count( tmp_neigh_node->seq_bits );
 
-			if ( tmp_neigh_node->packet_count > max_packet_count ) {
+			/* if we got more packets via this neighbour or same amount of packets if it is currently our best neighbour (to avoid route flipping) */
+			if ( ( tmp_neigh_node->packet_count > max_packet_count ) || ( ( orig_node->router == tmp_neigh_node ) && ( tmp_neigh_node->packet_count >= max_packet_count ) ) ) {
 
 				max_packet_count = tmp_neigh_node->packet_count;
 				best_neigh_node = tmp_neigh_node;
@@ -349,9 +350,9 @@ void debug_orig() {
 					continue;
 
 				if ( curr_gateway == gw_node ) {
-					debug_output( 2, "=> %-17s %''17s (%2i), gw_class %2i - %s, reliability: %i \n", addr_to_string( gw_node->orig_node->orig ), addr_to_string( gw_node->orig_node->router->addr ), gw_node->orig_node->router->packet_count, gw_node->orig_node->gwflags, gw2string[gw_node->orig_node->gwflags], gw_node->unavail_factor );
+					debug_output( 2, "=> %-17s %''17s (%3i), gw_class %2i - %s, reliability: %i \n", addr_to_string( gw_node->orig_node->orig ), addr_to_string( gw_node->orig_node->router->addr ), gw_node->orig_node->router->packet_count, gw_node->orig_node->gwflags, gw2string[gw_node->orig_node->gwflags], gw_node->unavail_factor );
 				} else {
-					debug_output( 2, "   %-17s %''17s (%2i), gw_class %2i - %s, reliability: %i \n", addr_to_string( gw_node->orig_node->orig ), addr_to_string( gw_node->orig_node->router->addr ), gw_node->orig_node->router->packet_count, gw_node->orig_node->gwflags, gw2string[gw_node->orig_node->gwflags], gw_node->unavail_factor );
+					debug_output( 2, "   %-17s %''17s (%3i), gw_class %2i - %s, reliability: %i \n", addr_to_string( gw_node->orig_node->orig ), addr_to_string( gw_node->orig_node->router->addr ), gw_node->orig_node->router->packet_count, gw_node->orig_node->gwflags, gw2string[gw_node->orig_node->gwflags], gw_node->unavail_factor );
 				}
 
 			}
@@ -370,7 +371,7 @@ void debug_orig() {
 	if ( ( debug_clients.clients_num[0] > 0 ) || ( debug_clients.clients_num[3] > 0 ) ) {
 
 		debug_output( 1, "BOD \n" );
-		debug_output( 1, "  %-14s %''16s (%s/%i): %''20s... [B.A.T.M.A.N. %s%s, Mac: %s/%s]\n", "Orginator", "Router", "#", SEQ_RANGE, "potential routers", SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), addr_to_string( ((struct batman_if *)if_list.next)->hw_addr ) );
+		debug_output( 1, "  %-14s %''16s (%s/%i): %''20s... [B.A.T.M.A.N. %s%s, Mac: %s]\n", "Orginator", "Router", "#", SEQ_RANGE, "potential routers", SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), addr_to_string( ((struct batman_if *)if_list.next)->hw_addr ) );
 
 		if ( debug_clients.clients_num[3] > 0 ) {
 
@@ -396,14 +397,14 @@ void debug_orig() {
 
 			batman_count++;
 
-			debug_output( 1, "%-17s %''17s (%2i):", addr_to_string( orig_node->orig ), addr_to_string( orig_node->router->addr ), orig_node->router->packet_count );
-			debug_output( 4, "%-17s %''17s (%2i), last_aware:%u: \n", addr_to_string( orig_node->orig ), addr_to_string( orig_node->router->addr ), orig_node->router->packet_count, orig_node->last_aware );
+			debug_output( 1, "%-17s %''17s (%3i):", addr_to_string( orig_node->orig ), addr_to_string( orig_node->router->addr ), orig_node->router->packet_count );
+			debug_output( 4, "%-17s %''17s (%3i), last_aware:%u: \n", addr_to_string( orig_node->orig ), addr_to_string( orig_node->router->addr ), orig_node->router->packet_count, orig_node->last_aware );
 
 			list_for_each( neigh_pos, &orig_node->neigh_list ) {
 				neigh_node = list_entry( neigh_pos, struct neigh_node, list );
 
-				debug_output( 1, " %''17s (%2i)", addr_to_string( neigh_node->addr ), neigh_node->packet_count );
-				debug_output( 4, "\t\t%''17s (%2i) \n", addr_to_string( neigh_node->addr ), neigh_node->packet_count );
+				debug_output( 1, " %''17s (%3i)", addr_to_string( neigh_node->addr ), neigh_node->packet_count );
+				debug_output( 4, "\t\t%''17s (%3i) \n", addr_to_string( neigh_node->addr ), neigh_node->packet_count );
 
 			}
 
