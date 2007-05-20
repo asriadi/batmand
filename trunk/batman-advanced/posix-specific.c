@@ -240,7 +240,7 @@ void *unix_listen( void *arg ) {
 	int32_t status, max_sock, unix_opts;
 	int8_t res;
 	uint8_t i;
-	unsigned char buff[10];
+	unsigned char buff[20];
 	fd_set wait_sockets, tmp_wait_sockets;
 	socklen_t sun_size = sizeof(struct sockaddr_un);
 
@@ -314,10 +314,10 @@ void *unix_listen( void *arg ) {
 								if ( status == sizeof(struct icmp_packet) + 2 ) {
 
 									if ( unix_client->uid == 0 ) {
-
+										
 										for ( i = 0; i < 255; i++ ) {
 
-											if ( unix_packet[i] != NULL ) {
+											if ( unix_packet[i] == NULL ) {
 
 												unix_packet[i] = unix_client;
 												unix_client->uid = i;
@@ -329,7 +329,7 @@ void *unix_listen( void *arg ) {
 
 									}
 
-									if ( unix_client->uid != 0 ) {
+									if ( unix_packet[unix_client->uid] == unix_client ) {
 
 										handle_packet( buff + 2, status - 2, unix_client );
 
