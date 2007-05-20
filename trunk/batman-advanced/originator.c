@@ -98,7 +98,7 @@ struct orig_node *get_orig_node( uint8_t *addr ) {
 		if ( swaphash == NULL ) {
 
 			debug_output( 0, "Couldn't resize hash table \n" );
-			restore_and_exit();
+			restore_and_exit(0);
 
 		}
 
