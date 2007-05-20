@@ -314,7 +314,7 @@ void *unix_listen( void *arg ) {
 								if ( status == sizeof(struct icmp_packet) + 2 ) {
 
 									if ( unix_client->uid == 0 ) {
-										
+
 										for ( i = 0; i < 255; i++ ) {
 
 											if ( unix_packet[i] == NULL ) {
@@ -703,6 +703,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 		signal( SIGINT, handler );
 		signal( SIGTERM, handler );
+		signal( SIGPIPE, SIG_IGN );
 		signal( SIGSEGV, segmentation_fault );
 
 		debug_clients.fd_list = debugMalloc( sizeof(struct list_head_first *) * debug_level_max, 203 );
@@ -879,7 +880,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 			}
 
-			unix_buff = debugMalloc( 1500, 5001 );
+			unix_buff = debugMalloc( 1501, 5001 );
 			snprintf( unix_buff, 10, "d:%i", debug_level );
 
 			if ( write( unix_if.unix_sock, unix_buff, 10 ) < 0 ) {
@@ -1577,7 +1578,7 @@ int8_t receive_packet( unsigned char *packet_buff, int16_t packet_buff_len, int1
 
 								/* give data to unix client */
 								if ( unix_packet[((struct icmp_packet *)packet_buff)->uid] != NULL )
-									write( ((struct unix_client *)(unix_packet[((struct icmp_packet *)packet_buff)->uid]))->sock, packet_buff, *pay_buff_len );
+									write( ((struct unix_client *)(unix_packet[((struct icmp_packet *)packet_buff)->uid]))->sock, packet_buff, sizeof(struct icmp_packet) );
 
 							}
 
@@ -2045,7 +2046,7 @@ void tap_write( int32_t tap_fd, unsigned char *buff, int16_t buff_len ) {
 
 
 
-void restore_and_exit() {
+void restore_and_exit( uint8_t is_sigsegv ) {
 
 	if ( !unix_client ) {
 
@@ -2059,13 +2060,12 @@ void restore_and_exit() {
 
 		}
 
-		purge_orig( get_time() + ( 5 * TIMEOUT ) + orginator_interval );
-
 		restore_defaults();
 
 	}
 
-	exit(EXIT_FAILURE);
+	if ( !is_sigsegv )
+		exit(EXIT_FAILURE);
 
 }
 
@@ -2075,9 +2075,11 @@ void segmentation_fault( int32_t sig ) {
 
 	signal( SIGSEGV, SIG_DFL );
 
-	debug_output( 0, "Error - SIGSEGV received !\n" );
+	debug_output( 0, "Error - SIGSEGV received, trying to clean up ... \n" );
 
-	restore_and_exit();
+	restore_and_exit(1);
+
+	raise( SIGSEGV );
 
 }
 

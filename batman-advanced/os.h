@@ -59,7 +59,7 @@ void debug_output( int8_t debug_prio, char *format, ... );
 void cleanup();
 
 void segmentation_fault( int32_t sig );
-void restore_and_exit();
+void restore_and_exit( uint8_t is_sigsegv );
 
 
 #endif
