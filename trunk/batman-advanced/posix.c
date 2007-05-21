@@ -72,6 +72,8 @@ static void get_time_internal( struct timeval *tv ) {
 
 }
 
+
+
 uint32_t get_time( void ) {
 
 	struct timeval tv;
@@ -79,6 +81,18 @@ uint32_t get_time( void ) {
 	get_time_internal(&tv);
 
 	return tv.tv_sec * 1000 + tv.tv_usec / 1000;
+}
+
+
+
+uint32_t get_time_sec( void ) {
+
+	struct timeval tv;
+
+	get_time_internal(&tv);
+
+	return tv.tv_sec;
+
 }
 
 
