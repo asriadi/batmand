@@ -26,6 +26,7 @@ int8_t is_aborted();
 int32_t rand_num( int32_t limit );
 char *addr_to_string( uint8_t *hw_addr );
 uint32_t get_time( void );
+uint32_t get_time_sec( void );
 
 int8_t rawsock_create(char *devicename);
 int32_t rawsock_read( int32_t rawsock, struct ether_header *recv_header, unsigned char *buf, int16_t size );
