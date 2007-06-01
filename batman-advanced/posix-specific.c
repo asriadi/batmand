@@ -198,7 +198,7 @@ void handle_packet( unsigned char *buff, int32_t buff_len, struct unix_client *u
 		/* get routing information */
 		orig_node = find_orig_node( ((struct icmp_packet *)buff)->dst );
 
-		if ( ( orig_node != NULL ) && ( orig_node->batman_if != NULL ) && ( orig_node->router != NULL ) ) {
+		if ( ( orig_node != NULL ) && ( orig_node->batman_if != NULL ) && ( orig_node->router != NULL ) && ( ((struct icmp_packet *)buff)->ttl > 0 ) ) {
 
 			memcpy( ether_header.ether_shost, orig_node->batman_if->hw_addr, ETH_ALEN );
 			memcpy( ether_header.ether_dhost, orig_node->router->addr, ETH_ALEN );
