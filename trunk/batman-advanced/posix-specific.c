@@ -1583,7 +1583,7 @@ int8_t receive_packet( unsigned char *packet_buff, int16_t packet_buff_len, int1
 					} else {
 
 						/* TTL exceeded */
-						if ( ((struct unicast_packet *)packet_buff)->ttl == 1 ) {
+						if ( ((struct unicast_packet *)packet_buff)->ttl < 2 || ((struct icmp_packet *)packet_buff)->ttl < 2 ) {
 
 							debug_output( 0, "Error - can't send packet from %s to %s: ttl exceeded\n", addr_to_string( ( packet_buff[0] == 1 ? ((struct icmp_packet *)packet_buff)->orig : ((struct ether_header *)(packet_buff + sizeof(struct unicast_packet)))->ether_shost ) ), addr_to_string( ( packet_buff[0] == 1 ? ((struct icmp_packet *)packet_buff)->dst : ((struct ether_header *)(packet_buff + sizeof(struct unicast_packet)))->ether_dhost ) ) );
 
