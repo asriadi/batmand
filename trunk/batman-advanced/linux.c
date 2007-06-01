@@ -34,7 +34,7 @@
 #include <errno.h>              /* errno */
 #include <fcntl.h>              /* O_RDWR */
 #include <netinet/ip.h>         /* tunnel stuff */
-#include <asm/types.h>
+#include <asm/types.h>          /* __u16 */
 #include <linux/if_tun.h>       /* tap interface */
 #include <linux/if_tunnel.h>
 
