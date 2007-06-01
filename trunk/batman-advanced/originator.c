@@ -400,8 +400,11 @@ void debug_orig() {
 
 			batman_count++;
 
-			debug_output( 1, "%-17s %''17s (%3i):", addr_to_string( orig_node->orig ), addr_to_string( orig_node->router->addr ), orig_node->router->packet_count );
-			debug_output( 4, "%-17s %''17s (%3i), last_valid: %u: \n", addr_to_string( orig_node->orig ), addr_to_string( orig_node->router->addr ), orig_node->router->packet_count, orig_node->last_valid );
+			/* addr_to_string create a static buffer which will be used for orig and router */
+			debug_output( 1, "%-17s ", addr_to_string( orig_node->orig ) );
+			debug_output( 1, "%''17s (%3i):", addr_to_string( orig_node->router->addr ), orig_node->router->packet_count );
+			debug_output( 4, "%-17s ", addr_to_string( orig_node->orig ) );
+			debug_output( 4, "%''17s (%3i), last_valid: %u: \n", addr_to_string( orig_node->router->addr ), orig_node->router->packet_count, orig_node->last_valid );
 
 			list_for_each( neigh_pos, &orig_node->neigh_list ) {
 				neigh_node = list_entry( neigh_pos, struct neigh_node, list );
