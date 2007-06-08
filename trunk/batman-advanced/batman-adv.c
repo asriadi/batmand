@@ -354,7 +354,7 @@ void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node )
 void update_gw_list( struct orig_node *orig_node, uint8_t new_gwflags ) {
 
 	struct list_head *gw_pos, *gw_pos_tmp;
-	struct gw_node *gw_node;
+	struct gw_node *gw_node = NULL;
 
 	list_for_each_safe( gw_pos, gw_pos_tmp, &gw_list ) {
 
