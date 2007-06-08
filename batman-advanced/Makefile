@@ -18,11 +18,11 @@
 
 
 CC =			gcc
-CFLAGS =		-Wall -O0 -g3
+CFLAGS =		-Wall -O1 -g3
 STRIP=			strip
 LDFLAGS =		-lpthread
 
-CFLAGS_MIPS =	-Wall -O0 -g3
+CFLAGS_MIPS =	-Wall -O1 -g3
 LDFLAGS_MIPS =	-lpthread
 
 UNAME=		$(shell uname)
@@ -56,14 +56,8 @@ REVISION_VERSION=	\"\ rv$(REVISION)\"
 BUILD_PATH=		/home/batman/build
 IPKG_BUILD_PATH=	$(BUILD_PATH)/ipkg-build
 
-#BAT_GENERATION=	$(shell grep "^\#define SOURCE_VERSION " batman.h | sed -e '1p' -n | awk -F '"' '{print $$2}' | awk '{print $$1}')
 BAT_VERSION=		$(shell grep "^\#define SOURCE_VERSION " $(SOURCE_VERSION_HEADER) | sed -e '1p' -n | awk -F '"' '{print $$2}' | awk '{print $$1}')
-#BAT_RELEASE=		$(shell grep "^\#define SOURCE_VERSION " batman.h | sed -e '1p' -n | awk -F '"' '{print $$2}' | awk '{print $$3}')
-#BAT_TRAILER=		$(shell grep "^\#define SOURCE_VERSION " batman.h | sed -e '1p' -n | awk -F '"' '{print $$2}' | awk '{print $$4}')
-#BAT_STRING=		begin:$(BATMAN_GENERATION):$(BATMAN_VERSION):$(BATMAN_RELEASE):$(BATMAN_TRAILER):end
-
 IPKG_VERSION=		$(BAT_VERSION)-rv$(REVISION)
-
 FILE_NAME=		$(BINARY_NAME)_$(BAT_VERSION)-rv$(REVISION)_$@
 FILE_CURRENT=		$(BINARY_NAME)_$(BAT_VERSION)-current_$@
 
@@ -109,9 +103,9 @@ $(BINARY_NAME):	$(LINUX_SRC_C) $(LINUX_SRC_H) Makefile
 
 
 
-long:	sources i386  arm-oe mipsel-kk-bc  mipsel-wr mips-kk-at
+long:	sources i386  arm-oe mipsel-kk-bc  mipsel-wr mips-kk-at clean-long
 
-axel:	sources i386  arm-oe mipsel-kk-bc  mipsel-wr mips-kk-at
+axel:	sources i386  arm-oe mipsel-kk-bc  mipsel-wr mips-kk-at clean-long
 
 sources:
 	mkdir -p $(FILE_NAME)
@@ -256,4 +250,7 @@ armv5te-oe-elf-32-lsb-dynamic:	$(LINUX_SRC_C) $(LINUX_SRC_H) Makefile
 
 
 clean:
-		rm -f batmand-adv batmand-mips* *.o *~
+	rm -f batmand-adv batmand-mips* *.o *~
+
+clean-long:
+	rm -rf batmand-adv_*
