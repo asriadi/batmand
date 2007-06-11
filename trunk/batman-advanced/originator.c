@@ -371,10 +371,10 @@ void debug_orig() {
 
 	if ( ( debug_clients.clients_num[0] > 0 ) || ( debug_clients.clients_num[3] > 0 ) ) {
 
-		uptime_sec = get_time_sec();
+		uptime_sec = (uint32_t)( get_time() / 1000 );
 
 		debug_output( 1, "BOD \n" );
-		debug_output( 1, "  %-14s %''16s (%s/%i): %''20s... [B.A.T.M.A.N. %s%s, Mac: %s, UT: %id%2ih%2im]\n", "Originator", "Router", "#", SEQ_RANGE, "Potential routers", SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), addr_to_string( ((struct batman_if *)if_list.next)->hw_addr ), uptime_sec/86400, ((uptime_sec%86400)/3600), ((uptime_sec)%3600)/60 );
+		debug_output( 1, "  %-14s %''16s (%s/%i): %''20s... [B.A.T.M.A.N. %s%s, Mac: %s, UT: %id%2ih%2im] \n", "Originator", "Router", "#", SEQ_RANGE, "Potential routers", SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), addr_to_string( ((struct batman_if *)if_list.next)->hw_addr ), uptime_sec/86400, ((uptime_sec%86400)/3600), ((uptime_sec)%3600)/60 );
 
 		if ( debug_clients.clients_num[3] > 0 ) {
 

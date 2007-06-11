@@ -252,6 +252,10 @@ void *unix_listen( void *arg ) {
 
 	max_sock = unix_if.unix_sock;
 
+	for ( i = 0; i < 255; i++ ) {
+		unix_packet[i] = NULL;
+	}
+
 	while ( !is_aborted() ) {
 
 		tv.tv_sec = 1;
@@ -644,14 +648,14 @@ void apply_init_args( int argc, char *argv[] ) {
 
 			case 'v':
 
-				printf( "B.A.T.M.A.N.-III Advanced v%s%s (compability version %i)\n", SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), COMPAT_VERSION );
+				printf( "B.A.T.M.A.N. Advanced %s%s (compability version %i)\n", SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), COMPAT_VERSION );
 				exit(0);
 
 			case 'V':
 
 				print_animation();
 
-				printf( "\x1B[0;0HB.A.T.M.A.N.-III Advanced v%s%s (compability version %i)\n", SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), COMPAT_VERSION );
+				printf( "\x1B[0;0HB.A.T.M.A.N. Advanced %s%s (compability version %i)\n", SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), COMPAT_VERSION );
 				printf( "\x1B[9;0H \t May the bat guide your path ...\n\n\n" );
 
 				exit(0);
@@ -733,7 +737,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 		} else {
 
-			printf( "B.A.T.M.A.N.-III Advanced v%s%s (compability version %i)\n", SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), COMPAT_VERSION );
+			printf( "B.A.T.M.A.N. Advanced %s%s (compability version %i)\n", SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), COMPAT_VERSION );
 
 			debug_clients.clients_num[ debug_level - 1 ]++;
 			debug_level_info = debugMalloc( sizeof(struct debug_level_info), 205 );
@@ -1432,7 +1436,7 @@ int8_t receive_packet( unsigned char *packet_buff, int16_t packet_buff_len, int1
 
 					memcpy( ether_header.ether_shost, batman_if->hw_addr, ETH_ALEN );
 
-					if ( rawsock_write( orig_node->batman_if->raw_sock, &ether_header, (unsigned char *)&bcast_packet, *pay_buff_len + sizeof(struct bcast_packet) ) < 0 ) {
+					if ( rawsock_write( batman_if->raw_sock, &ether_header, (unsigned char *)&bcast_packet, *pay_buff_len + sizeof(struct bcast_packet) ) < 0 ) {
 
 						debug_output( 0, "Error - can't send broadcast data through raw socket: %s\n", strerror(errno) );
 						return -1;

@@ -35,6 +35,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <syslog.h>
+#include <sys/times.h>
 
 #include "os.h"
 #include "batman-adv.h"
@@ -50,48 +51,14 @@
 
 extern struct vis_if vis_if;
 
-static struct timeval start_time;
-
-
-static void get_time_internal( struct timeval *tv ) {
-
-	int32_t sec, usec;
-
-	gettimeofday( tv, NULL );
-
-	sec = tv->tv_sec - start_time.tv_sec;
-	usec = tv->tv_usec - start_time.tv_usec;
-
-	if ( usec < 0 ) {
-		sec--;
-		usec += 1000000;
-	}
-
-	tv->tv_sec = sec;
-	tv->tv_usec = usec;
-
-}
+static clock_t start_time;
+static float system_tick;
 
 
 
 uint32_t get_time( void ) {
 
-	struct timeval tv;
-
-	get_time_internal(&tv);
-
-	return tv.tv_sec * 1000 + tv.tv_usec / 1000;
-}
-
-
-
-uint32_t get_time_sec( void ) {
-
-	struct timeval tv;
-
-	get_time_internal(&tv);
-
-	return tv.tv_sec;
+	return (uint32_t)( ( (float)( times(NULL) - start_time ) * 1000 ) / system_tick );
 
 }
 
@@ -266,19 +233,19 @@ int main( int argc, char *argv[] ) {
 		unix_packet[i] = NULL;
 	}
 
+	start_time = times(NULL);
+	system_tick = (float)sysconf(_SC_CLK_TCK);
+
 
 	apply_init_args( argc, argv );
-
-	gettimeofday( &start_time, NULL );
-	srand( getpid() );
 
 
 	res = batman();
 
-
 	restore_defaults();
 	cleanup();
 	checkLeak();
+
 	return res;
 
 }

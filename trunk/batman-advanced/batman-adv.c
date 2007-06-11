@@ -31,15 +31,6 @@
 
 
 
-/* "-d" is the command line switch for the debug level,
- * specify it multiple times to increase verbosity
- * 0 gives a minimum of messages to save CPU-Power
- * 1 normal
- * 2 verbose
- * 3 very verbose
- * Beware that high debugging levels eat a lot of CPU-Power
- */
-
 uint8_t debug_level = 0;
 
 
