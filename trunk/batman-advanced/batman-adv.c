@@ -374,8 +374,8 @@ void update_gw_list( struct orig_node *orig_node, uint8_t new_gwflags ) {
 		}
 
 	}
-	if( gw_node != NULL )
-		debug_output( 3, "Found new gateway %s -> class: %i - %s \n", addr_to_string( gw_node->orig_node->orig ), new_gwflags, gw2string[new_gwflags] );
+
+	debug_output( 3, "Found new gateway %s -> class: %i - %s \n", addr_to_string( orig_node->orig ), new_gwflags, gw2string[new_gwflags] );
 
 	gw_node = debugMalloc( sizeof(struct gw_node), 103 );
 	memset( gw_node, 0, sizeof(struct gw_node) );
