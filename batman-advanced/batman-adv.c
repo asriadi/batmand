@@ -609,91 +609,101 @@ int8_t batman() {
 
 				orig_node = get_orig_node( ((struct batman_packet *)&in)->orig );
 
-				orig_neigh_node = get_orig_node( neigh );
+				/* if sender is a direct neighbor the sender mac equals originator mac */
+				orig_neigh_node = ( compare_orig( ((struct batman_packet *)&in)->orig, neigh ) == 0 ? orig_node : get_orig_node( neigh ) );
 
-				is_duplicate = isDuplicate( orig_node, ((struct batman_packet *)&in)->seqno );
-				is_bidirectional = isBidirectionalNeigh( orig_neigh_node, if_incoming );
+				/* drop packet if sender is not a direct neighbor and if we no route towards it */
+				if ( ( compare_orig( ((struct batman_packet *)&in)->orig, neigh ) != 0 ) && ( orig_neigh_node->router == NULL ) ) {
 
-				/* update ranking */
-				if ( ( is_bidirectional ) && ( !is_duplicate ) )
-					update_orig( orig_node, (struct batman_packet *)&in, neigh, if_incoming, curr_time );
+					debug_output( 4, "Drop packet: OGM via unkown neighbor! \n" );
 
-				is_bntog = isBntog( neigh, orig_node );
-
-				/* is single hop (direct) neighbour */
-				if ( compare_orig( ((struct batman_packet *)&in)->orig, neigh ) == 0 ) {
-
-					/* it is our best route towards him */
-					if ( is_bidirectional && is_bntog ) {
-
-						/* mark direct link on incoming interface */
-						schedule_forward_packet( (struct batman_packet *)&in, 0, 1, if_incoming );
-
-						debug_output( 4, "Forward packet: rebroadcast neighbour packet with direct link flag \n" );
-
-					/* if an unidirectional neighbour sends us a packet - retransmit it with unidirectional flag to tell him that we get its packets */
-					/* if a bidirectional neighbour sends us a packet - retransmit it with unidirectional flag if it is not our best link to it in order to prevent routing problems */
-					} else if ( ( is_bidirectional && !is_bntog ) || ( !is_bidirectional ) ) {
-
-						schedule_forward_packet( (struct batman_packet *)&in, 1, 1, if_incoming );
-
-						debug_output( 4, "Forward packet: rebroadcast neighbour packet with direct link and unidirectional flag \n" );
-
-					}
-
-				/* multihop originator */
 				} else {
 
-					if ( is_bidirectional && is_bntog ) {
+					is_duplicate = isDuplicate( orig_node, ((struct batman_packet *)&in)->seqno );
+					is_bidirectional = isBidirectionalNeigh( orig_neigh_node, if_incoming );
 
-						if ( !is_duplicate ) {
+					/* update ranking */
+					if ( ( is_bidirectional ) && ( !is_duplicate ) )
+						update_orig( orig_node, (struct batman_packet *)&in, neigh, if_incoming, curr_time );
 
-							schedule_forward_packet( (struct batman_packet *)&in, 0, 0, if_incoming );
+					is_bntog = isBntog( neigh, orig_node );
 
-							debug_output( 4, "Forward packet: rebroadcast originator packet \n" );
+					/* is single hop (direct) neighbour */
+					if ( compare_orig( ((struct batman_packet *)&in)->orig, neigh ) == 0 ) {
 
-						} else { /* is_bntog anyway */
+						/* it is our best route towards him */
+						if ( is_bidirectional && is_bntog ) {
 
-							list_for_each( neigh_pos, &orig_node->neigh_list ) {
+							/* mark direct link on incoming interface */
+							schedule_forward_packet( (struct batman_packet *)&in, 0, 1, if_incoming );
 
-								neigh_node = list_entry(neigh_pos, struct neigh_node, list);
+							debug_output( 4, "Forward packet: rebroadcast neighbour packet with direct link flag \n" );
 
-								if ( ( compare_orig( neigh_node->addr, neigh ) == 0 ) && ( neigh_node->if_incoming == if_incoming ) ) {
+						/* if an unidirectional neighbour sends us a packet - retransmit it with unidirectional flag to tell him that we get its packets */
+						/* if a bidirectional neighbour sends us a packet - retransmit it with unidirectional flag if it is not our best link to it in order to prevent routing problems */
+						} else if ( ( is_bidirectional && !is_bntog ) || ( !is_bidirectional ) ) {
 
-									if ( neigh_node->last_ttl == ((struct batman_packet *)&in)->ttl ) {
+							schedule_forward_packet( (struct batman_packet *)&in, 1, 1, if_incoming );
 
-										forward_duplicate_packet = 1;
+							debug_output( 4, "Forward packet: rebroadcast neighbour packet with direct link and unidirectional flag \n" );
 
-										/* also update only last_valid time if arrived (and rebroadcasted because best neighbor) */
-										orig_node->last_valid = curr_time;
-										neigh_node->last_valid = curr_time;
+						}
+
+					/* multihop originator */
+					} else {
+
+						if ( is_bidirectional && is_bntog ) {
+
+							if ( !is_duplicate ) {
+
+								schedule_forward_packet( (struct batman_packet *)&in, 0, 0, if_incoming );
+
+								debug_output( 4, "Forward packet: rebroadcast originator packet \n" );
+
+							} else { /* is_bntog anyway */
+
+								list_for_each( neigh_pos, &orig_node->neigh_list ) {
+
+									neigh_node = list_entry(neigh_pos, struct neigh_node, list);
+
+									if ( ( compare_orig( neigh_node->addr, neigh ) == 0 ) && ( neigh_node->if_incoming == if_incoming ) ) {
+
+										if ( neigh_node->last_ttl == ((struct batman_packet *)&in)->ttl ) {
+
+											forward_duplicate_packet = 1;
+
+											/* also update only last_valid time if arrived (and rebroadcasted because best neighbor) */
+											orig_node->last_valid = curr_time;
+											neigh_node->last_valid = curr_time;
+
+										}
+
+										break;
 
 									}
 
-									break;
+								}
+
+								/* we are forwarding duplicate o-packets if they come via our best neighbour and ttl is valid */
+								if ( forward_duplicate_packet ) {
+
+									schedule_forward_packet( (struct batman_packet *)&in, 0, 0, if_incoming );
+
+									debug_output( 4, "Forward packet: duplicate packet received via best neighbour with best ttl \n" );
+
+								} else {
+
+									debug_output( 4, "Drop packet: duplicate packet received via best neighbour but not best ttl \n" );
 
 								}
 
 							}
 
-							/* we are forwarding duplicate o-packets if they come via our best neighbour and ttl is valid */
-							if ( forward_duplicate_packet ) {
+						} else {
 
-								schedule_forward_packet( (struct batman_packet *)&in, 0, 0, if_incoming );
-
-								debug_output( 4, "Forward packet: duplicate packet received via best neighbour with best ttl \n" );
-
-							} else {
-
-								debug_output( 4, "Drop packet: duplicate packet received via best neighbour but not best ttl \n" );
-
-							}
+							debug_output( 4, "Drop packet: received via bidirectional link: %s, BNTOG: %s !\n", ( is_bidirectional ? "YES" : "NO" ), ( is_bntog ? "YES" : "NO" ) );
 
 						}
-
-					} else {
-
-						debug_output( 4, "Drop packet: received via bidirectional link: %s, BNTOG: %s !\n", ( is_bidirectional ? "YES" : "NO" ), ( is_bntog ? "YES" : "NO" ) );
 
 					}
 
