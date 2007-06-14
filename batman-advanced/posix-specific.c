@@ -1370,6 +1370,17 @@ void restore_defaults() {
 
 
 
+int8_t is_broadcast_address( uint8_t *dst_addr ) {
+
+	if ( memcmp( dst_addr, broadcastAddr, ETH_ALEN ) == 0 )
+		return 1;
+
+	return 0;
+
+}
+
+
+
 int8_t receive_packet( unsigned char *packet_buff, int16_t packet_buff_len, int16_t *pay_buff_len, uint8_t *neigh, uint32_t timeout, struct batman_if **if_incoming ) {
 
 	struct timeval tv;
@@ -1413,10 +1424,10 @@ int8_t receive_packet( unsigned char *packet_buff, int16_t packet_buff_len, int1
 		/* save data from kernel into a buffer but spare space for the header information */
 		while ( ( *pay_buff_len = read( tap_sock, packet_buff + sizeof(struct bcast_packet), packet_buff_len - 1 - sizeof(struct bcast_packet) ) ) > 0 ) {
 
-			payload_ptr = packet_buff - sizeof(struct bcast_packet);
+			payload_ptr = packet_buff + sizeof(struct bcast_packet);
 
 			/* ethernet packet should be broadcasted */
-			if ( memcmp( ((struct ether_header *)payload_ptr)->ether_dhost, broadcastAddr, ETH_ALEN ) == 0 ) {
+			if ( is_broadcast_address( ((struct ether_header *)payload_ptr)->ether_dhost ) ) {
 
 				bcast_packet = (struct bcast_packet *)packet_buff;
 
