@@ -353,7 +353,7 @@ void write_data_in_buffer()
 
 void *udp_server( void *srv_dev )
 {
-	char recive_dgram[MAXCHAR];
+	char receive_dgram[MAXCHAR];
 	char str1[ADDR_STR_LEN];
 	struct ifreq int_req;
 	struct sockaddr_in server, client;
@@ -409,12 +409,15 @@ void *udp_server( void *srv_dev )
 		tv.tv_sec = 1;
 		tv.tv_usec = 0;
 		if( select( sock + 1, &wait_sockets, NULL, NULL, &tv) > 0 ) {
-			n = recvfrom(sock, recive_dgram, sizeof(recive_dgram), 0, (struct sockaddr*) &client, &len);
-			packet_count = ( n - 1 ) / PACKET_FIELDS;
-			for( i=0;i < packet_count; i++)
-			{
-				memmove(&orig,(unsigned int*)&recive_dgram[i*PACKET_FIELDS],4);
-				handle_node(orig,client.sin_addr.s_addr,(unsigned char)recive_dgram[i*PACKET_FIELDS+4], (unsigned char)recive_dgram[ n - 1 ]);
+			n = recvfrom(sock, receive_dgram, sizeof(receive_dgram), 0, (struct sockaddr*) &client, &len);
+			/* 10 bytes is minumum packet size: sender ip, gateway class, neighbour ip, neighbour packet count */
+			if ( n > 9 ) {
+				packet_count = n / PACKET_FIELDS;
+				for( i = 1; i < packet_count; i++ )
+				{
+					memmove(&orig,(unsigned int*)&receive_dgram[i*PACKET_FIELDS],4);
+					handle_node(orig,(unsigned int)receive_dgram,(unsigned char)receive_dgram[i*PACKET_FIELDS+4], (unsigned char)receive_dgram[4]);
+				}
 			}
 		}
 	}
@@ -693,7 +696,7 @@ int main( int argc, char **argv )
 		tv.tv_usec = 0;
 		len_inet = sizeof( adr_client );
 
-		
+
 		if( select( sock + 1, &wait_sockets, NULL, NULL, &tv) > 0 ) {
 			t_data.socket = accept( sock, (struct sockaddr*)&adr_client, &len_inet );
 			addr_to_string( adr_client.sin_addr.s_addr, t_data.ip, sizeof( t_data.ip ) );
