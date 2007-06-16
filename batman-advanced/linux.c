@@ -53,7 +53,7 @@ int8_t rawsock_create(char *devicename) {
 
 	if ( ( rawsock = socket(PF_PACKET,SOCK_RAW,htons(ETH_P_BATMAN) ) ) < 0 ) {
 
-		debug_output( 0, "Error - can't create raw socket: %s", strerror(errno) );
+		debug_output( 0, "Error - can't create raw socket on interface %s: %s \n", devicename, strerror(errno) );
 		return(-1);
 
 	}
@@ -62,7 +62,7 @@ int8_t rawsock_create(char *devicename) {
 
 	if ( ioctl(rawsock, SIOCGIFINDEX, &req) < 0 ) {
 
-		debug_output( 0, "Error - can't create raw socket (SIOCGIFINDEX): %s", strerror(errno) );
+		debug_output( 0, "Error - can't create raw socket (SIOCGIFINDEX) on interface %s: %s \n", devicename, strerror(errno) );
 		return(-1);
 
 	}
@@ -75,7 +75,7 @@ int8_t rawsock_create(char *devicename) {
 
 	if ( bind(rawsock, (struct sockaddr *)&addr, sizeof(addr)) < 0 ) {
 
-		debug_output( 0, "Error - can't bind raw socket: %s", strerror(errno) );
+		debug_output( 0, "Error - can't bind raw socket on interface %s: %s \n", devicename, strerror(errno) );
 		close(rawsock);
 		return(-1);
 
@@ -99,7 +99,7 @@ int32_t rawsock_read(int32_t rawsock, struct ether_header *recv_header, unsigned
 
 	if ( ( packet_size = readv(rawsock, vector, 2) ) < 0 ) {
 
-		debug_output( 0, "Error - can't read from raw socket: %s", strerror(errno) );
+		debug_output( 0, "Error - can't read from raw socket: %s \n", strerror(errno) );
 		return(packet_size);
 
 	}
@@ -153,7 +153,7 @@ int32_t rawsock_write(int32_t rawsock, struct ether_header *send_header, unsigne
 
 
 	if ( ( ret = writev(rawsock, vector, 2) ) < 0 )
-		debug_output( 0, "Error - can't write to raw socket: %s", strerror(errno) );
+		debug_output( 0, "Error - can't write to raw socket: %s \n", strerror(errno) );
 
 	return(ret);
 
@@ -168,7 +168,7 @@ int8_t tap_probe() {
 
 	if ( ( fd = open( "/dev/net/tun", O_RDWR ) ) < 0 ) {
 
-		debug_output( 0, "Error - could not open '/dev/net/tun' ! Is the tun kernel module loaded ?\n" );
+		debug_output( 0, "Error - could not open '/dev/net/tun' ! Is the tun kernel module loaded ? \n" );
 		return 0;
 
 	}
@@ -194,14 +194,14 @@ int32_t tap_create( int16_t mtu ) {
 
 	if ( ( fd = open( "/dev/net/tun", O_RDWR ) ) < 0 ) {
 
-		debug_output( 0, "Error - can't create tap device (/dev/net/tun): %s\n", strerror(errno) );
+		debug_output( 0, "Error - can't create tap device (/dev/net/tun): %s \n", strerror(errno) );
 		return -1;
 
 	}
 
 	if ( ( ioctl( fd, TUNSETIFF, (void *) &ifr_tap ) ) < 0 ) {
 
-		debug_output( 0, "Error - can't create tap device (TUNSETIFF): %s\n", strerror(errno) );
+		debug_output( 0, "Error - can't create tap device (TUNSETIFF): %s \n", strerror(errno) );
 		close( fd );
 		return -1;
 
@@ -219,7 +219,7 @@ int32_t tap_create( int16_t mtu ) {
 	tmp_fd = socket( AF_INET, SOCK_DGRAM, 0 );
 
 	if ( tmp_fd < 0 ) {
-		debug_output( 0, "Error - can't create tap device (udp socket): %s\n", strerror(errno) );
+		debug_output( 0, "Error - can't create tap device (udp socket): %s \n", strerror(errno) );
 		tap_destroy( fd );
 		return -1;
 	}
@@ -227,7 +227,7 @@ int32_t tap_create( int16_t mtu ) {
 
 	if ( ioctl( tmp_fd, SIOCGIFFLAGS, &ifr_tap ) < 0 ) {
 
-		debug_output( 0, "Error - can't create tap device (SIOCGIFFLAGS): %s\n", strerror(errno) );
+		debug_output( 0, "Error - can't create tap device (SIOCGIFFLAGS): %s \n", strerror(errno) );
 		tap_destroy( fd );
 		close( tmp_fd );
 		return -1;
@@ -239,7 +239,7 @@ int32_t tap_create( int16_t mtu ) {
 
 	if ( ioctl( tmp_fd, SIOCSIFFLAGS, &ifr_tap ) < 0 ) {
 
-		debug_output( 0, "Error - can't create tap device (SIOCSIFFLAGS): %s\n", strerror(errno) );
+		debug_output( 0, "Error - can't create tap device (SIOCSIFFLAGS): %s \n", strerror(errno) );
 		tap_destroy( fd );
 		close( tmp_fd );
 		return -1;
@@ -253,7 +253,7 @@ int32_t tap_create( int16_t mtu ) {
 	/* set MTU of tap interface: real MTU - 28 */
 	if ( mtu < 100 ) {
 
-		debug_output( 0, "Warning - MTU smaller than 100 -> can't reduce MTU anymore\n" );
+		debug_output( 0, "Warning - MTU smaller than 100 -> can't reduce MTU anymore \n" );
 
 	} else {
 
@@ -261,7 +261,7 @@ int32_t tap_create( int16_t mtu ) {
 
 		if ( ioctl( tmp_fd, SIOCSIFMTU, &ifr_tap ) < 0 ) {
 
-			debug_output( 0, "Error - can't create tap device (SIOCSIFMTU): %s\n", strerror(errno) );
+			debug_output( 0, "Error - can't create tap device (SIOCSIFMTU): %s \n", strerror(errno) );
 			tap_destroy( fd );
 			close( tmp_fd );
 			return -1;
@@ -282,7 +282,7 @@ void tap_destroy( int32_t tap_fd ) {
 
 	if ( ioctl( tap_fd, TUNSETPERSIST, 0 ) < 0 ) {
 
-		debug_output( 0, "Error - can't delete tap device: %s\n", strerror(errno) );
+		debug_output( 0, "Error - can't delete tap device: %s \n", strerror(errno) );
 
 	}
 
