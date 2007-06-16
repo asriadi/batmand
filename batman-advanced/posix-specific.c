@@ -1438,25 +1438,17 @@ int8_t receive_packet( unsigned char *packet_buff, int16_t packet_buff_len, int1
 				/* set broadcast sequence number */
 				bcast_packet->seqno = ((struct batman_if *)if_list.next)->bcast_seqno;
 
-				memcpy( ether_header.ether_dhost, broadcastAddr, ETH_ALEN );
+				((struct batman_if *)if_list.next)->bcast_seqno++;
 
 				/* broadcast packet */
 				list_for_each(if_pos, &if_list) {
 
 					batman_if = list_entry(if_pos, struct batman_if, list);
 
-					memcpy( ether_header.ether_shost, batman_if->hw_addr, ETH_ALEN );
-
-					if ( rawsock_write( batman_if->raw_sock, &ether_header, (unsigned char *)&bcast_packet, *pay_buff_len + sizeof(struct bcast_packet) ) < 0 ) {
-
-						debug_output( 0, "Error - can't send broadcast data through raw socket: %s\n", strerror(errno) );
+					if ( send_packet( packet_buff, *pay_buff_len + sizeof(struct bcast_packet), batman_if->hw_addr, broadcastAddr, batman_if->raw_sock ) < 0 )
 						return -1;
 
-					}
-
 				}
-
-				((struct batman_if *)if_list.next)->bcast_seqno++;
 
 			/* unicast packet */
 			} else {
@@ -1473,20 +1465,13 @@ int8_t receive_packet( unsigned char *packet_buff, int16_t packet_buff_len, int1
 					/* set unicast ttl */
 					unicast_packet->ttl = TTL;
 
-					memcpy( ether_header.ether_dhost, orig_node->router->addr, ETH_ALEN );
-					memcpy( ether_header.ether_shost, orig_node->batman_if->hw_addr, ETH_ALEN );
-
-					if ( ( rawsock_write( orig_node->batman_if->raw_sock, &ether_header, (unsigned char *)&unicast_packet, *pay_buff_len + sizeof(struct unicast_packet) ) ) < 0 ) {
-
-						debug_output( 0, "Error - can't send data through raw socket: %s\n", strerror(errno) );
+					if ( send_packet( (unsigned char *)&unicast_packet, *pay_buff_len + sizeof(struct unicast_packet), orig_node->batman_if->hw_addr, orig_node->router->addr, orig_node->batman_if->raw_sock ) < 0 )
 						return -1;
-
-					}
 
 				} else {
 
 					/*unsigned char *pay_buff = (unsigned char *)packet_buff + sizeof(struct batman_packet);
-					printf( "not found: %s\n", addr_to_string( ((struct ether_header *)pay_buff)->ether_dhost ) );*/
+					printf( "not found: %s\n", addr_to_string( ((struct ether_header *)payload_ptr)->ether_dhost ) ); */
 
 				}
 
@@ -1737,6 +1722,10 @@ int8_t send_packet( unsigned char *packet_buff, int16_t packet_buff_len, uint8_t
 
 	memcpy( ether_header.ether_dhost, recv_addr, ETH_ALEN );
 	memcpy( ether_header.ether_shost, send_addr, ETH_ALEN );
+
+	/*debug_output( 0, "send packet: send addr %s,", addr_to_string( send_addr ) );
+	debug_output( 0, "recv addr %s,", addr_to_string( recv_addr ) );
+	debug_output( 0, "%02x %02x %02x %02x %02x \n", packet_buff[0], packet_buff[1], packet_buff[2], packet_buff[3], packet_buff[4] );*/
 
 	if ( rawsock_write( send_sock, &ether_header, packet_buff, packet_buff_len ) < 0 )
 		return -1;
