@@ -99,8 +99,11 @@ int32_t rawsock_read(int32_t rawsock, struct ether_header *recv_header, unsigned
 
 	if ( ( packet_size = readv(rawsock, vector, 2) ) < 0 ) {
 
-		debug_output( 0, "Error - can't read from raw socket: %s \n", strerror(errno) );
-		return(packet_size);
+		/* non blocking socket returns */
+		if ( errno != EAGAIN )
+			debug_output( 0, "Error - can't read from raw socket: %s \n", strerror(errno) );
+
+		return -1;
 
 	}
 
@@ -132,13 +135,13 @@ int32_t rawsock_write(int32_t rawsock, struct ether_header *send_header, unsigne
 
 	if ( memcmp( send_header->ether_dhost, broadcastAddr, 6 ) == 0 ) {
 
-		if ( size == sizeof(struct packet) ) {
+		if ( size == sizeof(struct batman_packet) ) {
 
-			printf( "batman: orig = %s, \n", addr_to_string( ((struct packet *)buf)->orig ) );
+			printf( "batman: orig = %s, \n", addr_to_string( ((struct batman_packet *)buf)->orig ) );
 
 		} else {
 
-			unsigned char *pay_buff = buf + sizeof(struct packet);
+			unsigned char *pay_buff = buf + sizeof(struct bcast_packet);
 			printf( "broadcast: to = %s, ", addr_to_string( ((struct ether_header *)pay_buff)->ether_dhost ) );
 			printf( "from = %s, \n", addr_to_string( ((struct ether_header *)pay_buff)->ether_shost ) );
 
@@ -146,8 +149,9 @@ int32_t rawsock_write(int32_t rawsock, struct ether_header *send_header, unsigne
 
 	} else {
 
-		printf( "unicast: to = %s, ", addr_to_string( ((struct ether_header *)buf)->ether_dhost ) );
-		printf( "from = %s, \n", addr_to_string( ((struct ether_header *)buf)->ether_shost ) );
+		unsigned char *pay_buff = buf + sizeof(struct unicast_packet);
+		printf( "unicast: to = %s, ", addr_to_string( ((struct ether_header *)pay_buff)->ether_dhost ) );
+		printf( "from = %s, \n", addr_to_string( ((struct ether_header *)pay_buff)->ether_shost ) );
 
 	}*/
 
@@ -224,6 +228,25 @@ int32_t tap_create( int16_t mtu ) {
 		return -1;
 	}
 
+	if ( ioctl( tmp_fd, SIOCGIFHWADDR, &ifr_tap ) < 0 ) {
+
+		debug_output( 0, "Error - can't create tap device (SIOCGIFHWADDR): %s \n", strerror(errno) );
+		tap_destroy( fd );
+		close( tmp_fd );
+		return -1;
+
+	}
+
+	memcpy( &ifr_tap.ifr_hwaddr.sa_data, ((struct batman_if *)if_list.next)->hw_addr, 6 );
+
+	if ( ioctl( tmp_fd, SIOCSIFHWADDR, &ifr_tap ) < 0 ) {
+
+		debug_output( 0, "Error - can't create tap device (SIOCSIFHWADDR): %s \n", strerror(errno) );
+		tap_destroy( fd );
+		close( tmp_fd );
+		return -1;
+
+	}
 
 	if ( ioctl( tmp_fd, SIOCGIFFLAGS, &ifr_tap ) < 0 ) {
 
@@ -233,6 +256,7 @@ int32_t tap_create( int16_t mtu ) {
 		return -1;
 
 	}
+
 
 	ifr_tap.ifr_flags |= IFF_UP;
 	ifr_tap.ifr_flags |= IFF_RUNNING;

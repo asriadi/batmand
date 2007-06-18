@@ -531,7 +531,7 @@ int8_t batman() {
 		curr_time = get_time();
 		select_timeout = ( curr_time < ((struct forw_node *)forw_list.next)->send_time ? ((struct forw_node *)forw_list.next)->send_time - curr_time : 10 );
 
-		res = receive_packet( ( unsigned char *)&in, sizeof(in), &in_len, neigh, select_timeout, &if_incoming );
+		res = receive_packet( in, sizeof(in), &in_len, neigh, select_timeout, &if_incoming );
 
 		if ( res < 0 )
 			return -1;
