@@ -334,6 +334,7 @@ void handle_node( unsigned int sender_ip, unsigned int neigh_ip, unsigned char n
 		orig_node = (struct node *)debugMalloc( sizeof(struct node), 403 );
 		orig_node->addr = sender_ip;
 		orig_node->neighbour = NULL;
+		orig_neigh_node->is_neighbour = NULL;
 		orig_node->packet_count_average = 0;
 		orig_node->last_seen = 10;
 		orig_node->gw_class = gw_class;
