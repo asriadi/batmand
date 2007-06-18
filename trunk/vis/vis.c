@@ -276,7 +276,7 @@ static void add_is_neighbour_node(struct node *node, struct neighbour **is_neigh
 
 
 
-void handle_node( unsigned int sender_ip, unsigned int neigh_ip, unsigned char neigh_packet_count, unsigned char gw_class ) {
+void handle_node( unsigned int sender_ip, unsigned int neigh_ip, unsigned char neigh_packet_count, unsigned char gw_class, unsigned char seq_range ) {
 
 	struct node *orig_node, *orig_neigh_node;
 	struct hashtable_t *swaphash;
@@ -338,6 +338,7 @@ void handle_node( unsigned int sender_ip, unsigned int neigh_ip, unsigned char n
 		orig_node->packet_count_average = 0;
 		orig_node->last_seen = 10;
 		orig_node->gw_class = gw_class;
+		orig_node->seq_range = seq_range;
 
 		if ( pthread_mutex_init(&orig_node->mutex, NULL) != 0 )
 			exit_error( "Error - can't init mutex for orig node\n");
@@ -408,7 +409,7 @@ void *udp_server() {
 	struct list_head *list_pos;
 	struct sockaddr_in client;
 	struct timeval tv;
-	unsigned char receive_buff[MAXCHAR];
+	unsigned char receive_buff[MAXCHAR], *payload_ptr;
 	int max_sock = 0, packet_count, i, buff_len;
 	int orig_neigh_node, orig_node;
 	fd_set wait_sockets, tmp_wait_sockets;
@@ -448,16 +449,17 @@ void *udp_server() {
 
 					buff_len = recvfrom( udp_if->sock, receive_buff, sizeof(receive_buff), 0, (struct sockaddr*)&client, &len );
 
-					/* 10 bytes is minumum packet size: sender ip, gateway class, neighbour ip, neighbour packet count */
-					if ( buff_len > 9 ) {
+					/* 11 bytes is minumum packet size: sender ip, gateway class, seq range, neighbour ip, neighbour packet count */
+					if ( buff_len > 10 ) {
 
-						packet_count = buff_len / PACKET_FIELD_LENGTH;
+						packet_count = buff_len - 6 / PACKET_FIELD_LENGTH;
 						memmove( &orig_node, &receive_buff, 4 );
+						payload_ptr = receive_buff + 6;
 
-						for( i = 1; i < packet_count; i++ ) {
+						for( i = 0; i < packet_count; i++ ) {
 
-							memmove( &orig_neigh_node, &receive_buff[i*PACKET_FIELD_LENGTH], 4 );
-							handle_node( orig_node, orig_neigh_node, receive_buff[i*PACKET_FIELD_LENGTH+4], receive_buff[4] );
+							memmove( &orig_neigh_node, payload_ptr + i * PACKET_FIELD_LENGTH, 4 );
+							handle_node( orig_node, orig_neigh_node, payload_ptr[i*PACKET_FIELD_LENGTH+4], receive_buff[4], receive_buff[5] );
 
 						}
 
@@ -483,8 +485,6 @@ void *tcp_server( void *arg ) {
 	buffer_t *last_send = NULL;
 	ssize_t ret;
 
-
-	signal( SIGPIPE, SIG_IGN );
 
 	while( !is_aborted() ) {
 
