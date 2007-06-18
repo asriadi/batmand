@@ -57,6 +57,7 @@ struct node {
 	unsigned char packet_count_average;
 	unsigned char last_seen;
 	unsigned char gw_class;
+	unsigned char seq_range;
 	struct neighbour *neighbour;
 	struct neighbour *is_neighbour;
 	pthread_mutex_t mutex;
