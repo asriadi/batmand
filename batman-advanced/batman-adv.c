@@ -507,7 +507,7 @@ int8_t batman() {
 		batman_if = list_entry( if_pos, struct batman_if, list );
 
 		memcpy( batman_if->out.orig, batman_if->hw_addr, 6 );
-		batman_if->out.packet_type = 0;
+		batman_if->out.packet_type = BAT_PACKET;
 		batman_if->out.flags = 0x00;
 		batman_if->out.ttl = TTL;
 		batman_if->out.seqno = 1;

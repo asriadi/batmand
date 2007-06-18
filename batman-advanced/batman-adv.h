@@ -42,11 +42,6 @@
 
 #define UNIX_PATH "/var/run/batmand-adv.socket"
 
-#define ETH_P_BATMAN  0x0842
-#define ETH_BATMAN    0x10
-#define ETH_BROADCAST 0x20
-#define ETH_UNICAST   0x30
-
 
 
 /***
