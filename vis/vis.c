@@ -293,7 +293,7 @@ void handle_node( unsigned int sender_ip, unsigned int neigh_ip, unsigned char n
 		swaphash = hash_resize( node_hash, node_hash->size * 2 );
 
 		if ( swaphash == NULL )
-			exit_error("Couldn't resize hash table \n" );
+			exit_error( "Couldn't resize hash table \n" );
 
 		node_hash = swaphash;
 
@@ -303,11 +303,12 @@ void handle_node( unsigned int sender_ip, unsigned int neigh_ip, unsigned char n
 	orig_neigh_node = (struct node *)hash_find( node_hash, &neigh_ip );
 
 	/* node not found */
-	if( orig_neigh_node == NULL ) {
+	if ( orig_neigh_node == NULL ) {
 
 		orig_neigh_node = (struct node *)debugMalloc( sizeof(struct node), 402 );
 		orig_neigh_node->addr = neigh_ip;
 		orig_neigh_node->neighbour = NULL;
+		orig_neigh_node->is_neighbour = NULL;
 		orig_neigh_node->packet_count_average = 0;
 		orig_neigh_node->last_seen = 10;
 
@@ -843,7 +844,7 @@ int main( int argc, char **argv ) {
 
 		len_inet = sizeof(addr_client);
 
-		if ( select( tcp_sock + 1, &wait_sockets, NULL, NULL, &tv) > 0 ) {
+		if ( select( tcp_sock + 1, &wait_sockets, NULL, NULL, &tv ) > 0 ) {
 
 			thread_data = debugMalloc( sizeof(struct thread_data), 1200 );
 
