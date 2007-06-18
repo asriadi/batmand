@@ -1421,10 +1421,10 @@ int8_t receive_packet( unsigned char *packet_buff, int16_t packet_buff_len, int1
 
 	if ( FD_ISSET( tap_sock, &tmp_wait_set ) ) {
 
-		/* save data from kernel into a buffer but spare space for the header information */
-		while ( ( *pay_buff_len = read( tap_sock, packet_buff + sizeof(struct bcast_packet), packet_buff_len - 1 - sizeof(struct bcast_packet) ) ) > 0 ) {
+		payload_ptr = packet_buff + sizeof(struct bcast_packet);
 
-			payload_ptr = packet_buff + sizeof(struct bcast_packet);
+		/* save data from kernel into a buffer but spare space for the header information */
+		while ( ( *pay_buff_len = read( tap_sock, payload_ptr, packet_buff_len - 1 - sizeof(struct bcast_packet) ) ) > 0 ) {
 
 			/* ethernet packet should be broadcasted */
 			if ( is_broadcast_address( ((struct ether_header *)payload_ptr)->ether_dhost ) ) {
@@ -1458,14 +1458,14 @@ int8_t receive_packet( unsigned char *packet_buff, int16_t packet_buff_len, int1
 
 				if ( ( orig_node != NULL ) && ( orig_node->batman_if != NULL ) && ( orig_node->router != NULL ) ) {
 
-					unicast_packet = (struct unicast_packet *)(packet_buff + sizeof(struct bcast_packet) - sizeof(struct unicast_packet) );
+					unicast_packet = (struct unicast_packet *)(payload_ptr - sizeof(struct unicast_packet) );
 
 					/* batman packet type: unicast */
 					unicast_packet->packet_type = 2;
 					/* set unicast ttl */
 					unicast_packet->ttl = TTL;
 
-					if ( send_packet( (unsigned char *)&unicast_packet, *pay_buff_len + sizeof(struct unicast_packet), orig_node->batman_if->hw_addr, orig_node->router->addr, orig_node->batman_if->raw_sock ) < 0 )
+					if ( send_packet( (unsigned char *)unicast_packet, *pay_buff_len + sizeof(struct unicast_packet), orig_node->batman_if->hw_addr, orig_node->router->addr, orig_node->batman_if->raw_sock ) < 0 )
 						return -1;
 
 				} else {
