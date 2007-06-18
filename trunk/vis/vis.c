@@ -483,6 +483,9 @@ void *tcp_server( void *arg ) {
 	buffer_t *last_send = NULL;
 	ssize_t ret;
 
+
+	signal( SIGPIPE, SIG_IGN );
+
 	while( !is_aborted() ) {
 
 		if ( current != NULL && current != last_send ) {
