@@ -52,13 +52,14 @@ struct list_head_first vis_if_list;
 pthread_t udp_server_thread = 0;
 pthread_t master_thread = 0;
 
-struct node *root = NULL;
+pthread_mutex_t hash_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 buffer_t *current = NULL;
 buffer_t *first = NULL;
 buffer_t *fillme = NULL;
 
-static int8_t stop, sd;
+static int8_t stop;
+
 struct hashtable_t *node_hash;
 
 void handler( int32_t sig ) {
@@ -158,21 +159,6 @@ void addr_to_string(unsigned int addr, char *str, int len)
 	return;
 }
 
-static int calc_packet_count_average(struct node *node)
-{
-	struct neighbour *neigh;
-	int pc = 0, cnt = 0;
-
-	if(node->neighbour == NULL)
-		return(0);
-
-	for(neigh = node->neighbour; neigh != NULL; neigh = neigh->next)
-	{
-		pc += neigh->packet_count;
-		cnt++;
-	}
-	return(pc/cnt);
-}
 
 void clean_hash() {
 
@@ -312,19 +298,13 @@ void handle_node( unsigned int sender_ip, unsigned int neigh_ip, unsigned char n
 		orig_neigh_node->addr = neigh_ip;
 		orig_neigh_node->neighbour = NULL;
 		orig_neigh_node->is_neighbour = NULL;
-		orig_neigh_node->packet_count_average = 0;
 		orig_neigh_node->last_seen = 10;
-
-		if ( pthread_mutex_init( &orig_neigh_node->mutex, NULL ) != 0 )
-			exit_error( "Error - can't init mutex for orig neigh node\n");
 
 		hash_add( node_hash, orig_neigh_node );
 
 	} else {
 
-		pthread_mutex_lock( &orig_neigh_node->mutex );
 		orig_neigh_node->last_seen = 10;
-		pthread_mutex_unlock( &orig_neigh_node->mutex );
 
 	}
 
@@ -332,34 +312,27 @@ void handle_node( unsigned int sender_ip, unsigned int neigh_ip, unsigned char n
 	orig_node = (struct node *)hash_find( node_hash, &sender_ip );
 
 	/* node not found */
-	if( orig_node == NULL ) {
+	if ( orig_node == NULL ) {
 
 		orig_node = (struct node *)debugMalloc( sizeof(struct node), 403 );
 		orig_node->addr = sender_ip;
 		orig_node->neighbour = NULL;
 		orig_neigh_node->is_neighbour = NULL;
-		orig_node->packet_count_average = 0;
 		orig_node->last_seen = 10;
 		orig_node->gw_class = gw_class;
 		orig_node->seq_range = seq_range;
-
-		if ( pthread_mutex_init(&orig_node->mutex, NULL) != 0 )
-			exit_error( "Error - can't init mutex for orig node\n");
 
 		hash_add( node_hash, orig_node );
 
 	} else {
 
-		pthread_mutex_lock( &orig_node->mutex );
 		orig_node->last_seen = 10;
 		orig_node->gw_class = gw_class;
-		pthread_mutex_unlock( &orig_node->mutex );
 
 	}
 
 	add_neighbour_node( orig_neigh_node, neigh_packet_count, &orig_node->neighbour );
 	add_is_neighbour_node( orig_node, &orig_neigh_node->is_neighbour );
-	orig_node->packet_count_average = calc_packet_count_average( orig_node );
 
 	return;
 
@@ -370,43 +343,52 @@ void handle_node( unsigned int sender_ip, unsigned int neigh_ip, unsigned char n
 void write_data_in_buffer()
 {
 	struct neighbour *neigh;
-	struct node *node;
-	struct hash_it_t *hashit;
+	struct node *orig_node;
+	struct hash_it_t *hashit = NULL;
 
 	char from_str[16];
 	char to_str[16];
 	char tmp[100];
 
+	memset( tmp, '\0', sizeof( tmp ) );
+
+	if ( pthread_mutex_lock( &hash_mutex ) != 0 )
+		printf( "Error - could not lock hash mutex (write_data_in_buffer): %s \n", strerror( errno ) );
+
 	if( node_hash->elements == 0 )
 		return;
-	memset( tmp, '\0', sizeof( tmp ) );
-	hashit = NULL;
+
 	while ( NULL != ( hashit = hash_iterate( node_hash, hashit ) ) )
 	{
-		node = (struct node *) hashit->bucket->data;
-		addr_to_string( node->addr, from_str, sizeof( from_str ) );
-		for( neigh = node->neighbour; neigh != NULL; neigh = neigh->next )
+		orig_node = (struct node *) hashit->bucket->data;
+		addr_to_string( orig_node->addr, from_str, sizeof( from_str ) );
+		for( neigh = orig_node->neighbour; neigh != NULL; neigh = neigh->next )
 		{
 			/* never ever divide by zero */
 			if ( neigh->packet_count > 0 ) {
 
 				addr_to_string( neigh->node->addr, to_str, sizeof( to_str ) );
-				snprintf( tmp, sizeof( tmp ), "\"%s\" -> \"%s\"[label=\"%.2f\"]\n", from_str, to_str, (float)( 64 / ( int )neigh->packet_count ) );
+				snprintf( tmp, sizeof( tmp ), "\"%s\" -> \"%s\"[label=\"%.2f\"]\n", from_str, to_str, (float)( orig_node->seq_range / ( int )neigh->packet_count ) );
 				fillme->buffer = (char *)debugRealloc( fillme->buffer, strlen( tmp ) + strlen( fillme->buffer ) + 1, 408 );
 
 				strncat( fillme->buffer, tmp, strlen( tmp ) );
 
 			}
 		}
-		/*printf("gw_class %d\n",(unsigned int)node->gw_class);*/
-		if( node->gw_class != 0 ) {
+		/*printf("gw_class %d\n",(unsigned int)orig_node->gw_class);*/
+		if( orig_node->gw_class != 0 ) {
 			snprintf( tmp, sizeof( tmp ), "\"%s\" -> \"0.0.0.0/0.0.0.0\"[label=\"HNA\"]\n", from_str );
 			fillme->buffer = (char *)debugRealloc( fillme->buffer, strlen( tmp ) + strlen( fillme->buffer ) + 1, 409 );
 			strncat( fillme->buffer, tmp, strlen( tmp ) );
 		}
 
 	}
+
+	if ( pthread_mutex_unlock( &hash_mutex ) != 0 )
+		printf( "Error - could not unlock hash mutex (write_data_in_buffer): %s \n", strerror( errno ) );
+
 	return;
+
 }
 
 
@@ -460,14 +442,25 @@ void *udp_server() {
 					/* 11 bytes is minumum packet size: sender ip, gateway class, seq range, neighbour ip, neighbour packet count */
 					if ( buff_len > 10 ) {
 
-						packet_count = buff_len - 6 / PACKET_FIELD_LENGTH;
-						memmove( &orig_node, &receive_buff, 4 );
-						payload_ptr = receive_buff + 6;
+						if ( pthread_mutex_trylock( &hash_mutex ) == 0 ) {
 
-						for( i = 0; i < packet_count; i++ ) {
+							packet_count = buff_len - 6 / PACKET_FIELD_LENGTH;
+							memmove( &orig_node, &receive_buff, 4 );
+							payload_ptr = receive_buff + 6;
 
-							memmove( &orig_neigh_node, payload_ptr + i * PACKET_FIELD_LENGTH, 4 );
-							handle_node( orig_node, orig_neigh_node, payload_ptr[i*PACKET_FIELD_LENGTH+4], receive_buff[4], receive_buff[5] );
+							for( i = 0; i < packet_count; i++ ) {
+
+								memmove( &orig_neigh_node, payload_ptr + i * PACKET_FIELD_LENGTH, 4 );
+								handle_node( orig_node, orig_neigh_node, payload_ptr[i*PACKET_FIELD_LENGTH+4], receive_buff[4], receive_buff[5] );
+
+							}
+
+							if ( pthread_mutex_unlock( &hash_mutex ) < 0 )
+								printf( "Error - could not unlock mutex (udp server): %s \n", strerror( errno ) );
+
+						} else {
+
+							printf( "Warning - dropping UDP packet: hash mutext is locked \n" );
 
 						}
 
@@ -593,7 +586,6 @@ void *cleaner( void *arg)
 	struct hash_it_t *hashit;
 	char str1[ADDR_STR_LEN];
 
-	sd++;
 	while( !is_aborted() )
 	{
 		hashit = NULL;
@@ -604,9 +596,7 @@ void *cleaner( void *arg)
 			/*printf( "node %s....", str1);*/
 			if( node->last_seen > 0 )
 			{
-				pthread_mutex_lock(&node->mutex);
 				node->last_seen--;
-				pthread_mutex_unlock(&node->mutex);
 				/*printf("last_seen = %d\n",node->last_seen);*/
 			} else {
 				/*printf("start delete\n");*/
@@ -661,7 +651,6 @@ void *cleaner( void *arg)
 	}
 	printf("shutdown cleaner....");
 	printf("ok\n");
-	sd--;
 	return NULL;
 }
 
