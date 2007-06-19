@@ -355,31 +355,32 @@ void write_data_in_buffer()
 	if ( pthread_mutex_lock( &hash_mutex ) != 0 )
 		printf( "Error - could not lock hash mutex (write_data_in_buffer): %s \n", strerror( errno ) );
 
-	if( node_hash->elements == 0 )
-		return;
+	if ( node_hash->elements > 0 ) {
 
-	while ( NULL != ( hashit = hash_iterate( node_hash, hashit ) ) )
-	{
-		orig_node = (struct node *) hashit->bucket->data;
-		addr_to_string( orig_node->addr, from_str, sizeof( from_str ) );
-		for( neigh = orig_node->neighbour; neigh != NULL; neigh = neigh->next )
+		while ( NULL != ( hashit = hash_iterate( node_hash, hashit ) ) )
 		{
-			/* never ever divide by zero */
-			if ( neigh->packet_count > 0 ) {
+			orig_node = (struct node *) hashit->bucket->data;
+			addr_to_string( orig_node->addr, from_str, sizeof( from_str ) );
+			for( neigh = orig_node->neighbour; neigh != NULL; neigh = neigh->next )
+			{
+				/* never ever divide by zero */
+				if ( neigh->packet_count > 0 ) {
 
-				addr_to_string( neigh->node->addr, to_str, sizeof( to_str ) );
-				snprintf( tmp, sizeof( tmp ), "\"%s\" -> \"%s\"[label=\"%.2f\"]\n", from_str, to_str, (float)( orig_node->seq_range / ( int )neigh->packet_count ) );
-				fillme->buffer = (char *)debugRealloc( fillme->buffer, strlen( tmp ) + strlen( fillme->buffer ) + 1, 408 );
+					addr_to_string( neigh->node->addr, to_str, sizeof( to_str ) );
+					snprintf( tmp, sizeof( tmp ), "\"%s\" -> \"%s\"[label=\"%.2f\"]\n", from_str, to_str, (float)( orig_node->seq_range / ( int )neigh->packet_count ) );
+					fillme->buffer = (char *)debugRealloc( fillme->buffer, strlen( tmp ) + strlen( fillme->buffer ) + 1, 408 );
 
-				strncat( fillme->buffer, tmp, strlen( tmp ) );
+					strncat( fillme->buffer, tmp, strlen( tmp ) );
 
+				}
 			}
-		}
-		/*printf("gw_class %d\n",(unsigned int)orig_node->gw_class);*/
-		if( orig_node->gw_class != 0 ) {
-			snprintf( tmp, sizeof( tmp ), "\"%s\" -> \"0.0.0.0/0.0.0.0\"[label=\"HNA\"]\n", from_str );
-			fillme->buffer = (char *)debugRealloc( fillme->buffer, strlen( tmp ) + strlen( fillme->buffer ) + 1, 409 );
-			strncat( fillme->buffer, tmp, strlen( tmp ) );
+			/*printf("gw_class %d\n",(unsigned int)orig_node->gw_class);*/
+			if( orig_node->gw_class != 0 ) {
+				snprintf( tmp, sizeof( tmp ), "\"%s\" -> \"0.0.0.0/0.0.0.0\"[label=\"HNA\"]\n", from_str );
+				fillme->buffer = (char *)debugRealloc( fillme->buffer, strlen( tmp ) + strlen( fillme->buffer ) + 1, 409 );
+				strncat( fillme->buffer, tmp, strlen( tmp ) );
+			}
+
 		}
 
 	}
@@ -460,7 +461,7 @@ void *udp_server() {
 
 						} else {
 
-							printf( "Warning - dropping UDP packet: hash mutext is locked \n" );
+							printf( "Warning - dropping UDP packet: hash mutext is locked (%s)\n", strerror( EBUSY ) );
 
 						}
 
