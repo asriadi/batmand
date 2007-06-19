@@ -22,6 +22,15 @@
 
 
 
+#include <pthread.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <errno.h>
+
+
+#include "hash.h"
+#include "allocate.h"
 #include "list-batman.h"
 
 
@@ -36,8 +45,12 @@
 
 
 extern struct list_head_first vis_if_list;
+
 extern pthread_t udp_server_thread;
 extern pthread_t master_thread;
+extern pthread_mutex_t hash_mutex;
+
+extern struct hashtable_t *node_hash;
 
 
 
@@ -47,9 +60,9 @@ struct thread_data {
 };
 
 struct neighbour {
+	struct list_head list;
 	struct node *node;
 	unsigned char packet_count;
-	struct neighbour *next;
 };
 
 struct node {
@@ -57,8 +70,8 @@ struct node {
 	unsigned char last_seen;
 	unsigned char gw_class;
 	unsigned char seq_range;
-	struct neighbour *neighbour;
-	struct neighbour *is_neighbour;
+	struct list_head_first neigh_list;
+	struct list_head_first rev_neigh_list;
 };
 
 typedef struct _buffer {
@@ -80,4 +93,8 @@ struct vis_if {
 
 void clean_hash();
 void clean_buffer();
+void exit_error(char *format, ...);
+int8_t is_aborted();
+
+void *udp_server();
 
