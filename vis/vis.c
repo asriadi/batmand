@@ -357,10 +357,11 @@ void write_data_in_buffer()
 
 	if ( node_hash->elements > 0 ) {
 
-		while ( NULL != ( hashit = hash_iterate( node_hash, hashit ) ) )
-		{
+		while ( NULL != ( hashit = hash_iterate( node_hash, hashit ) ) ) {
+
 			orig_node = (struct node *) hashit->bucket->data;
 			addr_to_string( orig_node->addr, from_str, sizeof( from_str ) );
+
 			for( neigh = orig_node->neighbour; neigh != NULL; neigh = neigh->next )
 			{
 				/* never ever divide by zero */
