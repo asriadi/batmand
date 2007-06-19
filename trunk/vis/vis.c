@@ -387,11 +387,16 @@ void write_data_in_buffer()
 		addr_to_string( node->addr, from_str, sizeof( from_str ) );
 		for( neigh = node->neighbour; neigh != NULL; neigh = neigh->next )
 		{
-			addr_to_string( neigh->node->addr, to_str, sizeof( to_str ) );
-			snprintf( tmp, sizeof( tmp ), "\"%s\" -> \"%s\"[label=\"%.2f\"]\n", from_str, to_str, (float)( 64 / ( int )neigh->packet_count ) );
-			fillme->buffer = (char *)debugRealloc( fillme->buffer, strlen( tmp ) + strlen( fillme->buffer ) + 1, 408 );
+			/* never ever divide by zero */
+			if ( neigh->packet_count > 0 ) {
 
-			strncat( fillme->buffer, tmp, strlen( tmp ) );
+				addr_to_string( neigh->node->addr, to_str, sizeof( to_str ) );
+				snprintf( tmp, sizeof( tmp ), "\"%s\" -> \"%s\"[label=\"%.2f\"]\n", from_str, to_str, (float)( 64 / ( int )neigh->packet_count ) );
+				fillme->buffer = (char *)debugRealloc( fillme->buffer, strlen( tmp ) + strlen( fillme->buffer ) + 1, 408 );
+
+				strncat( fillme->buffer, tmp, strlen( tmp ) );
+
+			}
 		}
 		/*printf("gw_class %d\n",(unsigned int)node->gw_class);*/
 		if( node->gw_class != 0 ) {
