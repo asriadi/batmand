@@ -47,7 +47,7 @@
 
 
 
-struct list_head_first udp_if_list;
+struct list_head_first vis_if_list;
 
 pthread_t udp_server_thread = 0;
 pthread_t master_thread = 0;
@@ -102,7 +102,7 @@ int32_t orig_choose(void *data, int32_t size) {
 
 void restore_defaults() {
 
-	struct udp_if *udp_if;
+	struct vis_if *vis_if;
 	struct list_head *list_pos, *list_pos_tmp;
 
 
@@ -112,14 +112,17 @@ void restore_defaults() {
 	if ( master_thread != 0 )
 		pthread_join( master_thread, NULL );
 
-	list_for_each_safe( list_pos, list_pos_tmp, &udp_if_list ) {
+	list_for_each_safe( list_pos, list_pos_tmp, &vis_if_list ) {
 
-		udp_if = list_entry( list_pos, struct udp_if, list );
+		vis_if = list_entry( list_pos, struct vis_if, list );
 
-		if ( udp_if->sock )
-			close( udp_if->sock );
+		if ( vis_if->udp_sock )
+			close( vis_if->udp_sock );
 
-		debugFree( udp_if, 1200 );
+		if ( vis_if->tcp_sock )
+			close( vis_if->tcp_sock );
+
+		debugFree( vis_if, 1200 );
 
 	}
 
@@ -405,7 +408,7 @@ void write_data_in_buffer()
 
 void *udp_server() {
 
-	struct udp_if *udp_if;
+	struct vis_if *vis_if;
 	struct list_head *list_pos;
 	struct sockaddr_in client;
 	struct timeval tv;
@@ -418,14 +421,14 @@ void *udp_server() {
 
 	FD_ZERO(&wait_sockets);
 
-	list_for_each( list_pos, &udp_if_list ) {
+	list_for_each( list_pos, &vis_if_list ) {
 
-		udp_if = list_entry( list_pos, struct udp_if, list );
+		vis_if = list_entry( list_pos, struct vis_if, list );
 
-		if ( udp_if->sock > max_sock )
-			max_sock = udp_if->sock;
+		if ( vis_if->udp_sock > max_sock )
+			max_sock = vis_if->udp_sock;
 
-		FD_SET(udp_if->sock, &wait_sockets);
+		FD_SET(vis_if->udp_sock, &wait_sockets);
 
 	}
 
@@ -441,13 +444,13 @@ void *udp_server() {
 
 		if ( select( max_sock + 1, &tmp_wait_sockets, NULL, NULL, &tv ) > 0 ) {
 
-			list_for_each( list_pos, &udp_if_list ) {
+			list_for_each( list_pos, &vis_if_list ) {
 
-				udp_if = list_entry( list_pos, struct udp_if, list );
+				vis_if = list_entry( list_pos, struct vis_if, list );
 
-				if ( FD_ISSET( udp_if->sock, &tmp_wait_sockets ) ) {
+				if ( FD_ISSET( vis_if->udp_sock, &tmp_wait_sockets ) ) {
 
-					buff_len = recvfrom( udp_if->sock, receive_buff, sizeof(receive_buff), 0, (struct sockaddr*)&client, &len );
+					buff_len = recvfrom( vis_if->udp_sock, receive_buff, sizeof(receive_buff), 0, (struct sockaddr*)&client, &len );
 
 					/* 11 bytes is minumum packet size: sender ip, gateway class, seq range, neighbour ip, neighbour packet count */
 					if ( buff_len > 10 ) {
@@ -660,7 +663,7 @@ void *cleaner( void *arg)
 void print_usage() {
 
 	printf( "B.A.T.M.A.N. visualisation server %s\n", VERSION );
-	printf("Usage: vis -l <tcp interface for dot draw connections> <udp interface(s) for incoming vis packets> \n");
+	printf("Usage: vis <interface(s)> \n");
 	printf("\t-h help\n");
 	printf("\t-v Version\n\n");
 	printf("Olsrs3d / Meshs3d is an application to visualize a mesh network.\nIt is a part of s3d, have a look at s3d.berlios.de\n\n");
@@ -669,15 +672,16 @@ void print_usage() {
 
 int main( int argc, char **argv ) {
 
-	char *listen_if = NULL, ip_str[ADDR_STR_LEN];
-	int optchar, tcp_sock, on = 1;
+	char ip_str[ADDR_STR_LEN];
+	int max_sock = 0, optchar, on = 1;
 	uint8_t found_args = 1;
-	struct sockaddr_in tcp_addr, addr_client;
+	struct sockaddr_in addr_client;
 	struct ifreq int_req;
-	struct udp_if *udp_if;
+	struct vis_if *vis_if;
+	struct list_head *list_pos;
 	struct thread_data *thread_data;
 	struct timeval tv;
-	fd_set wait_sockets;
+	fd_set wait_sockets, tmp_wait_sockets;
 	socklen_t len_inet;
 	pthread_t tcp_server_thread;
 
@@ -691,18 +695,13 @@ int main( int argc, char **argv ) {
 	fd_set wait_sockets;
 	pthread_t udp_server_thread, tcp_server_thread, master_thread, cleaner_thread;*/
 
-	while ( ( optchar = getopt ( argc, argv, "hl:v" ) ) != -1 ) {
+	while ( ( optchar = getopt ( argc, argv, "hv" ) ) != -1 ) {
 
 		switch( optchar ) {
 
 			case 'h':
 				print_usage();
 				exit(EXIT_SUCCESS);
-				break;
-
-			case 'l':
-				listen_if = optarg;
-				found_args += 2;
 				break;
 
 			case 'v':
@@ -730,96 +729,68 @@ int main( int argc, char **argv ) {
 	if ( NULL == ( node_hash = hash_new( 1600, orig_comp, orig_choose ) ) )
 		exit_error( "Error - can't create hashtable\n");
 
-	INIT_LIST_HEAD_FIRST( udp_if_list );
+	INIT_LIST_HEAD_FIRST( vis_if_list );
 
-	if ( listen_if == NULL ) {
+	FD_ZERO(&wait_sockets);
 
-		print_usage();
-		exit_error( "Error - no TCP listen interface specified \n" );
 
-	} else {
-
-		if ( strlen( listen_if ) > IFNAMSIZ - 1 )
-			exit_error( "Error - interface name too long: %s\n", listen_if );
-
-		if ( ( tcp_sock = socket( AF_INET, SOCK_STREAM, 0 ) ) < 0 )
-			exit_error( "Error - could not create tcp socket for interface %s: %s\n", listen_if, strerror( errno ) );
-
-		memset( &int_req, 0, sizeof(struct ifreq) );
-		strncpy( int_req.ifr_name, listen_if, IFNAMSIZ - 1 );
-
-		if ( ioctl( tcp_sock, SIOCGIFADDR, &int_req ) < 0 ) {
-
-			close( tcp_sock );
-			exit_error( "Error - can't get IP address of interface %s\n", listen_if );
-
-		}
-
-		memset( &tcp_addr, 0, sizeof(tcp_addr) );
-		tcp_addr.sin_family = AF_INET;
-		tcp_addr.sin_port = htons(DOT_DRAW_PORT);
-		tcp_addr.sin_addr.s_addr = ((struct sockaddr_in *)&int_req.ifr_addr)->sin_addr.s_addr;
-
-		if ( setsockopt( tcp_sock, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(int) ) < 0 ) {
-
-			close( tcp_sock );
-			exit_error( "Error - ioctl SO_REUSEADDR on interface %s failed: %s\n", listen_if, strerror( errno ) );
-
-		}
-
-		if ( bind( tcp_sock, (struct sockaddr *)&tcp_addr, sizeof(tcp_addr) ) < 0 ) {
-
-			close( tcp_sock );
-			exit_error( "Error - could not bind to interface %s: %s\n", listen_if, strerror( errno ) );
-
-		}
-
-	}
-
-	if ( argc <= found_args ) {
-
-		close( tcp_sock );
-		exit_error( "Error - no UDP listen interface specified\n" );
-
-	}
-
+	if ( argc <= found_args )
+		exit_error( "Error - no listen interface specified\n" );
 
 	while ( argc > found_args ) {
 
-		udp_if = debugMalloc( sizeof(struct udp_if), 206 );
-		memset( udp_if, 0, sizeof(struct udp_if) );
-		INIT_LIST_HEAD( &udp_if->list );
+		vis_if = debugMalloc( sizeof(struct vis_if), 206 );
+		memset( vis_if, 0, sizeof(struct vis_if) );
+		INIT_LIST_HEAD( &vis_if->list );
 
-		udp_if->dev = argv[found_args];
+		vis_if->dev = argv[found_args];
 
-		if ( strlen( udp_if->dev ) > IFNAMSIZ - 1 )
-			exit_error( "Error - interface name too long: %s\n", udp_if->dev );
+		if ( strlen( vis_if->dev ) > IFNAMSIZ - 1 )
+			exit_error( "Error - interface name too long: %s\n", vis_if->dev );
 
-		if ( ( udp_if->sock = socket( PF_INET, SOCK_DGRAM, 0 ) ) < 0 )
-			exit_error( "Error - could not create udp socket for interface %s: %s\n", udp_if->dev, strerror( errno ) );
+		if ( ( vis_if->udp_sock = socket( PF_INET, SOCK_DGRAM, 0 ) ) < 0 )
+			exit_error( "Error - could not create udp socket for interface %s: %s\n", vis_if->dev, strerror( errno ) );
+
+		if ( ( vis_if->tcp_sock = socket( AF_INET, SOCK_STREAM, 0 ) ) < 0 )
+			exit_error( "Error - could not create tcp socket for interface %s: %s\n", vis_if->dev, strerror( errno ) );
 
 		memset( &int_req, 0, sizeof ( struct ifreq ) );
-		strncpy( int_req.ifr_name, udp_if->dev, IFNAMSIZ - 1 );
+		strncpy( int_req.ifr_name, vis_if->dev, IFNAMSIZ - 1 );
 
-		if ( ioctl( udp_if->sock, SIOCGIFADDR, &int_req ) < 0 )
-			exit_error( "Error - can't get IP address of interface %s\n", udp_if->dev );
+		if ( ioctl( vis_if->udp_sock, SIOCGIFADDR, &int_req ) < 0 )
+			exit_error( "Error - can't get IP address of interface %s\n", vis_if->dev );
 
-		udp_if->addr.sin_family = AF_INET;
-		udp_if->addr.sin_port = htons(VIS_PORT);
-		udp_if->addr.sin_addr.s_addr = ((struct sockaddr_in *)&int_req.ifr_addr)->sin_addr.s_addr;
+		vis_if->udp_addr.sin_family = AF_INET;
+		vis_if->udp_addr.sin_port = htons(VIS_PORT);
+		vis_if->udp_addr.sin_addr.s_addr = ((struct sockaddr_in *)&int_req.ifr_addr)->sin_addr.s_addr;
 
-		addr_to_string( udp_if->addr.sin_addr.s_addr, ip_str, sizeof (ip_str) );
+		vis_if->tcp_addr.sin_family = AF_INET;
+		vis_if->tcp_addr.sin_port = htons(DOT_DRAW_PORT);
+		vis_if->tcp_addr.sin_addr.s_addr = ((struct sockaddr_in *)&int_req.ifr_addr)->sin_addr.s_addr;
 
-		if ( udp_if->addr.sin_addr.s_addr == INADDR_NONE )
-			exit_error( "Error - interface %s has invalid address: %s\n", udp_if->dev, ip_str );
+		addr_to_string( vis_if->udp_addr.sin_addr.s_addr, ip_str, sizeof (ip_str) );
 
-		if ( setsockopt( udp_if->sock, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(int) ) < 0 )
-			exit_error( "Error - ioctl SO_REUSEADDR on interface %s failed: %s\n", udp_if->dev, strerror( errno ) );
+		if ( vis_if->udp_addr.sin_addr.s_addr == INADDR_NONE )
+			exit_error( "Error - interface %s has invalid address: %s\n", vis_if->dev, ip_str );
 
-		if( bind( udp_if->sock, (struct sockaddr*)&udp_if->addr, sizeof(struct sockaddr_in) ) < 0 )
-			exit_error( "Error - could not bind to interface %s: %s\n", udp_if->dev, strerror( errno ) );
+		if ( setsockopt( vis_if->tcp_sock, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(int) ) < 0 )
+			exit_error( "Error - ioctl SO_REUSEADDR on interface %s failed: %s\n", vis_if->dev, strerror( errno ) );
 
-		list_add_tail( &udp_if->list, &udp_if_list );
+		if ( bind( vis_if->udp_sock, (struct sockaddr*)&vis_if->udp_addr, sizeof(struct sockaddr_in) ) < 0 )
+			exit_error( "Error - could not bind to interface (udp) %s: %s\n", vis_if->dev, strerror( errno ) );
+
+		if ( bind( vis_if->tcp_sock, (struct sockaddr*)&vis_if->tcp_addr, sizeof(struct sockaddr_in) ) < 0 )
+			exit_error( "Error - could not bind to interface (tcp) %s: %s\n", vis_if->dev, strerror( errno ) );
+
+		if ( listen( vis_if->tcp_sock, 32 ) < 0 )
+			exit_error( "Error - could not start listening on interface %s: %s\n", vis_if->dev, strerror( errno ) );
+
+		if ( vis_if->tcp_sock > max_sock )
+			max_sock = vis_if->tcp_sock;
+
+		FD_SET(vis_if->tcp_sock, &wait_sockets);
+
+		list_add_tail( &vis_if->list, &vis_if_list );
 
 		found_args++;
 
@@ -831,34 +802,39 @@ int main( int argc, char **argv ) {
 // 	pthread_create( &cleaner_thread, NULL, &cleaner, NULL );
 
 
-	if ( listen( tcp_sock, 32 ) < 0 ) {
+	printf( "B.A.T.M.A.N. visualisation server %s successfully started ... \n", VERSION );
 
-		close( tcp_sock );
-		exit_error( "Error - could not start listening on interface %s: %s\n", listen_if, strerror( errno ) );
-
-	}
 
 	while ( !is_aborted() ) {
 
-		FD_ZERO(&wait_sockets);
-		FD_SET(tcp_sock, &wait_sockets);
+		memcpy( &tmp_wait_sockets, &wait_sockets, sizeof(fd_set) );
 
 		tv.tv_sec = 1;
 		tv.tv_usec = 0;
 
 		len_inet = sizeof(addr_client);
 
-		if ( select( tcp_sock + 1, &wait_sockets, NULL, NULL, &tv ) > 0 ) {
+		if ( select( max_sock + 1, &tmp_wait_sockets, NULL, NULL, &tv ) > 0 ) {
 
-			thread_data = debugMalloc( sizeof(struct thread_data), 1200 );
+			list_for_each( list_pos, &vis_if_list ) {
 
-			thread_data->socket = accept( tcp_sock, (struct sockaddr*)&addr_client, &len_inet );
+				vis_if = list_entry( list_pos, struct vis_if, list );
 
-			addr_to_string( addr_client.sin_addr.s_addr, thread_data->ip, sizeof(thread_data->ip) );
-			printf( "New TCP client connected: %s \n", thread_data->ip );
+				if ( FD_ISSET( vis_if->tcp_sock, &tmp_wait_sockets ) ) {
 
-			pthread_create( &tcp_server_thread, NULL, &tcp_server, thread_data );
-			pthread_detach( tcp_server_thread );
+					thread_data = debugMalloc( sizeof(struct thread_data), 1200 );
+
+					thread_data->socket = accept( vis_if->tcp_sock, (struct sockaddr*)&addr_client, &len_inet );
+
+					addr_to_string( addr_client.sin_addr.s_addr, thread_data->ip, sizeof(thread_data->ip) );
+					printf( "New TCP client connected: %s \n", thread_data->ip );
+
+					pthread_create( &tcp_server_thread, NULL, &tcp_server, thread_data );
+					pthread_detach( tcp_server_thread );
+
+				}
+
+			}
 
 		}
 
@@ -866,7 +842,6 @@ int main( int argc, char **argv ) {
 
 	printf( "Shutting down visualisation server ... \n" );
 
-	close( tcp_sock );
 	restore_defaults();
 	checkLeak();
 

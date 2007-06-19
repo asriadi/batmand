@@ -35,7 +35,7 @@
 
 
 
-extern struct list_head_first udp_if_list;
+extern struct list_head_first vis_if_list;
 extern pthread_t udp_server_thread;
 extern pthread_t master_thread;
 
@@ -70,11 +70,13 @@ typedef struct _buffer {
 	pthread_mutex_t mutex;
 } buffer_t;
 
-struct udp_if {
+struct vis_if {
 	struct list_head list;
 	char *dev;
-	int32_t sock;
-	struct sockaddr_in addr;
+	int32_t udp_sock;
+	int32_t tcp_sock;
+	struct sockaddr_in udp_addr;
+	struct sockaddr_in tcp_addr;
 };
 
 
