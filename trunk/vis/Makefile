@@ -22,8 +22,8 @@ LDFLAGS =        -lpthread
 LDFLAGS_STATIC = -lpthread -static
 
 
-SRC_C= allocate.c hash.c list-batman.c vis.c
-SRC_H= allocate.h hash.h list-batman.h
+SRC_C= allocate.c hash.c list-batman.c vis.c udp_server.c
+SRC_H= allocate.h hash.h list-batman.h vis.h
 
 
 vis:		$(SRC_C) $(SRC_H) Makefile
