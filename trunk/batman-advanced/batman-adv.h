@@ -34,7 +34,7 @@
 #include "packet.h"
 
 
-#define SOURCE_VERSION "0.1pre-alpha"
+#define SOURCE_VERSION "0.1 alpha"
 #define COMPAT_VERSION 1
 #define UNIDIRECTIONAL 0x80
 #define DIRECTLINK 0x40
