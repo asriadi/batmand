@@ -4,7 +4,7 @@ use strict;
 use utf8;
 
 
-my ( %myself_hash, %receive_hash, %forward_hash, $last_orig, $last_neigh, $last_seq, $last_ttl, $orig_interval, $total_seconds, %to_do_hash, %seq_hash );
+my ( %myself_hash, %receive_hash, %forward_hash, $last_orig, $last_neigh, $last_seq, $last_ttl, $orig_interval, $total_seconds, %to_do_hash, %seq_hash, $rt_table );
 
 $orig_interval = 1000;
 
@@ -14,7 +14,7 @@ if ( ( $ARGV[0] ne "-s" ) && ( $ARGV[0] ne "-p" ) && ( $ARGV[0] ne "-r" ) ) {
 	print "Usage: batman-debug4.pl option <file>\n";
 	print "\t-p    packet statistic\n";
 	print "\t-s    sequence number statistic\n";
-	print "\t-r    routing statistic (not implemented yet)\n";
+	print "\t-r    routing statistic\n";
 	exit;
 
 }
@@ -26,106 +26,155 @@ if ( ! -e $ARGV[1] ) {
 
 }
 
+$rt_table = 0;
 
 open(BATMANLOG, "< $ARGV[1]");
 
 while ( <BATMANLOG> ) {
 
-	if ( m/Received\ BATMAN\ packet\ from\ ([\d]+\.[\d]+\.[\d]+\.[\d]+).*?originator\ ([\d]+\.[\d]+\.[\d]+\.[\d]+),\ seqno ([\d]+),\ TTL ([\d]+)/ ) {
+	if ( $rt_table ) {
 
-		$receive_hash{ $2 }{ $1 }{ "num_recv" }++;
-		$last_orig = $2;
-		$last_neigh = $1;
-		$last_seq = $3;
-		$last_ttl = $4;
+		if ( m/----------------------------------------------\ END\ DEBUG/ ) {
 
-	} elsif ( m/Forwarding\ packet\ \(originator\ ([\d]+\.[\d]+\.[\d]+\.[\d]+)/ ) {
-
-		if ( $1 eq $last_orig ) {
-
-# 			$receive_hash{ $last_orig }{ $last_neigh }{ "num_forw" }++;
-
-		} elsif ( $myself_hash{ $1 } ) {
-
-			$myself_hash{ $1 }{ "sent" }++
+			$rt_table = 0;
+			sleep(2);
 
 		} else {
 
-			print "Not equal: $_ <> $1\n"
+			print $_
 
 		}
 
-	} elsif ( m/Drop\ packet:/ ) {
+	} else {
 
-		$receive_hash{ $last_orig }{ $last_neigh }{ "num_drop" }++;
+		if ( m/Received\ BATMAN\ packet\ via NB:\ ([\d]+\.[\d]+\.[\d]+\.[\d]+).*?from OG:\ ([\d]+\.[\d]+\.[\d]+\.[\d]+),\ seqno ([\d]+),\ TTL ([\d]+)/ ) {
 
-		if ( m/incompatible\ batman\ version/ ) {
+			$receive_hash{ $2 }{ $1 }{ "num_recv" }++;
+			$last_orig = $2;
+			$last_neigh = $1;
+			$last_seq = $3;
+			$last_ttl = $4;
 
-			$receive_hash{ $last_orig }{ $last_neigh }{ "version" }++;
+		} elsif ( m/Forwarding\ packet\ \(originator\ ([\d]+\.[\d]+\.[\d]+\.[\d]+)/ ) {
 
-		} elsif ( m/received\ my\ own\ broadcast/ ) {
+			if ( $1 eq $last_orig ) {
 
-			$receive_hash{ $last_orig }{ $last_neigh }{ "own_broad" }++;
+	# 			$receive_hash{ $last_orig }{ $last_neigh }{ "num_forw" }++;
 
-		} elsif ( m/originator\ packet\ from\ myself/ ) {
+			} elsif ( $myself_hash{ $1 } ) {
 
-			$receive_hash{ $last_orig }{ $last_neigh }{ "own_rebroad" }++;
+				$myself_hash{ $1 }{ "sent" }++;
 
-		} elsif ( m/originator\ packet\ with\ unidirectional\ flag/ ) {
+			} else {
 
-			$receive_hash{ $last_orig }{ $last_neigh }{ "uni_flag" }++;
+				print "Not equal: $_ <> $1\n";
 
-		} elsif ( m/received\ via\ unidirectional\ link/ ) {
+			}
 
-			$receive_hash{ $last_orig }{ $last_neigh }{ "uni_link" }++;
+		} elsif ( m/Drop\ packet:/ ) {
 
-		} elsif ( m/duplicate\ packet/ ) {
+			$receive_hash{ $last_orig }{ $last_neigh }{ "num_drop" }++;
 
-			$receive_hash{ $last_orig }{ $last_neigh }{ "dup" }++;
+			if ( m/incompatible\ batman\ version/ ) {
+
+				$receive_hash{ $last_orig }{ $last_neigh }{ "version" }++;
+
+			} elsif ( m/received\ my\ own\ broadcast/ ) {
+
+				$receive_hash{ $last_orig }{ $last_neigh }{ "own_broad" }++;
+
+			} elsif ( m/ignoring\ all\ packets\ with\ broadcast\ source\ IP/ ) {
+
+				$receive_hash{ $last_orig }{ $last_neigh }{ "bcast_src" }++;
+
+			} elsif ( m/originator\ packet\ from\ myself/ ) {
+
+				$receive_hash{ $last_orig }{ $last_neigh }{ "own_rebroad" }++;
+
+			} elsif ( m/originator\ packet\ with\ unidirectional\ flag/ ) {
+
+				$receive_hash{ $last_orig }{ $last_neigh }{ "uni_flag" }++;
+
+			} elsif ( m/OGM\ via\ unkown\ neighbor/ ) {
+
+				$receive_hash{ $last_orig }{ $last_neigh }{ "unknown" }++;
+
+			} elsif ( m/received\ via\ bidirectional\ link:[\ ]+NO/ ) {
+
+				$receive_hash{ $last_orig }{ $last_neigh }{ "uni_link" }++;
+
+			} elsif ( m/BNTOG:[\ ]+NO/ ) {
+
+				$receive_hash{ $last_orig }{ $last_neigh }{ "bntog" }++;
+
+			} elsif ( m/duplicate\ packet/ ) {
+
+				$receive_hash{ $last_orig }{ $last_neigh }{ "dup" }++;
+
+			} else {
+
+				print "Unknown drop: $_ \n";
+				exit;
+
+			}
+
+		} elsif ( m/Forward packet:/ ) {
+
+			$forward_hash{ $last_orig }{ $last_neigh }{ "num_forw" }++;
+
+			if ( m/rebroadcast\ neighbour\ packet\ with\ direct\ link\ flag/ ) {
+
+				$forward_hash{ $last_orig }{ $last_neigh }{ "direct_link" }++;
+
+			} elsif ( m/rebroadcast\ neighbour\ packet\ with\ direct\ link\ and\ unidirectional\ flag/ ) {
+
+				$forward_hash{ $last_orig }{ $last_neigh }{ "direct_uni" }++;
+
+			} elsif ( m/rebroadcast\ orginator\ packet/ ) {
+
+				$forward_hash{ $last_orig }{ $last_neigh }{ "rebroad" }++;
+
+			} elsif ( m/duplicate\ packet\ received\ via\ best\ neighbour\ with\ best\ ttl/ ) {
+
+				$forward_hash{ $last_orig }{ $last_neigh }{ "dup" }++;
+
+			} else {
+
+				print "Unknown forward: $_ \n";
+				exit;
+
+			}
+
+		} elsif ( m/update_originator/ ) {
+
+			push( @{ $seq_hash{ $last_orig }{ $last_neigh } }, "$last_seq [$last_ttl]" );
+
+		} elsif ( m/ttl\ exceeded/ ) {
+
+			$receive_hash{ $last_orig }{ $last_neigh }{ "ttl" }++;
+
+		} elsif ( m/Using\ interface\ (.*?)\ with\ address\ ([\d]+\.[\d]+\.[\d]+\.[\d]+)/ ) {
+
+			$myself_hash{ $2 }{ "if" } = $1;
+
+		} elsif ( m/orginator interval: ([\d]+)/ ) {
+
+			$orig_interval = $1;
+
+		} elsif ( m/Originator\ list/ ) {
+
+			if ( $ARGV[0] eq "-r" ) {
+
+				$rt_table = 1;
+				system( "clear" );
+
+			}
+
+		} elsif ( m/\[.*\](.*)/ ) {
+
+			$to_do_hash{ $1 }++;
 
 		}
-
-	} elsif ( m/Forward packet:/ ) {
-
-		$forward_hash{ $last_orig }{ $last_neigh }{ "num_forw" }++;
-
-		if ( m/rebroadcast\ neighbour\ packet\ with\ direct\ link\ flag/ ) {
-
-			$forward_hash{ $last_orig }{ $last_neigh }{ "direct_link" }++;
-
-		} elsif ( m/rebroadcast\ neighbour\ packet\ with\ direct\ link\ and\ unidirectional\ flag/ ) {
-
-			$forward_hash{ $last_orig }{ $last_neigh }{ "direct_uni" }++;
-
-		} elsif ( m/rebroadcast\ orginator\ packet/ ) {
-
-			$forward_hash{ $last_orig }{ $last_neigh }{ "rebroad" }++;
-
-		} elsif ( m/duplicate\ packet\ received\ via\ best\ neighbour\ with\ best\ ttl/ ) {
-
-			$forward_hash{ $last_orig }{ $last_neigh }{ "dup" }++;
-
-		}
-
-	} elsif ( m/update_originator/ ) {
-
-		push( @{ $seq_hash{ $last_orig }{ $last_neigh } }, "$last_seq [$last_ttl]" );
-
-	} elsif ( m/ttl\ exceeded/ ) {
-
-		$receive_hash{ $last_orig }{ $last_neigh }{ "ttl" }++;
-
-	} elsif ( m/Using\ interface\ (.*?)\ with\ address\ ([\d]+\.[\d]+\.[\d]+\.[\d]+)/ ) {
-
-		$myself_hash{ $2 }{ "if" } = $1;
-
-	} elsif ( m/orginator interval: ([\d]+)/ ) {
-
-		$orig_interval = $1;
-
-	} elsif ( m/\[.*\](.*)/ ) {
-
-		$to_do_hash{ $1 }++;
 
 	}
 
@@ -165,7 +214,10 @@ if ( $ARGV[0] eq "-p" ) {
 			$string .= "; own_broad = " . ( $receive_hash{ $orginator }{ $neighbour }{ "own_broad" } ? $receive_hash{ $orginator }{ $neighbour }{ "own_broad" } : "0" );
 			$string .= "; own_rebroad = " . ( $receive_hash{ $orginator }{ $neighbour }{ "own_rebroad" } ? $receive_hash{ $orginator }{ $neighbour }{ "own_rebroad" } : "0" );
 			$string .= "; uni_flag = " . ( $receive_hash{ $orginator }{ $neighbour }{ "uni_flag" } ? $receive_hash{ $orginator }{ $neighbour }{ "uni_flag" } : "0" );
+			$string .= "; unknown = " . ( $receive_hash{ $orginator }{ $neighbour }{ "unknown" } ? $receive_hash{ $orginator }{ $neighbour }{ "unknown" } : "0" );
 			$string .= "; uni_link = " . ( $receive_hash{ $orginator }{ $neighbour }{ "uni_link" } ? $receive_hash{ $orginator }{ $neighbour }{ "uni_link" } : "0" );
+			$string .= "; btnog = " . ( $receive_hash{ $orginator }{ $neighbour }{ "bntog" } ? $receive_hash{ $orginator }{ $neighbour }{ "bntog" } : "0" );
+			$string .= "; bcast_src = " . ( $receive_hash{ $orginator }{ $neighbour }{ "bcast_src" } ? $receive_hash{ $orginator }{ $neighbour }{ "bcast_src" } : "0" );
 			$string .= "; dup = " . ( $receive_hash{ $orginator }{ $neighbour }{ "dup" } ? $receive_hash{ $orginator }{ $neighbour }{ "dup" } : "0" );
 			$string .= "; ttl = " . ( $receive_hash{ $orginator }{ $neighbour }{ "ttl" } ? $receive_hash{ $orginator }{ $neighbour }{ "ttl" } : "0" ) . " ]";
 			$string .= " [ direct_link = " . ( $forward_hash{ $orginator }{ $neighbour }{ "direct_link" } ? $forward_hash{ $orginator }{ $neighbour }{ "direct_link" } : "0" );
@@ -186,8 +238,11 @@ if ( $ARGV[0] eq "-p" ) {
 	print "\town_broad   = received my own broadcast\n";
 	print "\town_rebroad = received rebroadcast of my packet via neighbour\n";
 	print "\tuni_flag    = received packet with unidrectional flag\n";
+	print "\tunknown     = received packet via unknown neighbour\n";
 	print "\tuni_link    = received packet via unidirectional link\n";
-	print "\tdup         = received packet is a duplicate\n\n";
+	print "\tbntog       = packet not received via best neighbour\n";
+	print "\tbcast_src   = sender address is a broadcast address\n";
+	print "\tdup         = received packet is a duplicate\n";
 	print "\tttl         = ttl of packet exceeded\n\n";
 
 	print " Forwarded packets:\n";
