@@ -17,7 +17,7 @@
 #
 
 CC = gcc
-CFLAGS =         -Wall -O0 -g3
+CFLAGS =         -Wall -O0 -g3 -DDEBUG_MALLOC -DMEMORY_USAGE
 LDFLAGS =        -lpthread
 LDFLAGS_STATIC = -lpthread -static
 
