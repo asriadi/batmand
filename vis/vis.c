@@ -179,14 +179,6 @@ void clean_hash() {
 
 		}
 
-		list_for_each_safe( list_pos, list_pos_tmp, &orig_node->rev_neigh_list ) {
-
-			neigh = list_entry( list_pos, struct neighbour, list );
-
-			debugFree( neigh, 1414 );
-
-		}
-
 		debugFree( orig_node, 1410 );
 
 	}
@@ -217,9 +209,9 @@ void clean_buffer() {
 
 void write_data_in_buffer() {
 
-	struct neighbour *neigh, *tmp_neigh;
+	struct neighbour *neigh;
 	struct node *orig_node;
-	struct list_head *list_pos, *list_pos_tmp, *prev_list_head, *list_pos_rev, *list_pos_rev_tmp;
+	struct list_head *list_pos, *list_pos_tmp;
 	struct hash_it_t *hashit = NULL;
 	char from_str[16], to_str[16], tmp[100];
 
@@ -247,7 +239,7 @@ void write_data_in_buffer() {
 					/* never ever divide by zero */
 					if ( neigh->packet_count > 0 ) {
 
-						addr_to_string( neigh->node->addr, to_str, sizeof( to_str ) );
+						addr_to_string( neigh->addr, to_str, sizeof( to_str ) );
 						snprintf( tmp, sizeof( tmp ), "\"%s\" -> \"%s\"[label=\"%.2f\"]\n", from_str, to_str, (float)( orig_node->seq_range / ( int )neigh->packet_count ) );
 						fillme->buffer = (char *)debugRealloc( fillme->buffer, strlen( tmp ) + strlen( fillme->buffer ) + 1, 408 );
 
@@ -277,35 +269,9 @@ void write_data_in_buffer() {
 
 				}
 
-				list_for_each_safe( list_pos, list_pos_tmp, &orig_node->rev_neigh_list ) {
-
-					neigh = list_entry( list_pos, struct neighbour, list );
-
-					prev_list_head = (struct list_head *)&neigh->node->neigh_list;
-
-					list_for_each_safe( list_pos_rev, list_pos_rev_tmp, &neigh->node->neigh_list ) {
-
-						tmp_neigh = list_entry( list_pos_rev, struct neighbour, list );
-
-						if ( tmp_neigh->node->addr == orig_node->addr ) {
-
-							list_del( prev_list_head, list_pos_rev, &neigh->node->neigh_list );
-
-							debugFree( tmp_neigh, 1413 );
-
-							break;
-
-						}
-
-					}
-
-					debugFree( neigh, 1414 );
-
-				}
-
 				hash_remove_bucket( node_hash, hashit );
 
-				debugFree( orig_node, 1415 );
+				debugFree( orig_node, 1413 );
 
 			}
 

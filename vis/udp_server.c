@@ -30,74 +30,77 @@
 
 
 
-static void add_neighbour_node( struct node *orig_node, struct node *orig_neigh_node, unsigned char packet_count ) {
+// static void add_neighbour_node( struct node *orig_node, struct node *orig_neigh_node, unsigned char packet_count ) {
+//
+// 	struct list_head *list_pos;
+// 	struct neighbour *neigh = NULL;
+//
+//
+// 	/* find neighbor in neighbour list of originator */
+// 	list_for_each( list_pos, &orig_node->neigh_list ) {
+//
+// 		neigh = list_entry( list_pos, struct neighbour, list );
+//
+// 		if ( orig_neigh_node->addr == neigh->node->addr )
+// 			break;
+// 		else
+// 			neigh = NULL;
+//
+// 	}
+//
+// 	/* if neighbour does not exist create it */
+// 	if ( neigh == NULL ) {
+//
+// 		neigh = debugMalloc( sizeof(struct neighbour), 401 );
+// 		memset( neigh, 0, sizeof( struct neighbour ) );
+// 		neigh->node = orig_neigh_node;
+//
+// 		list_add_tail( &neigh->list, &orig_node->neigh_list );
+//
+// 	}
+//
+// 	/* save new packet count */
+// 	neigh->packet_count = packet_count;
+//
+//
+// 	neigh = NULL;
+//
+// 	/* find originator in neighbour list of neighbour (for faster deleting) */
+// 	list_for_each( list_pos, &orig_neigh_node->rev_neigh_list ) {
+//
+// 		neigh = list_entry( list_pos, struct neighbour, list );
+//
+// 		if ( orig_node->addr == neigh->node->addr )
+// 			break;
+// 		else
+// 			neigh = NULL;
+//
+// 	}
+//
+// 	/* if originator does not exist create it */
+// 	if ( neigh == NULL ) {
+//
+// 		neigh = debugMalloc( sizeof(struct neighbour), 413 );
+// 		memset( neigh, 0, sizeof( struct neighbour ) );
+// 		neigh->node = orig_node;
+//
+// 		list_add_tail( &neigh->list, &orig_neigh_node->rev_neigh_list );
+//
+// 	}
+//
+// 	return;
+//
+// }
 
-	struct list_head *list_pos;
-	struct neighbour *neigh = NULL;
 
 
-	/* find neighbor in neighbour list of originator */
-	list_for_each( list_pos, &orig_node->neigh_list ) {
+void handle_node( unsigned int sender_ip, unsigned char *buff, int buff_len, unsigned char gw_class, unsigned char seq_range ) {
 
-		neigh = list_entry( list_pos, struct neighbour, list );
-
-		if ( orig_neigh_node->addr == neigh->node->addr )
-			break;
-		else
-			neigh = NULL;
-
-	}
-
-	/* if neighbour does not exist create it */
-	if ( neigh == NULL ) {
-
-		neigh = debugMalloc( sizeof(struct neighbour), 401 );
-		memset( neigh, 0, sizeof( struct neighbour ) );
-		neigh->node = orig_neigh_node;
-
-		list_add_tail( &neigh->list, &orig_node->neigh_list );
-
-	}
-
-	/* save new packet count */
-	neigh->packet_count = packet_count;
-
-
-	neigh = NULL;
-
-	/* find originator in neighbour list of neighbour (for faster deleting) */
-	list_for_each( list_pos, &orig_neigh_node->rev_neigh_list ) {
-
-		neigh = list_entry( list_pos, struct neighbour, list );
-
-		if ( orig_node->addr == neigh->node->addr )
-			break;
-		else
-			neigh = NULL;
-
-	}
-
-	/* if originator does not exist create it */
-	if ( neigh == NULL ) {
-
-		neigh = debugMalloc( sizeof(struct neighbour), 413 );
-		memset( neigh, 0, sizeof( struct neighbour ) );
-		neigh->node = orig_node;
-
-		list_add_tail( &neigh->list, &orig_neigh_node->rev_neigh_list );
-
-	}
-
-	return;
-
-}
-
-
-
-void handle_node( unsigned int sender_ip, unsigned int neigh_ip, unsigned char neigh_packet_count, unsigned char gw_class, unsigned char seq_range ) {
-
-	struct node *orig_node, *orig_neigh_node;
+	struct node *orig_node;
 	struct hashtable_t *swaphash;
+	struct neighbour *neigh;
+	struct list_head *list_pos;
+	int packet_count, i, orig_neigh_node;
 
 	/*char from_str[16];
 	char to_str[16];
@@ -117,26 +120,6 @@ void handle_node( unsigned int sender_ip, unsigned int neigh_ip, unsigned char n
 
 	}
 
-	/* the neighbour */
-	orig_neigh_node = (struct node *)hash_find( node_hash, &neigh_ip );
-
-	/* node not found */
-	if ( orig_neigh_node == NULL ) {
-
-		orig_neigh_node = (struct node *)debugMalloc( sizeof(struct node), 402 );
-		orig_neigh_node->addr = neigh_ip;
-		orig_neigh_node->last_seen = 10;
-
-		INIT_LIST_HEAD_FIRST( orig_neigh_node->neigh_list );
-		INIT_LIST_HEAD_FIRST( orig_neigh_node->rev_neigh_list );
-
-		hash_add( node_hash, orig_neigh_node );
-
-	} else {
-
-		orig_neigh_node->last_seen = 10;
-
-	}
 
 	/* the node which send the packet */
 	orig_node = (struct node *)hash_find( node_hash, &sender_ip );
@@ -146,26 +129,54 @@ void handle_node( unsigned int sender_ip, unsigned int neigh_ip, unsigned char n
 
 		orig_node = (struct node *)debugMalloc( sizeof(struct node), 403 );
 		orig_node->addr = sender_ip;
-		orig_node->last_seen = 10;
-		orig_node->gw_class = gw_class;
-		orig_node->seq_range = seq_range;
 
 		INIT_LIST_HEAD_FIRST( orig_node->neigh_list );
-		INIT_LIST_HEAD_FIRST( orig_node->rev_neigh_list );
 
 		hash_add( node_hash, orig_node );
 
-	} else {
-
-		orig_node->last_seen = 10;
-		orig_node->gw_class = gw_class;
-
 	}
 
-// 	add_neighbour_node( orig_neigh_node, neigh_packet_count, &orig_node->neighbour );
-// 	add_is_neighbour_node( orig_node, orig_neigh_node );
+	orig_node->last_seen = 20;
+	orig_node->gw_class = gw_class;
+	orig_node->seq_range = seq_range;
 
-	add_neighbour_node( orig_node, orig_neigh_node, neigh_packet_count );
+	packet_count = buff_len / PACKET_FIELD_LENGTH;
+
+	for( i = 0; i < packet_count; i++ ) {
+
+		memmove( &orig_neigh_node, buff + i * PACKET_FIELD_LENGTH, 4 );
+
+		if ( orig_neigh_node != 0 ) {
+
+			/* find neighbor in neighbour list of originator */
+			list_for_each( list_pos, &orig_node->neigh_list ) {
+
+				neigh = list_entry( list_pos, struct neighbour, list );
+
+				if ( orig_neigh_node == neigh->addr )
+					break;
+				else
+					neigh = NULL;
+
+			}
+
+			/* if neighbour does not exist create it */
+			if ( neigh == NULL ) {
+
+				neigh = debugMalloc( sizeof(struct neighbour), 401 );
+				memset( neigh, 0, sizeof( struct neighbour ) );
+				neigh->addr = orig_neigh_node;
+
+				list_add_tail( &neigh->list, &orig_node->neigh_list );
+
+			}
+
+			/* save new packet count */
+			neigh->packet_count = buff[i * PACKET_FIELD_LENGTH + 4];
+
+		}
+
+	}
 
 	return;
 
@@ -179,9 +190,8 @@ void *udp_server() {
 	struct list_head *list_pos;
 	struct sockaddr_in client;
 	struct timeval tv;
-	unsigned char receive_buff[MAXCHAR], *payload_ptr;
-	int max_sock = 0, packet_count, i, buff_len;
-	int orig_neigh_node, orig_node;
+	unsigned char receive_buff[MAXCHAR];
+	int max_sock = 0, buff_len, orig_node;
 	fd_set wait_sockets, tmp_wait_sockets;
 	socklen_t len;
 
@@ -224,22 +234,10 @@ void *udp_server() {
 
 						if ( pthread_mutex_trylock( &hash_mutex ) == 0 ) {
 
-							packet_count = buff_len - 6 / PACKET_FIELD_LENGTH;
 							memmove( &orig_node, &receive_buff, 4 );
-							payload_ptr = receive_buff + 6;
 
-							if ( orig_node != 0 ) {
-
-								for( i = 0; i < packet_count; i++ ) {
-
-									memmove( &orig_neigh_node, payload_ptr + i * PACKET_FIELD_LENGTH, 4 );
-
-									if ( orig_neigh_node != 0 )
-										handle_node( orig_node, orig_neigh_node, payload_ptr[i*PACKET_FIELD_LENGTH+4], receive_buff[4], receive_buff[5] );
-
-								}
-
-							}
+							if ( orig_node != 0 )
+								handle_node( orig_node, receive_buff + 6, buff_len - 6, receive_buff[4], receive_buff[5] );
 
 							if ( pthread_mutex_unlock( &hash_mutex ) < 0 )
 								printf( "Error - could not unlock mutex (udp server): %s \n", strerror( errno ) );
