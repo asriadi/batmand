@@ -448,7 +448,7 @@ int main( int argc, char **argv ) {
 	signal( SIGPIPE, SIG_IGN );
 
 	/* init hashtable for node struct */
-	if ( NULL == ( node_hash = hash_new( 1600, orig_comp, orig_choose ) ) )
+	if ( NULL == ( node_hash = hash_new( 128, orig_comp, orig_choose ) ) )
 		exit_error( "Error - can't create hashtable\n");
 
 	INIT_LIST_HEAD_FIRST( vis_if_list );
@@ -521,7 +521,6 @@ int main( int argc, char **argv ) {
 
 	pthread_create( &udp_server_thread, NULL, &udp_server, NULL );
 	pthread_create( &master_thread, NULL, &master, NULL );
-// 	pthread_create( &cleaner_thread, NULL, &cleaner, NULL );
 
 
 	printf( "B.A.T.M.A.N. visualisation server %s successfully started ... \n", VERSION );
@@ -536,7 +535,7 @@ int main( int argc, char **argv ) {
 
 		len_inet = sizeof(addr_client);
 
-		checkIntegrity();
+ 		/*checkIntegrity();*/
 
 		if ( select( max_sock + 1, &tmp_wait_sockets, NULL, NULL, &tv ) > 0 ) {
 
