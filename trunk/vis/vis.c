@@ -215,16 +215,14 @@ void clean_buffer() {
 
 
 
-void write_data_in_buffer()
-{
-	struct neighbour *neigh;
-	struct node *orig_node;
-	struct list_head *list_pos;
-	struct hash_it_t *hashit = NULL;
+void write_data_in_buffer() {
 
-	char from_str[16];
-	char to_str[16];
-	char tmp[100];
+	struct neighbour *neigh, *tmp_neigh;
+	struct node *orig_node;
+	struct list_head *list_pos, *list_pos_tmp, *prev_list_head, *list_pos_rev, *list_pos_rev_tmp;
+	struct hash_it_t *hashit = NULL;
+	char from_str[16], to_str[16], tmp[100];
+
 
 	memset( tmp, '\0', sizeof( tmp ) );
 
@@ -238,28 +236,77 @@ void write_data_in_buffer()
 			orig_node = (struct node *) hashit->bucket->data;
 			addr_to_string( orig_node->addr, from_str, sizeof( from_str ) );
 
-			list_for_each( list_pos, &orig_node->neigh_list ) {
+			if ( orig_node->last_seen > 0 ) {
 
-				neigh = list_entry( list_pos, struct neighbour, list );
+				orig_node->last_seen--;
 
-				/* never ever divide by zero */
-				if ( neigh->packet_count > 0 ) {
+				list_for_each( list_pos, &orig_node->neigh_list ) {
 
-					addr_to_string( neigh->node->addr, to_str, sizeof( to_str ) );
-					snprintf( tmp, sizeof( tmp ), "\"%s\" -> \"%s\"[label=\"%.2f\"]\n", from_str, to_str, (float)( orig_node->seq_range / ( int )neigh->packet_count ) );
-					fillme->buffer = (char *)debugRealloc( fillme->buffer, strlen( tmp ) + strlen( fillme->buffer ) + 1, 408 );
+					neigh = list_entry( list_pos, struct neighbour, list );
 
+					/* never ever divide by zero */
+					if ( neigh->packet_count > 0 ) {
+
+						addr_to_string( neigh->node->addr, to_str, sizeof( to_str ) );
+						snprintf( tmp, sizeof( tmp ), "\"%s\" -> \"%s\"[label=\"%.2f\"]\n", from_str, to_str, (float)( orig_node->seq_range / ( int )neigh->packet_count ) );
+						fillme->buffer = (char *)debugRealloc( fillme->buffer, strlen( tmp ) + strlen( fillme->buffer ) + 1, 408 );
+
+						strncat( fillme->buffer, tmp, strlen( tmp ) );
+
+					}
+
+				}
+
+				/*printf("gw_class %d\n",(unsigned int)orig_node->gw_class);*/
+				if ( orig_node->gw_class != 0 ) {
+
+					snprintf( tmp, sizeof( tmp ), "\"%s\" -> \"0.0.0.0/0.0.0.0\"[label=\"HNA\"]\n", from_str );
+					fillme->buffer = (char *)debugRealloc( fillme->buffer, strlen( tmp ) + strlen( fillme->buffer ) + 1, 409 );
 					strncat( fillme->buffer, tmp, strlen( tmp ) );
 
 				}
 
-			}
+			/* delete orig node */
+			} else {
 
-			/*printf("gw_class %d\n",(unsigned int)orig_node->gw_class);*/
-			if( orig_node->gw_class != 0 ) {
-				snprintf( tmp, sizeof( tmp ), "\"%s\" -> \"0.0.0.0/0.0.0.0\"[label=\"HNA\"]\n", from_str );
-				fillme->buffer = (char *)debugRealloc( fillme->buffer, strlen( tmp ) + strlen( fillme->buffer ) + 1, 409 );
-				strncat( fillme->buffer, tmp, strlen( tmp ) );
+				list_for_each_safe( list_pos, list_pos_tmp, &orig_node->neigh_list ) {
+
+					neigh = list_entry( list_pos, struct neighbour, list );
+
+					debugFree( neigh, 1412 );
+
+				}
+
+				list_for_each_safe( list_pos, list_pos_tmp, &orig_node->rev_neigh_list ) {
+
+					neigh = list_entry( list_pos, struct neighbour, list );
+
+					prev_list_head = (struct list_head *)&neigh->node->neigh_list;
+
+					list_for_each_safe( list_pos_rev, list_pos_rev_tmp, &neigh->node->neigh_list ) {
+
+						tmp_neigh = list_entry( list_pos_rev, struct neighbour, list );
+
+						if ( tmp_neigh->node->addr == orig_node->addr ) {
+
+							list_del( prev_list_head, list_pos_rev, &neigh->node->neigh_list );
+
+							debugFree( tmp_neigh, 1413 );
+
+							break;
+
+						}
+
+					}
+
+					debugFree( neigh, 1414 );
+
+				}
+
+				hash_remove_bucket( node_hash, hashit );
+
+				debugFree( orig_node, 1415 );
+
 			}
 
 		}
@@ -452,10 +499,10 @@ void *master() {
 void print_usage() {
 
 	printf( "B.A.T.M.A.N. visualisation server %s\n", VERSION );
-	printf("Usage: vis <interface(s)> \n");
-	printf("\t-h help\n");
-	printf("\t-v Version\n\n");
-	printf("Olsrs3d / Meshs3d is an application to visualize a mesh network.\nIt is a part of s3d, have a look at s3d.berlios.de\n\n");
+	printf( "Usage: vis <interface(s)> \n" );
+	printf( "\t-h help\n" );
+	printf( "\t-v Version\n\n" );
+	printf( "Olsrs3d / Meshs3d is an application to visualize a mesh network.\nIt is a part of s3d, have a look at s3d.berlios.de\n\n" );
 
 }
 
@@ -474,15 +521,6 @@ int main( int argc, char **argv ) {
 	socklen_t len_inet;
 	pthread_t tcp_server_thread;
 
-	/*int sock;
-	struct sockaddr_in tcp_addr, addr_client;
-	struct ifreq int_req;
-	char str1[ADDR_STR_LEN];
-	socklen_t len_inet;
-	struct thread_data t_data;
-	struct timeval tv;
-	fd_set wait_sockets;
-	pthread_t udp_server_thread, tcp_server_thread, master_thread, cleaner_thread;*/
 
 	while ( ( optchar = getopt ( argc, argv, "hv" ) ) != -1 ) {
 
@@ -602,6 +640,8 @@ int main( int argc, char **argv ) {
 		tv.tv_usec = 0;
 
 		len_inet = sizeof(addr_client);
+
+		checkIntegrity();
 
 		if ( select( max_sock + 1, &tmp_wait_sockets, NULL, NULL, &tv ) > 0 ) {
 
