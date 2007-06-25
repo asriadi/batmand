@@ -61,7 +61,7 @@ struct thread_data {
 
 struct neighbour {
 	struct list_head list;
-	struct node *node;
+	unsigned int addr;
 	unsigned char packet_count;
 };
 
@@ -71,7 +71,6 @@ struct node {
 	unsigned char gw_class;
 	unsigned char seq_range;
 	struct list_head_first neigh_list;
-	struct list_head_first rev_neigh_list;
 };
 
 typedef struct _buffer {
