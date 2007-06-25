@@ -84,45 +84,13 @@ static void add_neighbour_node( struct node *orig_node, struct node *orig_neigh_
 		memset( neigh, 0, sizeof( struct neighbour ) );
 		neigh->node = orig_node;
 
-		list_add_tail( &neigh->list, &orig_node->rev_neigh_list );
+		list_add_tail( &neigh->list, &orig_neigh_node->rev_neigh_list );
 
 	}
 
 	return;
 
 }
-
-// static void add_is_neighbour_node( struct node *node, struct neighbour *is_neigh ) {
-//
-// 	struct list_head *list_pos;
-//
-//
-// 	list_for_each( list_pos, &vis_if_list ) {
-//
-//
-//
-// 	}
-//
-// 	struct neighbour *prev = NULL;
-//
-// 	while( (*is_neigh) != NULL)
-// 	{
-// 		if( (*is_neigh)->node == node)
-// 			return;
-// 		prev = (*is_neigh);
-// 		is_neigh = &(*is_neigh)->next;
-// 	}
-//
-// 	(*is_neigh) = (struct neighbour*) debugMalloc( sizeof(struct neighbour), 413 );
-// 	memset( (*is_neigh), 0, sizeof( struct neighbour ) );
-// 	(*is_neigh)->node = node;
-// 	(*is_neigh)->packet_count = 0;
-// 	(*is_neigh)->next = NULL;
-// 	if(prev != NULL)
-// 		prev->next = (*is_neigh);
-// 	return;
-//
-// }
 
 
 
@@ -260,10 +228,16 @@ void *udp_server() {
 							memmove( &orig_node, &receive_buff, 4 );
 							payload_ptr = receive_buff + 6;
 
-							for( i = 0; i < packet_count; i++ ) {
+							if ( orig_node != 0 ) {
 
-								memmove( &orig_neigh_node, payload_ptr + i * PACKET_FIELD_LENGTH, 4 );
-								handle_node( orig_node, orig_neigh_node, payload_ptr[i*PACKET_FIELD_LENGTH+4], receive_buff[4], receive_buff[5] );
+								for( i = 0; i < packet_count; i++ ) {
+
+									memmove( &orig_neigh_node, payload_ptr + i * PACKET_FIELD_LENGTH, 4 );
+
+									if ( orig_neigh_node != 0 )
+										handle_node( orig_node, orig_neigh_node, payload_ptr[i*PACKET_FIELD_LENGTH+4], receive_buff[4], receive_buff[5] );
+
+								}
 
 							}
 
