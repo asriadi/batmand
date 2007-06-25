@@ -30,70 +30,6 @@
 
 
 
-// static void add_neighbour_node( struct node *orig_node, struct node *orig_neigh_node, unsigned char packet_count ) {
-//
-// 	struct list_head *list_pos;
-// 	struct neighbour *neigh = NULL;
-//
-//
-// 	/* find neighbor in neighbour list of originator */
-// 	list_for_each( list_pos, &orig_node->neigh_list ) {
-//
-// 		neigh = list_entry( list_pos, struct neighbour, list );
-//
-// 		if ( orig_neigh_node->addr == neigh->node->addr )
-// 			break;
-// 		else
-// 			neigh = NULL;
-//
-// 	}
-//
-// 	/* if neighbour does not exist create it */
-// 	if ( neigh == NULL ) {
-//
-// 		neigh = debugMalloc( sizeof(struct neighbour), 401 );
-// 		memset( neigh, 0, sizeof( struct neighbour ) );
-// 		neigh->node = orig_neigh_node;
-//
-// 		list_add_tail( &neigh->list, &orig_node->neigh_list );
-//
-// 	}
-//
-// 	/* save new packet count */
-// 	neigh->packet_count = packet_count;
-//
-//
-// 	neigh = NULL;
-//
-// 	/* find originator in neighbour list of neighbour (for faster deleting) */
-// 	list_for_each( list_pos, &orig_neigh_node->rev_neigh_list ) {
-//
-// 		neigh = list_entry( list_pos, struct neighbour, list );
-//
-// 		if ( orig_node->addr == neigh->node->addr )
-// 			break;
-// 		else
-// 			neigh = NULL;
-//
-// 	}
-//
-// 	/* if originator does not exist create it */
-// 	if ( neigh == NULL ) {
-//
-// 		neigh = debugMalloc( sizeof(struct neighbour), 413 );
-// 		memset( neigh, 0, sizeof( struct neighbour ) );
-// 		neigh->node = orig_node;
-//
-// 		list_add_tail( &neigh->list, &orig_neigh_node->rev_neigh_list );
-//
-// 	}
-//
-// 	return;
-//
-// }
-
-
-
 void handle_node( unsigned int sender_ip, unsigned char *buff, int buff_len, unsigned char gw_class, unsigned char seq_range ) {
 
 	struct node *orig_node;
@@ -148,6 +84,8 @@ void handle_node( unsigned int sender_ip, unsigned char *buff, int buff_len, uns
 
 		if ( orig_neigh_node != 0 ) {
 
+			neigh = NULL;
+
 			/* find neighbor in neighbour list of originator */
 			list_for_each( list_pos, &orig_node->neigh_list ) {
 
@@ -166,6 +104,8 @@ void handle_node( unsigned int sender_ip, unsigned char *buff, int buff_len, uns
 				neigh = debugMalloc( sizeof(struct neighbour), 401 );
 				memset( neigh, 0, sizeof( struct neighbour ) );
 				neigh->addr = orig_neigh_node;
+
+				INIT_LIST_HEAD( &neigh->list );
 
 				list_add_tail( &neigh->list, &orig_node->neigh_list );
 

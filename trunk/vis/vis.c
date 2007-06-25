@@ -225,7 +225,7 @@ void write_data_in_buffer() {
 
 		while ( NULL != ( hashit = hash_iterate( node_hash, hashit ) ) ) {
 
-			orig_node = (struct node *) hashit->bucket->data;
+			orig_node = (struct node *)hashit->bucket->data;
 			addr_to_string( orig_node->addr, from_str, sizeof( from_str ) );
 
 			if ( orig_node->last_seen > 0 ) {
@@ -240,7 +240,7 @@ void write_data_in_buffer() {
 					if ( neigh->packet_count > 0 ) {
 
 						addr_to_string( neigh->addr, to_str, sizeof( to_str ) );
-						snprintf( tmp, sizeof( tmp ), "\"%s\" -> \"%s\"[label=\"%.2f\"]\n", from_str, to_str, (float)( orig_node->seq_range / ( int )neigh->packet_count ) );
+						snprintf( tmp, sizeof( tmp ), "\"%s\" -> \"%s\"[label=\"%.2f\"]\n", from_str, to_str, (float)( orig_node->seq_range / (float)neigh->packet_count ) );
 						fillme->buffer = (char *)debugRealloc( fillme->buffer, strlen( tmp ) + strlen( fillme->buffer ) + 1, 408 );
 
 						strncat( fillme->buffer, tmp, strlen( tmp ) );
@@ -387,80 +387,7 @@ void *master() {
 
 }
 
-// void *cleaner( void *arg)
-// {
-// 	struct neighbour *tmp, *rm, *rm_neigh, *tmp_neigh, *prev;
-// 	struct node *node, *tmp_node;
-// 	struct hash_it_t *hashit;
-// 	char str1[ADDR_STR_LEN];
-//
-// 	while( !is_aborted() )
-// 	{
-// 		hashit = NULL;
-// 		while ( NULL != ( hashit = hash_iterate( node_hash, hashit ) ) )
-// 		{
-// 			node = (struct node *) hashit->bucket->data;
-// 			addr_to_string( node->addr, str1, sizeof (str1));
-// 			/*printf( "node %s....", str1);*/
-// 			if( node->last_seen > 0 )
-// 			{
-// 				node->last_seen--;
-// 				/*printf("last_seen = %d\n",node->last_seen);*/
-// 			} else {
-// 				/*printf("start delete\n");*/
-// 				tmp = node->is_neighbour;
-//
-// 				while( tmp != NULL )
-// 				{
-// 					char str1[ADDR_STR_LEN];
-// 					addr_to_string( tmp->node->addr, str1, sizeof(str1));
-// 					/*printf("is_neighbour %s\n", str1);*/
-//
-// 					rm = tmp;
-// 					tmp_node = tmp->node;
-// 					tmp_neigh = tmp_node->neighbour;
-// 					prev = NULL;
-// 					while( tmp_neigh != NULL )
-// 					{
-// 						addr_to_string( tmp_neigh->node->addr, str1, sizeof(str1));
-// 						/*printf("\tin is_neighbour %s %d\n", str1, (int) tmp_neigh->next);*/
-// 						rm_neigh = NULL;
-//
-// 						if( tmp_neigh->node == node )
-// 						{
-// 							/*printf( "\ttmp->node == node\n");*/
-// 							rm_neigh = tmp_neigh;
-// 							if( prev != NULL )
-// 								prev->next = tmp_neigh->next;
-// 						} else {
-// 							/*printf( "\ttmp->node != node\n");*/
-// 							prev = tmp_neigh;
-// 						}
-//
-// 						tmp_neigh = tmp_neigh->next;
-//
-// 						if( rm_neigh != NULL )
-// 						{
-// 							addr_to_string( rm_neigh->node->addr, str1, sizeof(str1));
-// 							/*printf( "\t\tremove %s\n", str1);*/
-// 							debugFree( rm_neigh, 1412 );
-// 							rm_neigh = NULL;
-// 						}
-// 					}
-// 					tmp = tmp->next;
-// 					debugFree( rm, 1413 );
-// 					rm = NULL;
-// 				}
-// 				hash_remove_bucket( node_hash, hashit );
-// 				debugFree( node, 1414 );
-// 			}
-// 			sleep(2);
-// 		}
-// 	}
-// 	printf("shutdown cleaner....");
-// 	printf("ok\n");
-// 	return NULL;
-// }
+
 
 void print_usage() {
 
@@ -471,6 +398,8 @@ void print_usage() {
 	printf( "Olsrs3d / Meshs3d is an application to visualize a mesh network.\nIt is a part of s3d, have a look at s3d.berlios.de\n\n" );
 
 }
+
+
 
 int main( int argc, char **argv ) {
 
