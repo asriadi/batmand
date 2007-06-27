@@ -56,6 +56,7 @@ buffer_t *fillme = NULL;
 static int8_t stop;
 
 struct hashtable_t *node_hash;
+struct hashtable_t *secif_hash;
 
 void handler( int32_t sig ) {
 	switch( sig ) {
@@ -118,11 +119,15 @@ void restore_defaults() {
 		if ( vis_if->tcp_sock )
 			close( vis_if->tcp_sock );
 
-		debugFree( vis_if, 1200 );
+		debugFree( vis_if, 2000 );
 
 	}
 
-	clean_hash();
+
+	clean_secif_hash();
+	hash_destroy( secif_hash );
+
+	clean_node_hash();
 	hash_destroy( node_hash );
 
 	clean_buffer();
@@ -155,7 +160,31 @@ void addr_to_string(unsigned int addr, char *str, int len)
 }
 
 
-void clean_hash() {
+void clean_secif_hash() {
+
+	struct secif *secif;
+	struct hash_it_t *hashit = NULL;
+
+
+	if ( secif_hash->elements == 0 )
+		return;
+
+	while ( NULL != ( hashit = hash_iterate( secif_hash, hashit ) ) ) {
+
+		secif = (struct secif *)hashit->bucket->data;
+		hash_remove_bucket( secif_hash, hashit );
+
+		debugFree( secif, 2001 );
+
+	}
+
+	return;
+
+}
+
+
+
+void clean_node_hash() {
 
 	struct node *orig_node;
 	struct neighbour *neigh;
@@ -163,29 +192,32 @@ void clean_hash() {
 	struct hash_it_t *hashit = NULL;
 
 
-	if( node_hash->elements == 0 )
+	if ( node_hash->elements == 0 )
 		return;
 
 	while ( NULL != ( hashit = hash_iterate( node_hash, hashit ) ) ) {
 
-		orig_node = (struct node *) hashit->bucket->data;
+		orig_node = (struct node *)hashit->bucket->data;
 		hash_remove_bucket( node_hash, hashit );
 
 		list_for_each_safe( list_pos, list_pos_tmp, &orig_node->neigh_list ) {
 
 			neigh = list_entry( list_pos, struct neighbour, list );
 
-			debugFree( neigh, 1404 );
+			debugFree( neigh, 2002 );
 
 		}
 
-		debugFree( orig_node, 1410 );
+		debugFree( orig_node, 2003 );
 
 	}
 
 	return;
 
 }
+
+
+
 
 
 
@@ -198,8 +230,8 @@ void clean_buffer() {
 
 		rm = i;
 		i = i->next;
-		debugFree( rm->buffer, 1410 );
-		debugFree( rm, 1405 );
+		debugFree( rm->buffer, 2004 );
+		debugFree( rm, 2005 );
 
 	}
 
@@ -211,12 +243,14 @@ void write_data_in_buffer() {
 
 	struct neighbour *neigh;
 	struct node *orig_node;
-	struct list_head *list_pos, *list_pos_tmp;
+	struct secif *secif;
+	struct secif_lst *secif_lst;
+	struct list_head *list_pos, *list_pos_tmp, *prev_list_head;
 	struct hash_it_t *hashit = NULL;
 	char from_str[16], to_str[16], tmp[100];
 
 
-	memset( tmp, '\0', sizeof( tmp ) );
+	memset( tmp, 0, sizeof(tmp) );
 
 	if ( pthread_mutex_lock( &hash_mutex ) != 0 )
 		printf( "Error - could not lock hash mutex (write_data_in_buffer): %s \n", strerror( errno ) );
@@ -239,7 +273,15 @@ void write_data_in_buffer() {
 					/* never ever divide by zero */
 					if ( neigh->packet_count > 0 ) {
 
-						addr_to_string( neigh->addr, to_str, sizeof( to_str ) );
+						/* find out if neighbour is a secondary interface of another neighbour */
+						secif = (struct secif *)hash_find( secif_hash, &neigh->addr );
+
+						/* neighbour is a secondary interface */
+						if ( secif != NULL )
+							addr_to_string( secif->orig->addr, to_str, sizeof( to_str ) );
+						else
+							addr_to_string( neigh->addr, to_str, sizeof( to_str ) );
+
 						snprintf( tmp, sizeof( tmp ), "\"%s\" -> \"%s\"[label=\"%.2f\"]\n", from_str, to_str, (float)( orig_node->seq_range / (float)neigh->packet_count ) );
 						fillme->buffer = (char *)debugRealloc( fillme->buffer, strlen( tmp ) + strlen( fillme->buffer ) + 1, 408 );
 
@@ -258,6 +300,55 @@ void write_data_in_buffer() {
 
 				}
 
+				/* remove outdated neighbours */
+				prev_list_head = (struct list_head *)&orig_node->neigh_list;
+
+				list_for_each_safe( list_pos, list_pos_tmp, &orig_node->neigh_list ) {
+
+					neigh = list_entry( list_pos, struct neighbour, list );
+
+					if ( neigh->last_seen > 0 ) {
+
+						neigh->last_seen--;
+
+						prev_list_head = &neigh->list;
+
+					} else {
+
+						list_del( prev_list_head, list_pos, &orig_node->neigh_list );
+
+						debugFree( neigh, 2006 );
+
+					}
+
+				}
+
+				/* remove outdated secondary interfaces */
+				prev_list_head = (struct list_head *)&orig_node->secif_list;
+
+				list_for_each_safe( list_pos, list_pos_tmp, &orig_node->secif_list ) {
+
+					secif_lst = list_entry( list_pos, struct secif_lst, list );
+
+					if ( secif_lst->last_seen > 0 ) {
+
+						secif_lst->last_seen--;
+
+						prev_list_head = &secif_lst->list;
+
+					} else {
+
+						/* remove secondary interface from hash */
+						hash_remove( secif_hash, &secif_lst->addr );
+
+						list_del( prev_list_head, list_pos, &orig_node->secif_list );
+
+						debugFree( secif_lst, 2007 );
+
+					}
+
+				}
+
 			/* delete orig node */
 			} else {
 
@@ -265,13 +356,24 @@ void write_data_in_buffer() {
 
 					neigh = list_entry( list_pos, struct neighbour, list );
 
-					debugFree( neigh, 1412 );
+					debugFree( neigh, 2008 );
+
+				}
+
+				list_for_each_safe( list_pos, list_pos_tmp, &orig_node->secif_list ) {
+
+					secif_lst = list_entry( list_pos, struct secif_lst, list );
+
+					/* remove secondary interface from hash */
+					hash_remove( secif_hash, &secif_lst->addr );
+
+					debugFree( secif_lst, 2009 );
 
 				}
 
 				hash_remove_bucket( node_hash, hashit );
 
-				debugFree( orig_node, 1413 );
+				debugFree( orig_node, 2010 );
 
 			}
 
@@ -295,7 +397,7 @@ void *tcp_server( void *arg ) {
 	ssize_t ret;
 
 
-	while( !is_aborted() ) {
+	while ( !is_aborted() ) {
 
 		if ( current != NULL && current != last_send ) {
 
@@ -325,7 +427,7 @@ void *tcp_server( void *arg ) {
 	printf( "TCP client has left: %s \n", thread_data->ip );
 
 	close( thread_data->socket );
-	debugFree( arg, 1400 );
+	debugFree( arg, 2011 );
 
 	return NULL;
 
@@ -349,19 +451,19 @@ void *master() {
 				break;
 
 			first = tmp->next;
-			debugFree( tmp->buffer, 1402 );
-			debugFree( tmp, 1403 );
+			debugFree( tmp->buffer, 2012 );
+			debugFree( tmp, 2013 );
 			tmp = first;
 
 		}
 
-		new = debugMalloc( sizeof( buffer_t ), 404 );
+		new = debugMalloc( sizeof(buffer_t), 1000 );
 		new->counter = -1;
 		new->next = NULL;
 		pthread_mutex_init( &new->mutex, NULL );
 
-		new->buffer = (char *) debugMalloc( strlen( begin ) + 1, 405 );
-		memset( new->buffer, '\0', strlen( begin ) );
+		new->buffer = (char *)debugMalloc( strlen( begin ) + 1, 1001 );
+		memset( new->buffer, 0, strlen( begin ) );
 		strncpy( new->buffer, begin, strlen( begin ) + 1);
 
 		/* printf( "vis.c buffer: %s\n-----Ende-----\n", new->buffer ); */
@@ -447,9 +549,13 @@ int main( int argc, char **argv ) {
 	signal( SIGTERM, handler );
 	signal( SIGPIPE, SIG_IGN );
 
-	/* init hashtable for node struct */
+	/* init hashtable for nodes */
 	if ( NULL == ( node_hash = hash_new( 128, orig_comp, orig_choose ) ) )
-		exit_error( "Error - can't create hashtable\n");
+		exit_error( "Error - can't create node hashtable\n");
+
+	/* init hashtable for secondary interfaces */
+	if ( NULL == ( secif_hash = hash_new( 128, orig_comp, orig_choose ) ) )
+		exit_error( "Error - can't create secif hashtable\n");
 
 	INIT_LIST_HEAD_FIRST( vis_if_list );
 
@@ -461,7 +567,7 @@ int main( int argc, char **argv ) {
 
 	while ( argc > found_args ) {
 
-		vis_if = debugMalloc( sizeof(struct vis_if), 206 );
+		vis_if = debugMalloc( sizeof(struct vis_if), 1002 );
 		memset( vis_if, 0, sizeof(struct vis_if) );
 		INIT_LIST_HEAD( &vis_if->list );
 
@@ -545,7 +651,7 @@ int main( int argc, char **argv ) {
 
 				if ( FD_ISSET( vis_if->tcp_sock, &tmp_wait_sockets ) ) {
 
-					thread_data = debugMalloc( sizeof(struct thread_data), 1200 );
+					thread_data = debugMalloc( sizeof(struct thread_data), 1003 );
 
 					thread_data->socket = accept( vis_if->tcp_sock, (struct sockaddr*)&addr_client, &len_inet );
 
