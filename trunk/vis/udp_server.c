@@ -33,6 +33,8 @@
 void handle_node( unsigned int sender_ip, unsigned char *buff, int buff_len, unsigned char gw_class, unsigned char seq_range ) {
 
 	struct node *orig_node;
+	struct secif *secif;
+	struct secif_lst *secif_lst;
 	struct hashtable_t *swaphash;
 	struct neighbour *neigh;
 	struct list_head *list_pos;
@@ -50,7 +52,7 @@ void handle_node( unsigned int sender_ip, unsigned char *buff, int buff_len, uns
 		swaphash = hash_resize( node_hash, node_hash->size * 2 );
 
 		if ( swaphash == NULL )
-			exit_error( "Couldn't resize hash table \n" );
+			exit_error( "Couldn't resize node hash table \n" );
 
 		node_hash = swaphash;
 
@@ -63,10 +65,13 @@ void handle_node( unsigned int sender_ip, unsigned char *buff, int buff_len, uns
 	/* node not found */
 	if ( orig_node == NULL ) {
 
-		orig_node = (struct node *)debugMalloc( sizeof(struct node), 403 );
+		orig_node = (struct node *)debugMalloc( sizeof(struct node), 1100 );
+		memset( orig_node, 0, sizeof(struct node) );
+
 		orig_node->addr = sender_ip;
 
 		INIT_LIST_HEAD_FIRST( orig_node->neigh_list );
+		INIT_LIST_HEAD_FIRST( orig_node->secif_list );
 
 		hash_add( node_hash, orig_node );
 
@@ -84,35 +89,100 @@ void handle_node( unsigned int sender_ip, unsigned char *buff, int buff_len, uns
 
 		if ( orig_neigh_node != 0 ) {
 
-			neigh = NULL;
+			/* is secondary interface */
+			if ( buff[i * PACKET_FIELD_LENGTH + 4] == 0 ) {
 
-			/* find neighbor in neighbour list of originator */
-			list_for_each( list_pos, &orig_node->neigh_list ) {
+				if ( secif_hash->elements * 4 > secif_hash->size ) {
 
-				neigh = list_entry( list_pos, struct neighbour, list );
+					swaphash = hash_resize( secif_hash, secif_hash->size * 2 );
 
-				if ( orig_neigh_node == neigh->addr )
-					break;
-				else
-					neigh = NULL;
+					if ( swaphash == NULL )
+						exit_error( "Couldn't resize secif hash table \n" );
+
+					secif_hash = swaphash;
+
+				}
+
+				/* use hash for fast processing of secondary interfaces in write_data_in_buffer() */
+				secif = (struct secif *)hash_find( secif_hash, &orig_neigh_node );
+
+				if ( secif == NULL ) {
+
+					secif = (struct secif *)debugMalloc( sizeof(struct secif), 1101 );
+
+					secif->addr = orig_neigh_node;
+					secif->orig = orig_node;
+
+					hash_add( secif_hash, secif );
+
+				}
+
+				/* maintain list of own secondary interfaces which must be removed from the hash if the originator is purged */
+				secif_lst = NULL;
+
+				/* find secondary interface in secondary if list of originator */
+				list_for_each( list_pos, &orig_node->secif_list ) {
+
+					secif_lst = list_entry( list_pos, struct secif_lst, list );
+
+					if ( orig_neigh_node == secif_lst->addr )
+						break;
+					else
+						secif_lst = NULL;
+
+				}
+
+				/* if secondary interface does not exist create it */
+				if ( secif_lst == NULL ) {
+
+					secif_lst = debugMalloc( sizeof(struct secif_lst), 1102 );
+					memset( secif_lst, 0, sizeof(struct secif_lst) );
+
+					secif_lst->addr = orig_neigh_node;
+
+					INIT_LIST_HEAD( &secif_lst->list );
+
+					list_add_tail( &secif_lst->list, &orig_node->secif_list );
+
+				}
+
+				secif_lst->last_seen = 20;
+
+			/* is neighbour */
+			} else {
+
+				neigh = NULL;
+
+				/* find neighbor in neighbour list of originator */
+				list_for_each( list_pos, &orig_node->neigh_list ) {
+
+					neigh = list_entry( list_pos, struct neighbour, list );
+
+					if ( orig_neigh_node == neigh->addr )
+						break;
+					else
+						neigh = NULL;
+
+				}
+
+				/* if neighbour does not exist create it */
+				if ( neigh == NULL ) {
+
+					neigh = debugMalloc( sizeof(struct neighbour), 1103 );
+					memset( neigh, 0, sizeof(struct neighbour) );
+					neigh->addr = orig_neigh_node;
+
+					INIT_LIST_HEAD( &neigh->list );
+
+					list_add_tail( &neigh->list, &orig_node->neigh_list );
+
+				}
+
+				/* save new packet count */
+				neigh->packet_count = buff[i * PACKET_FIELD_LENGTH + 4];
+				neigh->last_seen = 20;
 
 			}
-
-			/* if neighbour does not exist create it */
-			if ( neigh == NULL ) {
-
-				neigh = debugMalloc( sizeof(struct neighbour), 401 );
-				memset( neigh, 0, sizeof( struct neighbour ) );
-				neigh->addr = orig_neigh_node;
-
-				INIT_LIST_HEAD( &neigh->list );
-
-				list_add_tail( &neigh->list, &orig_node->neigh_list );
-
-			}
-
-			/* save new packet count */
-			neigh->packet_count = buff[i * PACKET_FIELD_LENGTH + 4];
 
 		}
 
@@ -169,15 +239,16 @@ void *udp_server() {
 
 					buff_len = recvfrom( vis_if->udp_sock, receive_buff, sizeof(receive_buff), 0, (struct sockaddr*)&client, &len );
 
-					/* 11 bytes is minumum packet size: sender ip, gateway class, seq range, neighbour ip, neighbour packet count */
-					if ( buff_len > 10 ) {
+					/* 12 bytes is minumum packet size: sender ip, compat version, gateway class, seq range, neighbour ip, neighbour packet count */
+					/* drop packet if it has not the correct version */
+					if ( ( buff_len > 11 ) && ( receive_buff[4] == VIS_COMPAT_VERSION ) ) {
 
 						if ( pthread_mutex_trylock( &hash_mutex ) == 0 ) {
 
 							memmove( &orig_node, &receive_buff, 4 );
 
 							if ( orig_node != 0 )
-								handle_node( orig_node, receive_buff + 6, buff_len - 6, receive_buff[4], receive_buff[5] );
+								handle_node( orig_node, receive_buff + 6, buff_len - 6, receive_buff[5], receive_buff[6] );
 
 							if ( pthread_mutex_unlock( &hash_mutex ) < 0 )
 								printf( "Error - could not unlock mutex (udp server): %s \n", strerror( errno ) );

@@ -35,12 +35,16 @@
 
 
 
+#define VERSION "0.1 alpha"
+#define VIS_COMPAT_VERSION 20
+
 #define MAXCHAR 4096
+
 #define VIS_PORT 1968
 #define DOT_DRAW_PORT 2004
+
 #define ADDR_STR_LEN 16
 #define PACKET_FIELD_LENGTH 5
-#define VERSION "0.1 alpha"
 
 
 
@@ -51,6 +55,7 @@ extern pthread_t master_thread;
 extern pthread_mutex_t hash_mutex;
 
 extern struct hashtable_t *node_hash;
+extern struct hashtable_t *secif_hash;
 
 
 
@@ -63,6 +68,7 @@ struct neighbour {
 	struct list_head list;
 	unsigned int addr;
 	unsigned char packet_count;
+	unsigned char last_seen;
 };
 
 struct node {
@@ -71,6 +77,18 @@ struct node {
 	unsigned char gw_class;
 	unsigned char seq_range;
 	struct list_head_first neigh_list;
+	struct list_head_first secif_list;
+};
+
+struct secif {
+	unsigned int addr;
+	struct node *orig;
+};
+
+struct secif_lst {
+	struct list_head list;
+	unsigned int addr;
+	unsigned char last_seen;
 };
 
 typedef struct _buffer {
@@ -90,7 +108,8 @@ struct vis_if {
 };
 
 
-void clean_hash();
+void clean_secif_hash();
+void clean_node_hash();
 void clean_buffer();
 void exit_error(char *format, ...);
 int8_t is_aborted();
