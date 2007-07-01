@@ -226,7 +226,8 @@ void purge_orig( uint32_t curr_time ) {
 
 			/* for all neighbours towards this originator ... */
 			list_for_each_safe( neigh_pos, neigh_temp, &orig_node->neigh_list ) {
-				neigh_node = list_entry(neigh_pos, struct neigh_node, list);
+
+				neigh_node = list_entry( neigh_pos, struct neigh_node, list );
 
 				list_del( (struct list_head *)&orig_node->neigh_list, neigh_pos, &orig_node->neigh_list );
 				debugFree( neigh_node, 1401 );
@@ -281,10 +282,9 @@ void purge_orig( uint32_t curr_time ) {
 					if ( ( best_neigh_node == NULL ) || ( neigh_node->packet_count > best_neigh_node->packet_count ) )
 						best_neigh_node = neigh_node;
 
+					prev_list_head = &neigh_node->list;
 
 				}
-
-				prev_list_head = &neigh_node->list;
 
 			}
 
@@ -297,18 +297,20 @@ void purge_orig( uint32_t curr_time ) {
 
 	prev_list_head = (struct list_head *)&gw_list;
 
-	list_for_each_safe(gw_pos, gw_pos_tmp, &gw_list) {
+	list_for_each_safe( gw_pos, gw_pos_tmp, &gw_list ) {
 
-		gw_node = list_entry(gw_pos, struct gw_node, list);
+		gw_node = list_entry( gw_pos, struct gw_node, list );
 
 		if ( ( gw_node->deleted ) && ( (int)((gw_node->deleted + (3 * PURGE_TIMEOUT)) < curr_time) ) ) {
 
 			list_del( prev_list_head, gw_pos, &gw_list );
 			debugFree( gw_pos, 1405 );
 
-		}
+		} else {
 
-		prev_list_head = &gw_node->list;
+			prev_list_head = &gw_node->list;
+
+		}
 
 	}
 
