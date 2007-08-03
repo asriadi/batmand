@@ -1,7 +1,7 @@
 /*
  * vis.c
  *
- * Copyright (C) 2006 Andreas Langer <a.langer@q-dsl.de>:
+ * Copyright (C) 2006 Andreas Langer <a.langer@q-dsl.de>, Marek Lindner:
  *
  *
  * This program is free software; you can redistribute it and/or
@@ -190,6 +190,7 @@ void clean_node_hash() {
 	struct neighbour *neigh;
 	struct list_head *list_pos, *list_pos_tmp;
 	struct hash_it_t *hashit = NULL;
+	struct hna *hna;
 
 
 	if ( node_hash->elements == 0 )
@@ -205,6 +206,14 @@ void clean_node_hash() {
 			neigh = list_entry( list_pos, struct neighbour, list );
 
 			debugFree( neigh, 2002 );
+
+		}
+
+		list_for_each_safe( list_pos, list_pos_tmp, &orig_node->hna_list ) {
+
+			hna = list_entry( list_pos, struct hna, list );
+
+			debugFree( hna, 2016 );
 
 		}
 
@@ -245,9 +254,10 @@ void write_data_in_buffer() {
 	struct node *orig_node;
 	struct secif *secif;
 	struct secif_lst *secif_lst;
+	struct hna *hna;
 	struct list_head *list_pos, *list_pos_tmp, *prev_list_head;
 	struct hash_it_t *hashit = NULL;
-	char from_str[16], to_str[16], tmp[100];
+	char from_str[16], to_str[16], hna_str[16], tmp[100];
 
 
 	memset( tmp, 0, sizeof(tmp) );
@@ -291,11 +301,25 @@ void write_data_in_buffer() {
 
 				}
 
+				list_for_each( list_pos, &orig_node->hna_list ) {
+
+					hna = list_entry( list_pos, struct hna, list );
+
+					addr_to_string( hna->addr, to_str, sizeof( to_str ) );
+					addr_to_string( ( hna->netmask == 32 ? 0xffffffff : htonl( ~ ( 0xffffffff >> hna->netmask ) ) ), hna_str, sizeof( hna_str ) );
+
+					snprintf( tmp, sizeof( tmp ), "\"%s\" -> \"%s/%s\"[label=\"HNA\"]\n", from_str, to_str, hna_str );
+					fillme->buffer = (char *)debugRealloc( fillme->buffer, strlen( tmp ) + strlen( fillme->buffer ) + 1, 409 );
+
+					strncat( fillme->buffer, tmp, strlen( tmp ) );
+
+				}
+
 				/*printf("gw_class %d\n",(unsigned int)orig_node->gw_class);*/
 				if ( orig_node->gw_class != 0 ) {
 
 					snprintf( tmp, sizeof( tmp ), "\"%s\" -> \"0.0.0.0/0.0.0.0\"[label=\"HNA\"]\n", from_str );
-					fillme->buffer = (char *)debugRealloc( fillme->buffer, strlen( tmp ) + strlen( fillme->buffer ) + 1, 409 );
+					fillme->buffer = (char *)debugRealloc( fillme->buffer, strlen( tmp ) + strlen( fillme->buffer ) + 1, 410 );
 					strncat( fillme->buffer, tmp, strlen( tmp ) );
 
 				}
@@ -349,6 +373,29 @@ void write_data_in_buffer() {
 
 				}
 
+				/* remove outdated hna entries */
+				prev_list_head = (struct list_head *)&orig_node->hna_list;
+
+				list_for_each_safe( list_pos, list_pos_tmp, &orig_node->hna_list ) {
+
+					hna = list_entry( list_pos, struct hna, list );
+
+					if ( hna->last_seen > 0 ) {
+
+						hna->last_seen--;
+
+						prev_list_head = &hna->list;
+
+					} else {
+
+						list_del( prev_list_head, list_pos, &orig_node->hna_list );
+
+						debugFree( hna, 2014 );
+
+					}
+
+				}
+
 			/* delete orig node */
 			} else {
 
@@ -368,6 +415,14 @@ void write_data_in_buffer() {
 					hash_remove( secif_hash, &secif_lst->addr );
 
 					debugFree( secif_lst, 2009 );
+
+				}
+
+				list_for_each_safe( list_pos, list_pos_tmp, &orig_node->hna_list ) {
+
+					hna = list_entry( list_pos, struct hna, list );
+
+					debugFree( hna, 2015 );
 
 				}
 

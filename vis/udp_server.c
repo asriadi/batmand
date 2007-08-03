@@ -1,7 +1,7 @@
 /*
- * vis.c
+ * udp_server.c
  *
- * Copyright (C) 2006 Andreas Langer <a.langer@q-dsl.de>:
+ * Copyright (C) 2006 Marek Lindner:
  *
  *
  * This program is free software; you can redistribute it and/or
@@ -37,15 +37,16 @@ void handle_node( unsigned int sender_ip, unsigned char *buff, int buff_len, uns
 	struct secif_lst *secif_lst;
 	struct hashtable_t *swaphash;
 	struct neighbour *neigh;
+	struct hna *hna;
 	struct list_head *list_pos;
-	int packet_count, i, orig_neigh_node;
+	int packet_count, i;
 
 	/*char from_str[16];
 	char to_str[16];
 
 	addr_to_string( sender_ip, from_str, sizeof(from_str) );
-	addr_to_string( neigh_ip, to_str, sizeof(to_str) );
-	printf( "UDP data from %s: %s \n", from_str, to_str );*/
+// 	addr_to_string( neigh_ip, to_str, sizeof(to_str) );
+	printf( "UDP data from %s \n", from_str );*/
 
 	if ( node_hash->elements * 4 > node_hash->size ) {
 
@@ -72,6 +73,7 @@ void handle_node( unsigned int sender_ip, unsigned char *buff, int buff_len, uns
 
 		INIT_LIST_HEAD_FIRST( orig_node->neigh_list );
 		INIT_LIST_HEAD_FIRST( orig_node->secif_list );
+		INIT_LIST_HEAD_FIRST( orig_node->hna_list );
 
 		hash_add( node_hash, orig_node );
 
@@ -81,16 +83,51 @@ void handle_node( unsigned int sender_ip, unsigned char *buff, int buff_len, uns
 	orig_node->gw_class = gw_class;
 	orig_node->seq_range = seq_range;
 
-	packet_count = buff_len / PACKET_FIELD_LENGTH;
+	packet_count = buff_len / sizeof(struct vis_data);
 
 	for( i = 0; i < packet_count; i++ ) {
 
-		memmove( &orig_neigh_node, buff + i * PACKET_FIELD_LENGTH, 4 );
+		if ( ((struct vis_data *)(buff + i * sizeof(struct vis_data)))->ip != 0 ) {
 
-		if ( orig_neigh_node != 0 ) {
+			/* is neighbour */
+			if ( ((struct vis_data *)(buff + i * sizeof(struct vis_data)))->type == DATA_TYPE_NEIGH ) {
+
+				if ( ((struct vis_data *)(buff + i * sizeof(struct vis_data)))->data > orig_node->seq_range )
+					continue;
+
+				neigh = NULL;
+
+				/* find neighbor in neighbour list of originator */
+				list_for_each( list_pos, &orig_node->neigh_list ) {
+
+					neigh = list_entry( list_pos, struct neighbour, list );
+
+					if ( ((struct vis_data *)(buff + i * sizeof(struct vis_data)))->ip == neigh->addr )
+						break;
+					else
+						neigh = NULL;
+
+				}
+
+				/* if neighbour does not exist create it */
+				if ( neigh == NULL ) {
+
+					neigh = debugMalloc( sizeof(struct neighbour), 1101 );
+					memset( neigh, 0, sizeof(struct neighbour) );
+					neigh->addr = ((struct vis_data *)(buff + i * sizeof(struct vis_data)))->ip;
+
+					INIT_LIST_HEAD( &neigh->list );
+
+					list_add_tail( &neigh->list, &orig_node->neigh_list );
+
+				}
+
+				/* save new packet count */
+				neigh->packet_count = ((struct vis_data *)(buff + i * sizeof(struct vis_data)))->data;
+				neigh->last_seen = 20;
 
 			/* is secondary interface */
-			if ( buff[i * PACKET_FIELD_LENGTH + 4] == 0 ) {
+			} else if ( ((struct vis_data *)(buff + i * sizeof(struct vis_data)))->type == DATA_TYPE_SEC_IF ) {
 
 				if ( secif_hash->elements * 4 > secif_hash->size ) {
 
@@ -104,13 +141,13 @@ void handle_node( unsigned int sender_ip, unsigned char *buff, int buff_len, uns
 				}
 
 				/* use hash for fast processing of secondary interfaces in write_data_in_buffer() */
-				secif = (struct secif *)hash_find( secif_hash, &orig_neigh_node );
+				secif = (struct secif *)hash_find( secif_hash, &((struct vis_data *)(buff + i * sizeof(struct vis_data)))->ip );
 
 				if ( secif == NULL ) {
 
-					secif = (struct secif *)debugMalloc( sizeof(struct secif), 1101 );
+					secif = (struct secif *)debugMalloc( sizeof(struct secif), 1102 );
 
-					secif->addr = orig_neigh_node;
+					secif->addr = ((struct vis_data *)(buff + i * sizeof(struct vis_data)))->ip;
 					secif->orig = orig_node;
 
 					hash_add( secif_hash, secif );
@@ -125,7 +162,7 @@ void handle_node( unsigned int sender_ip, unsigned char *buff, int buff_len, uns
 
 					secif_lst = list_entry( list_pos, struct secif_lst, list );
 
-					if ( orig_neigh_node == secif_lst->addr )
+					if ( ((struct vis_data *)(buff + i * sizeof(struct vis_data)))->ip == secif_lst->addr )
 						break;
 					else
 						secif_lst = NULL;
@@ -135,10 +172,10 @@ void handle_node( unsigned int sender_ip, unsigned char *buff, int buff_len, uns
 				/* if secondary interface does not exist create it */
 				if ( secif_lst == NULL ) {
 
-					secif_lst = debugMalloc( sizeof(struct secif_lst), 1102 );
+					secif_lst = debugMalloc( sizeof(struct secif_lst), 1103 );
 					memset( secif_lst, 0, sizeof(struct secif_lst) );
 
-					secif_lst->addr = orig_neigh_node;
+					secif_lst->addr = ((struct vis_data *)(buff + i * sizeof(struct vis_data)))->ip;
 
 					INIT_LIST_HEAD( &secif_lst->list );
 
@@ -148,39 +185,40 @@ void handle_node( unsigned int sender_ip, unsigned char *buff, int buff_len, uns
 
 				secif_lst->last_seen = 20;
 
-			/* is neighbour */
-			} else {
+			} else if ( ((struct vis_data *)(buff + i * sizeof(struct vis_data)))->type == DATA_TYPE_HNA ) {
 
-				neigh = NULL;
+				if ( ((struct vis_data *)(buff + i * sizeof(struct vis_data)))->data > 32 )
+					continue;
 
-				/* find neighbor in neighbour list of originator */
-				list_for_each( list_pos, &orig_node->neigh_list ) {
+				hna = NULL;
 
-					neigh = list_entry( list_pos, struct neighbour, list );
+				/* find hna in hna list of originator */
+				list_for_each( list_pos, &orig_node->hna_list ) {
 
-					if ( orig_neigh_node == neigh->addr )
+					hna = list_entry( list_pos, struct hna, list );
+
+					if ( ( ((struct vis_data *)(buff + i * sizeof(struct vis_data)))->ip == hna->addr ) && ( ((struct vis_data *)(buff + i * sizeof(struct vis_data)))->data == hna->netmask ) )
 						break;
 					else
-						neigh = NULL;
+						hna = NULL;
 
 				}
 
-				/* if neighbour does not exist create it */
-				if ( neigh == NULL ) {
+				/* if hna does not exist create it */
+				if ( hna == NULL ) {
 
-					neigh = debugMalloc( sizeof(struct neighbour), 1103 );
-					memset( neigh, 0, sizeof(struct neighbour) );
-					neigh->addr = orig_neigh_node;
+					hna = debugMalloc( sizeof(struct hna), 1104 );
+					memset( hna, 0, sizeof(struct hna) );
+					hna->addr = ((struct vis_data *)(buff + i * sizeof(struct vis_data)))->ip;
+					hna->netmask = ((struct vis_data *)(buff + i * sizeof(struct vis_data)))->data;
 
-					INIT_LIST_HEAD( &neigh->list );
+					INIT_LIST_HEAD( &hna->list );
 
-					list_add_tail( &neigh->list, &orig_node->neigh_list );
+					list_add_tail( &hna->list, &orig_node->hna_list );
 
 				}
 
-				/* save new packet count */
-				neigh->packet_count = buff[i * PACKET_FIELD_LENGTH + 4];
-				neigh->last_seen = 20;
+				hna->last_seen = 20;
 
 			}
 
@@ -201,7 +239,7 @@ void *udp_server() {
 	struct sockaddr_in client;
 	struct timeval tv;
 	unsigned char receive_buff[MAXCHAR];
-	int max_sock = 0, buff_len, orig_node;
+	int max_sock = 0, buff_len;
 	fd_set wait_sockets, tmp_wait_sockets;
 	socklen_t len;
 
@@ -239,23 +277,23 @@ void *udp_server() {
 
 					buff_len = recvfrom( vis_if->udp_sock, receive_buff, sizeof(receive_buff), 0, (struct sockaddr*)&client, &len );
 
-					/* 12 bytes is minumum packet size: sender ip, compat version, gateway class, seq range, neighbour ip, neighbour packet count */
-					/* drop packet if it has not the correct version */
-					if ( ( buff_len > 11 ) && ( receive_buff[4] == VIS_COMPAT_VERSION ) ) {
+					/* drop packet if it has not minumum packet size or not the correct version */
+					if ( ( buff_len >= sizeof(struct vis_packet) + sizeof(struct vis_data) ) && ( ((struct vis_packet *)receive_buff)->version == VIS_COMPAT_VERSION ) ) {
 
-						if ( pthread_mutex_trylock( &hash_mutex ) == 0 ) {
+						if ( ((struct vis_packet *)receive_buff)->sender_ip != 0 ) {
 
-							memmove( &orig_node, &receive_buff, 4 );
+							if ( pthread_mutex_trylock( &hash_mutex ) == 0 ) {
 
-							if ( orig_node != 0 )
-								handle_node( orig_node, receive_buff + 6, buff_len - 6, receive_buff[5], receive_buff[6] );
+								handle_node( ((struct vis_packet *)receive_buff)->sender_ip, receive_buff + sizeof(struct vis_packet), buff_len - sizeof(struct vis_packet), ((struct vis_packet *)receive_buff)->gw_class, ((struct vis_packet *)receive_buff)->seq_range );
 
-							if ( pthread_mutex_unlock( &hash_mutex ) < 0 )
-								printf( "Error - could not unlock mutex (udp server): %s \n", strerror( errno ) );
+								if ( pthread_mutex_unlock( &hash_mutex ) < 0 )
+									printf( "Error - could not unlock mutex (udp server): %s \n", strerror( errno ) );
 
-						} else {
+							} else {
 
-							printf( "Warning - dropping UDP packet: hash mutext is locked (%s)\n", strerror( EBUSY ) );
+								printf( "Warning - dropping UDP packet: hash mutext is locked (%s)\n", strerror( EBUSY ) );
+
+							}
 
 						}
 

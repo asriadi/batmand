@@ -1,7 +1,7 @@
 /*
- * vis.c
+ * vis.h
  *
- * Copyright (C) 2006 Andreas Langer <a.langer@q-dsl.de>:
+ * Copyright (C) 2006 Andreas Langer <a.langer@q-dsl.de>, Marek Lindner:
  *
  *
  * This program is free software; you can redistribute it and/or
@@ -29,6 +29,7 @@
 #include <errno.h>
 
 
+#include "vis-types.h"
 #include "hash.h"
 #include "allocate.h"
 #include "list-batman.h"
@@ -44,7 +45,7 @@
 #define DOT_DRAW_PORT 2004
 
 #define ADDR_STR_LEN 16
-#define PACKET_FIELD_LENGTH 5
+
 
 
 
@@ -71,6 +72,13 @@ struct neighbour {
 	unsigned char last_seen;
 };
 
+struct hna {
+	struct list_head list;
+	unsigned int addr;
+	unsigned char netmask;
+	unsigned char last_seen;
+};
+
 struct node {
 	unsigned int addr;
 	unsigned char last_seen;
@@ -78,6 +86,7 @@ struct node {
 	unsigned char seq_range;
 	struct list_head_first neigh_list;
 	struct list_head_first secif_list;
+	struct list_head_first hna_list;
 };
 
 struct secif {
@@ -106,7 +115,6 @@ struct vis_if {
 	struct sockaddr_in udp_addr;
 	struct sockaddr_in tcp_addr;
 };
-
 
 void clean_secif_hash();
 void clean_node_hash();
