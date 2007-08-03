@@ -508,6 +508,7 @@ int main( int argc, char **argv ) {
 	char ip_str[ADDR_STR_LEN];
 	int max_sock = 0, optchar, on = 1;
 	uint8_t found_args = 1;
+	int32_t unix_opts;
 	struct sockaddr_in addr_client;
 	struct ifreq int_req;
 	struct vis_if *vis_if;
@@ -657,6 +658,10 @@ int main( int argc, char **argv ) {
 
 					addr_to_string( addr_client.sin_addr.s_addr, thread_data->ip, sizeof(thread_data->ip) );
 					printf( "New TCP client connected: %s \n", thread_data->ip );
+
+					/* make tcp socket non blocking */
+					unix_opts = fcntl( thread_data->socket, F_GETFL, 0 );
+					fcntl( thread_data->socket, F_SETFL, unix_opts | O_NONBLOCK );
 
 					pthread_create( &tcp_server_thread, NULL, &tcp_server, thread_data );
 					pthread_detach( tcp_server_thread );
