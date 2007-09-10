@@ -41,7 +41,7 @@
 
 #define MAXCHAR 4096
 
-#define VIS_PORT 1968
+#define VIS_PORT 4307
 #define DOT_DRAW_PORT 2004
 
 #define ADDR_STR_LEN 16
