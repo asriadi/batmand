@@ -58,6 +58,8 @@ extern pthread_mutex_t hash_mutex;
 extern struct hashtable_t *node_hash;
 extern struct hashtable_t *secif_hash;
 
+extern uint8_t debug_level;
+
 
 
 struct thread_data {
@@ -121,6 +123,7 @@ void clean_node_hash();
 void clean_buffer();
 void exit_error(char *format, ...);
 int8_t is_aborted();
+void debug_output(char *format, ...);
 
 void *udp_server();
 
