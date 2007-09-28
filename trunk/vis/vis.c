@@ -610,7 +610,7 @@ void *master() {
 
 void print_usage() {
 
-	printf( "B.A.T.M.A.N. visualisation server %s\n", VERSION );
+	printf( "B.A.T.M.A.N. visualisation server %s\n", SOURCE_VERSION );
 	printf( "Usage: vis <interface(s)> \n" );
 	printf( "\t-d debug level\n" );
 	printf( "\t-h help\n" );
@@ -665,7 +665,7 @@ int main( int argc, char **argv ) {
 				break;
 
 			case 'v':
-				printf( "B.A.T.M.A.N. visualisation server %s\n", VERSION );
+				printf( "B.A.T.M.A.N. visualisation server %s\n", SOURCE_VERSION );
 				exit(EXIT_SUCCESS);
 				break;
 
@@ -772,7 +772,7 @@ int main( int argc, char **argv ) {
 	}
 
 
-	debug_output( "B.A.T.M.A.N. visualisation server %s successfully started ... \n", VERSION );
+	debug_output( "B.A.T.M.A.N. visualisation server %s successfully started ... \n", SOURCE_VERSION );
 
 
 	pthread_create( &udp_server_thread, NULL, &udp_server, NULL );
