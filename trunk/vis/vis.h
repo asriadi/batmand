@@ -34,7 +34,7 @@
 #include "allocate.h"
 #include "list-batman.h"
 
-
+#define SOURCE_VERSION "0.1-alpha" //put exactly one distinct word inside the string like "0.3-pre-alpha" or "0.3-rc1" or "0.3"
 
 #define VERSION "0.1 alpha"
 #define VIS_COMPAT_VERSION 20
