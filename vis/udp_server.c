@@ -30,7 +30,7 @@
 
 
 
-void handle_node( unsigned int sender_ip, unsigned char *buff, int buff_len, unsigned char gw_class, unsigned char seq_range ) {
+void handle_node( unsigned int sender_ip, unsigned char *buff, int buff_len, unsigned char gw_class, unsigned char tq_max ) {
 
 	struct node *orig_node;
 	struct secif *secif;
@@ -81,7 +81,7 @@ void handle_node( unsigned int sender_ip, unsigned char *buff, int buff_len, uns
 
 	orig_node->last_seen = 20;
 	orig_node->gw_class = gw_class;
-	orig_node->seq_range = seq_range;
+	orig_node->tq_max = tq_max;
 
 	packet_count = buff_len / sizeof(struct vis_data);
 
@@ -92,7 +92,7 @@ void handle_node( unsigned int sender_ip, unsigned char *buff, int buff_len, uns
 			/* is neighbour */
 			if ( ((struct vis_data *)(buff + i * sizeof(struct vis_data)))->type == DATA_TYPE_NEIGH ) {
 
-				if ( ((struct vis_data *)(buff + i * sizeof(struct vis_data)))->data > orig_node->seq_range )
+				if ( ((struct vis_data *)(buff + i * sizeof(struct vis_data)))->data > orig_node->tq_max )
 					continue;
 
 				neigh = NULL;
@@ -122,8 +122,8 @@ void handle_node( unsigned int sender_ip, unsigned char *buff, int buff_len, uns
 
 				}
 
-				/* save new packet count */
-				neigh->packet_count = ((struct vis_data *)(buff + i * sizeof(struct vis_data)))->data;
+				/* save new tq value */
+				neigh->tq_avg = ((struct vis_data *)(buff + i * sizeof(struct vis_data)))->data;
 				neigh->last_seen = 20;
 
 			/* is secondary interface */
@@ -284,7 +284,7 @@ void *udp_server() {
 
 							if ( pthread_mutex_trylock( &hash_mutex ) == 0 ) {
 
-								handle_node( ((struct vis_packet *)receive_buff)->sender_ip, receive_buff + sizeof(struct vis_packet), buff_len - sizeof(struct vis_packet), ((struct vis_packet *)receive_buff)->gw_class, ((struct vis_packet *)receive_buff)->seq_range );
+								handle_node( ((struct vis_packet *)receive_buff)->sender_ip, receive_buff + sizeof(struct vis_packet), buff_len - sizeof(struct vis_packet), ((struct vis_packet *)receive_buff)->gw_class, ((struct vis_packet *)receive_buff)->tq_max );
 
 								if ( pthread_mutex_unlock( &hash_mutex ) < 0 )
 									debug_output( "Error - could not unlock mutex (udp server): %s \n", strerror( errno ) );
