@@ -18,11 +18,11 @@
 
 
 CC =			gcc
-CFLAGS =		-Wall -O1 -g
+CFLAGS =		-Wall -W -O1 -g
 STRIP=			strip
 LDFLAGS =		-lpthread
 
-CFLAGS_MIPS =	-Wall -O1 -g -DREVISION_VERSION=$(REVISION_VERSION)
+CFLAGS_MIPS =	-Wall -W -O1 -g -DREVISION_VERSION=$(REVISION_VERSION)
 LDFLAGS_MIPS =	-lpthread
 
 UNAME=		$(shell uname)
@@ -31,8 +31,8 @@ LOG_BRANCH= trunk/batman-adv-userspace
 
 SRC_FILES= "\(\.c\)\|\(\.h\)\|\(Makefile\)\|\(INSTALL\)\|\(LIESMICH\)\|\(README\)\|\(THANKS\)\|\(TRASH\)\|\(Doxyfile\)\|\(./posix\)\|\(./linux\)\|\(./bsd\)\|\(./man\)\|\(./doc\)"
 
-SRC_C= batman-adv.c originator.c schedule.c list-batman.c posix-specific.c posix.c allocate.c bitarray.c hash.c $(OS_C)
-SRC_H= batman-adv.h originator.h schedule.h list-batman.h os.h allocate.h bitarray.h hash.h packet.h
+SRC_C= batman-adv.c originator.c schedule.c list-batman.c posix-specific.c posix.c linux.c allocate.c bitarray.c hash.c trans_table.c $(OS_C)
+SRC_H= batman-adv.h originator.h schedule.h list-batman.h os.h allocate.h bitarray.h hash.h packet.h trans_table.h dlist.h vis-types.h
 
 PACKAGE_NAME=	batmand-adv-userspace
 

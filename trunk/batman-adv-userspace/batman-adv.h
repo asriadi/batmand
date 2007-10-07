@@ -28,10 +28,13 @@
 #include <netinet/in.h>
 #include <netinet/ether.h>      /* ether_ntoa() */
 #include "list-batman.h"
+#include "dlist.h"
 #include "bitarray.h"
 #include "hash.h"
 #include "allocate.h"
 #include "packet.h"
+#include "dlist.h"
+#include "vis-types.h"
 
 
 #define SOURCE_VERSION "0.1-alpha"  //put exactly one distinct word inside the string like "0.3-pre-alpha" or "0.3-rc1" or "0.3"
@@ -39,9 +42,23 @@
 #define UNIDIRECTIONAL 0x80
 #define DIRECTLINK 0x40
 #define ADDR_STR_LEN 16
+#define VIS_COMPAT_VERSION (128 | 20)
+#define VIS_PORT 4307
 
 #define UNIX_PATH "/var/run/batmand-adv.socket"
 
+/* this might only work in gcc, for other compiler remove this. 
+ * We should ask the makefile to check this for us. */
+#define UNUSEDPARAM_ATTRIBUTE	1
+#ifndef BATUNUSED
+	#if defined(UNUSEDPARAM_ATTRIBUTE)
+		#define BATUNUSED(x) (x)__attribute__((unused))
+	#elif defined(UNUSEDPARAM_OMIT)
+		#define BATUNUSED(x) /* x */
+	#else
+		#define BATUNUSED(x) x
+	#endif
+#endif
 
 
 /***
@@ -73,11 +90,28 @@
 #define BIDIRECT_TIMEOUT 2
 #define PURGE_TIMEOUT 200000  /* purge originators after time in ms if no valid packet comes in -> TODO: check influence on SEQ_RANGE */
 #define SEQ_RANGE 128         /* sliding packet range of received originator messages in squence numbers (should be a multiple of our word size) */
+#define PACKETS_PER_CYCLE 10  /* this seems to be a reasonable value (i've tested for different setups) */
+							  /* how many packets to read from the virtual interfaces, maximum. 
+							   * low value = high throughput, high CPU-load
+							   * big value = low throughput, low CPU-load
+							   * infinity = as it was before. */
+#define BROADCAST_UNKNOWN_DEST	1
+							  /* if a packet with unknown destination should be sent, that means the port
+							   * can not be looked up in the translation table, a switch usually 
+							   * broadcasts the packet. This should happen very rarely, as the switch
+							   * will learn source-MACs with every sent frame, but it is intended as
+							   * fallback solution. 
+							   * Because it is a broadcast, and therefore expensive, it might be better 
+							   * to turn it off. A client must do ARP-Requests then or wait for the 
+							   * destination to send/broadcast something. */
+#define BATMAN_MAXPACKETSIZE	(sizeof(struct unicast_packet)>sizeof(struct bcast_packet)?sizeof(struct unicast_packet):sizeof(struct bcast_packet))
+								/* maximum size of a packet which carries payload. This should be calculated by the compiler.*/
+#define BATMAN_MAXFRAMESIZE		(sizeof(struct ether_header) + BATMAN_MAXPACKETSIZE)	/* size of an ethernet frame. */
 
+#define NUM_WORDS ((int)( SEQ_RANGE / WORD_BIT_SIZE ))
 
-
-#define NUM_WORDS ( SEQ_RANGE / WORD_BIT_SIZE )
-
+#define AGE_THRESHOLD		300000
+			/* purge from local hna list after 5 minutes. */
 
 
 extern unsigned char broadcastAddr[];
@@ -87,7 +121,10 @@ extern uint8_t debug_level_max;
 extern uint8_t gateway_class;
 extern uint8_t routing_class;
 extern int16_t originator_interval;
+extern uint32_t num_hna;
 extern uint32_t pref_gateway;
+
+extern unsigned char *hna_buff;
 
 extern struct gw_node *curr_gateway;
 pthread_t curr_gateway_thread_id;
@@ -96,9 +133,12 @@ extern uint8_t found_ifs;
 extern int32_t receive_max_sock;
 extern fd_set receive_wait_set;
 extern int32_t tap_sock;
+extern int32_t tap_mtu;
 
 extern uint8_t unix_client;
 extern struct unix_client *unix_packet[256];
+
+extern uint32_t curr_time;
 
 extern struct hashtable_t *orig_hash;
 
@@ -121,10 +161,15 @@ struct orig_node                    /* structure for orig_list maintaining nodes
 	uint32_t last_valid;        /* when last packet from this node was received */
 	uint16_t last_seqno;        /* last and best known sequence number */
 	uint16_t last_bcast_seqno;  /* last broadcast sequence number received by this host */
+	int		 num_hna;
+	uint8_t *hna_buff;
+	struct  dlist_head hna_list;
+	int16_t  hna_buff_len;
 	TYPE_OF_WORD seq_bits[ NUM_WORDS ];
 	struct list_head_first neigh_list;
 	uint8_t  gwflags;           /* flags related to gateway functions: gateway class */
-} __attribute((packed));
+}; /* __attribute((packed));*/	/* TODO: why packed? that prevents the compiler from optimizing this structure,
+								   and this structure is never sent on the network (as far as i can see) */
 
 struct neigh_node
 {
@@ -178,10 +223,10 @@ struct batman_if
 // 	struct sockaddr_in addr;
 // };
 
-// struct vis_if {
-// 	int32_t sock;
-// 	struct sockaddr_in addr;
-// };
+struct vis_if {
+	int32_t sock;
+ 	struct sockaddr_in addr;
+};
 
 struct unix_if {
 	int32_t unix_sock;
@@ -218,8 +263,8 @@ struct curr_gw_data {
 int8_t batman( void );
 void   usage( void );
 void   verbose_usage( void );
-void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node );
+void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, unsigned char *hna_recv_buff, int16_t hna_buff_len );
 void update_gw_list( struct orig_node *orig_node, uint8_t new_gwflags );
-int isMyMac( uint8_t *addr );
+int is_my_mac( uint8_t *addr );
 
 #endif

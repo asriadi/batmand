@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2006 BATMAN contributors:
- * Thomas Lopatic, Marek Lindner
+ * Thomas Lopatic, Marek Lindner, Simon Wunderlich
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of version 2 of the GNU General Public
  * License as published by the Free Software Foundation.
@@ -43,6 +43,7 @@
 #include "os.h"
 #include "batman-adv.h"
 #include "originator.h"
+#include "trans_table.h"
 
 
 
@@ -58,7 +59,7 @@ int8_t is_aborted() {
 
 
 
-void handler( int32_t sig ) {
+void handler( int32_t BATUNUSED(sig) ) {
 
 	stop = 1;
 
@@ -230,7 +231,7 @@ void handle_packet( unsigned char *buff, int32_t buff_len, struct unix_client *u
 
 
 
-void *unix_listen( void *arg ) {
+void *unix_listen( void BATUNUSED(*arg) ) {
 
 	struct unix_client *unix_client;
 	struct debug_level_info *debug_level_info;
@@ -519,14 +520,14 @@ void apply_init_args( int argc, char *argv[] ) {
 	struct batman_if *batman_if;
 	struct debug_level_info *debug_level_info;
 	uint8_t found_args = 1, batch_mode = 0;
-	uint16_t min_mtu = 2000, tmp_mtu;
+	uint16_t tmp_mtu;
 	int8_t res;
 
 	int32_t optchar, recv_buff_len, bytes_written;
 	char *unix_buff, *buff_ptr, *cr_ptr;
 	uint32_t vis_server = 0;
 
-
+	tap_mtu = 2000;
 	memset( &tmp_ip_holder, 0, sizeof (struct in_addr) );
 	stop = 0;
 
@@ -763,8 +764,8 @@ void apply_init_args( int argc, char *argv[] ) {
 
 			tmp_mtu = init_interface ( batman_if );
 
-			if ( tmp_mtu < min_mtu )
-				min_mtu = tmp_mtu;
+			if ( tmp_mtu < tap_mtu )
+				tap_mtu = tmp_mtu;
 
 			if ( batman_if->raw_sock > receive_max_sock )
 				receive_max_sock = batman_if->raw_sock;
@@ -785,7 +786,7 @@ void apply_init_args( int argc, char *argv[] ) {
 
 		}
 
-		if ( ( tap_sock = tap_create( min_mtu ) ) < 0 ) {
+		if ( ( tap_sock = tap_create( tap_mtu ) ) < 0 ) {
 
 			restore_defaults();
 			exit(EXIT_FAILURE);
@@ -797,17 +798,22 @@ void apply_init_args( int argc, char *argv[] ) {
 
 		FD_SET( tap_sock, &receive_wait_set );
 
-// 		if(vis_server)
-// 		{
-// 			memset(&vis_if.addr, 0, sizeof(vis_if.addr));
-// 			vis_if.addr.sin_family = AF_INET;
-// 			vis_if.addr.sin_port = htons(1967);
-// 			vis_if.addr.sin_addr.s_addr = vis_server;
-// 			/*vis_if.sock = socket( PF_INET, SOCK_DGRAM, 0);*/
-// 			vis_if.sock = ((struct batman_if *)if_list.next)->udp_send_sock;
-// 		} else {
-// 			memset(&vis_if, 0, sizeof(vis_if));
-// 		}
+ 		if (vis_server)
+ 		{
+ 			memset(&vis_if.addr, 0, sizeof(vis_if.addr));
+ 			vis_if.addr.sin_family = AF_INET;
+ 			vis_if.addr.sin_port = htons(VIS_PORT);
+ 			vis_if.addr.sin_addr.s_addr = vis_server;
+			if ( (vis_if.sock = socket( PF_INET, SOCK_DGRAM, 0 ) ) < 0 ) {
+				printf( "Error - can't create send socket: %s", strerror(errno) );
+				restore_defaults();
+				exit(EXIT_FAILURE);
+			}
+
+/* 			vis_if.sock = ((struct batman_if *)if_list.next)->udp_send_sock;*/
+ 		} else {
+ 			memset(&vis_if, 0, sizeof(vis_if));
+ 		}
 
 
 		unlink( UNIX_PATH );
@@ -1379,20 +1385,403 @@ int8_t is_broadcast_address( uint8_t *dst_addr ) {
 
 }
 
+/* check multicast range: address range 01:00:5e:00:00:00 - 01:00:5e:7f:ff:ff */
+int8_t is_multicast_address( uint8_t *dst_addr ) {
+	if ((dst_addr[0] == 0x01) && (dst_addr[1] == 0x00) && (dst_addr[2] == 0x5e) && (!(dst_addr[3] & 0x80))) 
+		return 1;
+	return 0;
+}
 
 
-int8_t receive_packet( unsigned char *packet_buff, int16_t packet_buff_len, int16_t *pay_buff_len, uint8_t *neigh, uint32_t timeout, struct batman_if **if_incoming ) {
 
-	struct timeval tv;
-	struct list_head *if_pos;
-	struct batman_if *batman_if;
-	struct orig_node *orig_node;
-	struct ether_header ether_header;
-	struct unicast_packet *unicast_packet;
-	struct bcast_packet *bcast_packet;
-	int8_t res;
-	unsigned char *payload_ptr;
-	fd_set tmp_wait_set;
+
+int8_t receive_packet_tap(unsigned char *packet_buff, int16_t packet_buff_len, int16_t *pay_buff_len)
+{
+	struct unicast_packet 	*unicast_packet;
+	struct bcast_packet 	*bcast_packet;
+	unsigned char 			*dhost = NULL;
+	unsigned char 			*payload_ptr;
+	struct list_head 		*if_pos;
+	struct batman_if 		*batman_if;
+	struct orig_node 		*orig_node;
+	int 					 i;
+
+	payload_ptr = packet_buff + BATMAN_MAXPACKETSIZE;
+
+	/* save data from kernel into a buffer but spare space for the header information */
+	for (i=0; i< PACKETS_PER_CYCLE; i++) {
+		errno=EWOULDBLOCK;
+		if ( ( *pay_buff_len = read( tap_sock, payload_ptr, packet_buff_len - 1 - BATMAN_MAXPACKETSIZE ) ) > 0 ) {
+
+			hna_add( ((struct ether_header *)payload_ptr)->ether_shost, ((struct batman_if *)if_list.next)->hw_addr);
+			dhost = transtable_search(((struct ether_header *) payload_ptr)->ether_dhost);
+			if (dhost == NULL) 
+				debug_output(4, "HNA: Could not look up destination %s :(\n", addr_to_string(((struct ether_header *) payload_ptr)->ether_dhost) );
+
+
+#ifdef BROADCAST_UNKNOWN_DEST
+			if ( dhost == NULL )
+				dhost = broadcastAddr;
+
+#else
+			if ( dhost == NULL )
+				dhost = ((struct ether_header *)payload_ptr)->ether_dhost;
+#endif
+
+			/* ethernet packet should be broadcasted */
+			if (is_broadcast_address(dhost) || is_multicast_address(dhost)) {
+
+				bcast_packet = (struct bcast_packet *)(payload_ptr - sizeof(struct bcast_packet));
+
+				/* batman packet type: broadcast */
+				bcast_packet->packet_type = BAT_BCAST;
+				/* hw address of first interface is the orig mac because only this mac is known throughout the mesh */
+				memcpy( bcast_packet->orig, ((struct batman_if *)if_list.next)->hw_addr, 6 );
+				/* set broadcast sequence number */
+				bcast_packet->seqno = htons( ((struct batman_if *)if_list.next)->bcast_seqno );
+
+				((struct batman_if *)if_list.next)->bcast_seqno++;
+
+				/* broadcast packet */
+				list_for_each(if_pos, &if_list) {
+
+					batman_if = list_entry(if_pos, struct batman_if, list);
+
+					if ( send_packet( (unsigned char *)bcast_packet, *pay_buff_len + sizeof(struct bcast_packet), batman_if->hw_addr, broadcastAddr, batman_if->raw_sock ) < 0 )
+						return -1;
+
+				}
+
+			/* unicast packet */
+			} else {
+
+				/* get routing information */
+				orig_node = find_orig_node( dhost );
+
+				if ( ( orig_node != NULL ) && ( orig_node->batman_if != NULL ) && ( orig_node->router != NULL ) ) {
+
+					unicast_packet = (struct unicast_packet *)(payload_ptr - sizeof(struct unicast_packet) );
+					/* batman packet type: unicast */
+					unicast_packet->packet_type = BAT_UNICAST;
+					/* set unicast ttl */
+					unicast_packet->ttl = TTL;
+					memcpy( unicast_packet->orig, ((struct batman_if *)if_list.next)->hw_addr, 6 );
+					/* copy the destination for faster routing */
+					memcpy( unicast_packet->dest, dhost, 6 );
+
+
+					if ( send_packet( (unsigned char *)unicast_packet, *pay_buff_len + sizeof(struct unicast_packet), orig_node->batman_if->hw_addr, orig_node->router->addr, orig_node->batman_if->raw_sock ) < 0 )
+						return -1;
+
+				} else {
+					debug_output(4, "found no destination for the MAC %s\n", addr_to_string( dhost ));
+					/*unsigned char *pay_buff = (unsigned char *)packet_buff + sizeof(struct batman_packet);
+					printf( "not found: %s\n", addr_to_string( ((struct ether_header *)payload_ptr)->ether_dhost ) ); */
+
+				}
+
+			}
+
+		} else 
+			break;		/* can't receive anymore? jump out! */
+	}
+
+	/* TODO: sometimes there are "illegal seek" errors on high throughput scenarios, but they are not fatal. */
+	if ((errno != EWOULDBLOCK)  && (errno != ESPIPE)) {
+		debug_output( 0, "Error - couldn't read data from tap interface: %s\n", strerror(errno) );
+		return -1;
+
+	}
+	return(0);
+}
+int8_t receive_packet_batiface( unsigned char *packet_buff, int16_t packet_buff_len, int16_t *pay_buff_len, 
+								uint8_t *neigh, struct batman_if **if_incoming, struct batman_if *batman_if ) 
+{
+	struct ether_header 	 ether_header;
+	unsigned char 			*dhost = NULL;
+	struct orig_node 		*orig_node;
+	struct list_head 		*if_pos;
+	int 					 i;
+	for (i=0; i<PACKETS_PER_CYCLE; i++) {
+		if ((*pay_buff_len = rawsock_read(batman_if->raw_sock, &ether_header, packet_buff, packet_buff_len-1)) > -1) {
+
+			/* drop packet if it has no batman packet type field */
+			if (*pay_buff_len < 1)
+				continue;
+
+			/* batman packet */
+			switch (packet_buff[0]) {
+			case BAT_PACKET:
+
+				/* drop packet if it has no batman packet payload */
+				if ( *pay_buff_len < (int)sizeof(struct batman_packet) )
+					continue;
+
+				((struct batman_packet *)packet_buff)->seqno = ntohs( ((struct batman_packet *)packet_buff)->seqno ); /* network to host order for our 16bit seqno. */
+
+				(*if_incoming) = batman_if;
+				memcpy( neigh, ether_header.ether_shost, ETH_ALEN );
+
+				return 1;
+			/* unicast packet */
+			case BAT_UNICAST:
+				/* packet with unicast indication but broadcast recipient */
+				if ( memcmp( &ether_header.ether_dhost, broadcastAddr, ETH_ALEN ) == 0 )
+					continue;
+
+				/* packet with broadcast sender address */
+				if ( memcmp( &ether_header.ether_shost, broadcastAddr, ETH_ALEN ) == 0 )
+					continue;
+
+				/* drop packet if it has not neccessary minimum size - 1 byte ttl, 1 byte payload */
+				if ( *pay_buff_len < (int)sizeof(struct unicast_packet) )
+					continue;
+
+				dhost = ((struct unicast_packet *)packet_buff)->dest;
+	/*
+				dhost = transtable_search( ((struct ether_header *)(packet_buff + sizeof(struct unicast_packet)))->ether_dhost);
+				if (dhost == NULL) 
+					dhost = ((struct ether_header *)(packet_buff + sizeof(struct unicast_packet)))->ether_dhost;
+					*/
+
+				/* packet for me */
+				if ( is_my_mac( dhost ) == 1 ) {
+
+					tap_write( tap_sock, packet_buff + sizeof(struct unicast_packet), *pay_buff_len - sizeof(struct unicast_packet) );
+
+
+				/* route it */
+				} else {
+
+					/* TTL exceeded */
+					if (  ((struct unicast_packet *)packet_buff)->ttl < 2 ) {
+
+						debug_output( 0, "Error - can't send packet from %s to %s: ttl exceeded\n", 
+								addr_to_string( ((struct ether_header *)(packet_buff + sizeof(struct unicast_packet)))->ether_shost ), 
+								addr_to_string( ((struct ether_header *)(packet_buff + sizeof(struct unicast_packet)))->ether_dhost ));
+
+						continue;
+
+					}
+
+					/* get routing information */
+					orig_node = find_orig_node( dhost );
+
+					if ( ( orig_node != NULL ) && ( orig_node->batman_if != NULL ) && ( orig_node->router != NULL ) ) {
+
+						memcpy( ether_header.ether_dhost, orig_node->router->addr, ETH_ALEN );
+						memcpy( ether_header.ether_shost, orig_node->batman_if->hw_addr, ETH_ALEN );
+
+						/* decrement ttl */
+						((struct unicast_packet *)packet_buff)->ttl--;
+
+						if ( rawsock_write( orig_node->batman_if->raw_sock, &ether_header, packet_buff, *pay_buff_len ) < 0 ) {
+
+							debug_output( 0, "Error - can't send data through raw socket: %s\n", strerror(errno) );
+							return -1;
+
+						}
+
+					}
+
+				}
+				break;
+
+			/* batman icmp packet */
+			case BAT_ICMP:
+
+				/* packet with unicast indication but broadcast recipient */
+				if ( memcmp( &ether_header.ether_dhost, broadcastAddr, ETH_ALEN ) == 0 )
+					continue;
+
+				/* packet with broadcast sender address */
+				if ( memcmp( &ether_header.ether_shost, broadcastAddr, ETH_ALEN ) == 0 )
+					continue;
+
+				/* drop packet if it has not neccessary minimum size */
+				if ( *pay_buff_len < (int)sizeof(struct icmp_packet) ) 
+					continue;
+
+				/* packet for me */
+				if ( is_my_mac( ((struct icmp_packet *)packet_buff)->dst ) == 1 ) {
+
+						/* answer ping request (ping) */
+						if ( ((struct icmp_packet *)packet_buff)->msg_type == ECHO_REQUEST ) {
+
+							/* get routing information */
+							orig_node = find_orig_node( ((struct icmp_packet *)packet_buff)->orig );
+
+							if ( ( orig_node != NULL ) && ( orig_node->batman_if != NULL ) && ( orig_node->router != NULL ) ) {
+
+								memcpy( ((struct icmp_packet *)packet_buff)->dst, ((struct icmp_packet *)packet_buff)->orig, ETH_ALEN );
+								memcpy( ((struct icmp_packet *)packet_buff)->orig, ether_header.ether_dhost, ETH_ALEN );
+								((struct icmp_packet *)packet_buff)->msg_type = ECHO_REPLY;
+								((struct icmp_packet *)packet_buff)->ttl = TTL;
+
+								memcpy( ether_header.ether_shost, orig_node->batman_if->hw_addr, ETH_ALEN );
+								memcpy( ether_header.ether_dhost, orig_node->router->addr, ETH_ALEN );
+
+								if ( rawsock_write( orig_node->batman_if->raw_sock, &ether_header, packet_buff, *pay_buff_len ) < 0 ) {
+
+									debug_output( 0, "Error - can't send data through raw socket: %s\n", strerror(errno) );
+									return -1;
+
+								}
+							}
+
+
+						} else {
+
+							/* give data to unix client */
+							if ( unix_packet[((struct icmp_packet *)packet_buff)->uid] != NULL )
+								write( ((struct unix_client *)(unix_packet[((struct icmp_packet *)packet_buff)->uid]))->sock, packet_buff, sizeof(struct icmp_packet) );
+
+						}
+
+				/* route it */
+				} else {
+
+					/* TTL exceeded */
+					if ( ((struct icmp_packet *)packet_buff)->ttl < 2 )   {
+
+						debug_output( 0, "Error - can't send packet from %s to %s: ttl exceeded\n", 
+								addr_to_string( ( packet_buff[0] == BAT_ICMP 
+										? ((struct icmp_packet *)packet_buff)->orig 
+										: ((struct ether_header *)(packet_buff + sizeof(struct unicast_packet)))->ether_shost ) ), 
+								addr_to_string( ( packet_buff[0] == BAT_ICMP 
+										? ((struct icmp_packet *)packet_buff)->dst 
+										: ((struct ether_header *)(packet_buff + sizeof(struct unicast_packet)))->ether_dhost ) ) );
+
+						/* send TTL exceed if packet is an echo request (traceroute) */
+						if (((struct icmp_packet *)packet_buff)->msg_type == ECHO_REQUEST ) {
+
+							/* get routing information */
+							orig_node = find_orig_node( ((struct icmp_packet *)packet_buff)->orig );
+
+							if ( ( orig_node != NULL ) && ( orig_node->batman_if != NULL ) && ( orig_node->router != NULL ) ) {
+
+								memcpy( ((struct icmp_packet *)packet_buff)->dst, ((struct icmp_packet *)packet_buff)->orig, ETH_ALEN );
+								memcpy( ((struct icmp_packet *)packet_buff)->orig, ether_header.ether_dhost, ETH_ALEN );
+								((struct icmp_packet *)packet_buff)->msg_type = TTL_EXCEEDED;
+								((struct icmp_packet *)packet_buff)->ttl = TTL;
+
+								memcpy( ether_header.ether_shost, orig_node->batman_if->hw_addr, ETH_ALEN );
+								memcpy( ether_header.ether_dhost, orig_node->router->addr, ETH_ALEN );
+
+								if ( rawsock_write( orig_node->batman_if->raw_sock, &ether_header, packet_buff, *pay_buff_len ) < 0 ) {
+
+									debug_output( 0, "Error - can't send data through raw socket: %s\n", strerror(errno) );
+									return -1;
+
+								}
+
+							}
+
+						}
+
+						continue;
+
+					}
+
+					/* get routing information */
+					orig_node = find_orig_node( ((struct icmp_packet *)packet_buff)->dst );
+
+					if ( ( orig_node != NULL ) && ( orig_node->batman_if != NULL ) && ( orig_node->router != NULL ) ) {
+
+						memcpy( ether_header.ether_dhost, orig_node->router->addr, ETH_ALEN );
+						memcpy( ether_header.ether_shost, orig_node->batman_if->hw_addr, ETH_ALEN );
+
+						/* decrement ttl */
+						((struct icmp_packet *)packet_buff)->ttl--;
+
+						if ( rawsock_write( orig_node->batman_if->raw_sock, &ether_header, packet_buff, *pay_buff_len ) < 0 ) {
+
+							debug_output( 0, "Error - can't send data through raw socket: %s\n", strerror(errno) );
+							return -1;
+
+						}
+
+					}
+
+				}
+				break;
+
+			/* broadcast */
+			case BAT_BCAST:
+#ifndef BROADCAST_UNKNOWN_DEST
+				/* packet with broadcast indication but not broadcast recipient */
+				if ( memcmp( &ether_header.ether_dhost, broadcastAddr, ETH_ALEN ) != 0 )
+					continue;
+#endif
+
+				/* packet with broadcast sender address */
+				if ( memcmp( &ether_header.ether_shost, broadcastAddr, ETH_ALEN ) == 0 )
+					continue;
+
+				/* drop packet if it has not neccessary minimum size - orig source mac, 2 byte seqno, 1 byte padding, 1 byte payload */
+				if ( *pay_buff_len < (int)sizeof(struct bcast_packet) )
+					continue;
+
+				/* ignore broadcasts sent by myself */
+				if ( is_my_mac( ether_header.ether_shost ) == 1 )
+					continue;
+
+				orig_node = find_orig_node( ((struct bcast_packet *)packet_buff)->orig );
+
+				if ( orig_node != NULL ) {
+
+					/* check flood history */
+					if (get_bit_status(orig_node->seq_bits, orig_node->last_bcast_seqno, ntohs( ((struct bcast_packet *)packet_buff)->seqno)))
+						continue;
+
+					/* mark broadcast in flood history */
+					if (bit_get_packet( orig_node->seq_bits, ntohs(((struct bcast_packet *) packet_buff)->seqno)-orig_node->last_bcast_seqno, 1))
+						orig_node->last_bcast_seqno= ntohs( ((struct bcast_packet *)packet_buff)->seqno );
+
+					/* broadcast for me */
+					tap_write( tap_sock, packet_buff + sizeof(struct bcast_packet), *pay_buff_len - sizeof(struct bcast_packet) );
+
+					/* rebroadcast packet */
+					list_for_each(if_pos, &if_list) {
+
+						batman_if = list_entry(if_pos, struct batman_if, list);
+
+						memcpy( ether_header.ether_shost, batman_if->hw_addr, ETH_ALEN );
+						/* TODO: always rebroadcasting on orig_node->batman_if? that seems wrong ... should be rebroadcastet on every interface! */
+	/*							if ( rawsock_write( orig_node->batman_if->raw_sock, &ether_header, packet_buff, *pay_buff_len ) < 0 ) { */
+						if ( rawsock_write( batman_if->raw_sock, &ether_header, packet_buff, *pay_buff_len ) < 0 ) {
+							debug_output( 0, "Error - can't send rebroadcast data through raw socket: %s\n", strerror(errno) );
+							return -1;
+						}
+					}
+
+				}
+				break;
+
+			}
+
+		} else {
+
+			if ( errno != EWOULDBLOCK ) {
+
+				debug_output( 0, "Error - couldn't read data from raw socket(%s): %s\n", batman_if->dev, strerror(errno) );
+				return -1;
+
+			} else break;
+		}
+	}
+	return(0);
+}
+
+int8_t receive_packet( unsigned char *packet_buff, int16_t packet_buff_len, int16_t *pay_buff_len, uint8_t *neigh, uint32_t timeout, struct batman_if **if_incoming ) 
+{
+
+	struct timeval 			 tv;
+	struct batman_if 		*batman_if;
+	struct list_head 		*if_pos;
+	int8_t 					 res;
+	int						 ret;
+	fd_set 					 tmp_wait_set;
 
 
 	memcpy( &tmp_wait_set, &receive_wait_set, sizeof(fd_set) );
@@ -1416,296 +1805,23 @@ int8_t receive_packet( unsigned char *packet_buff, int16_t packet_buff_len, int1
 
 	}
 
-	if ( res == 0 )
+	if (res == 0)
 		return 0;
 
-	if ( FD_ISSET( tap_sock, &tmp_wait_set ) ) {
-
-		payload_ptr = packet_buff + sizeof(struct bcast_packet);
-
-		/* save data from kernel into a buffer but spare space for the header information */
-		while ( ( *pay_buff_len = read( tap_sock, payload_ptr, packet_buff_len - 1 - sizeof(struct bcast_packet) ) ) > 0 ) {
-
-			/* ethernet packet should be broadcasted */
-			if ( is_broadcast_address( ((struct ether_header *)payload_ptr)->ether_dhost ) ) {
-
-				bcast_packet = (struct bcast_packet *)packet_buff;
-
-				/* batman packet type: broadcast */
-				bcast_packet->packet_type = BAT_BCAST;
-				/*hw address of first interface is the orig mac because only this mac is known throughout the mesh */
-				memcpy( bcast_packet->orig, ((struct batman_if *)if_list.next)->hw_addr, 6 );
-				/* set broadcast sequence number */
-				bcast_packet->seqno = ((struct batman_if *)if_list.next)->bcast_seqno;
-
-				((struct batman_if *)if_list.next)->bcast_seqno++;
-
-				/* broadcast packet */
-				list_for_each(if_pos, &if_list) {
-
-					batman_if = list_entry(if_pos, struct batman_if, list);
-
-					if ( send_packet( packet_buff, *pay_buff_len + sizeof(struct bcast_packet), batman_if->hw_addr, broadcastAddr, batman_if->raw_sock ) < 0 )
-						return -1;
-
-				}
-
-			/* unicast packet */
-			} else {
-
-				/* get routing information */
-				orig_node = find_orig_node( ((struct ether_header *)payload_ptr)->ether_dhost );
-
-				if ( ( orig_node != NULL ) && ( orig_node->batman_if != NULL ) && ( orig_node->router != NULL ) ) {
-
-					unicast_packet = (struct unicast_packet *)(payload_ptr - sizeof(struct unicast_packet) );
-
-					/* batman packet type: unicast */
-					unicast_packet->packet_type = BAT_UNICAST;
-					/* set unicast ttl */
-					unicast_packet->ttl = TTL;
-
-					if ( send_packet( (unsigned char *)unicast_packet, *pay_buff_len + sizeof(struct unicast_packet), orig_node->batman_if->hw_addr, orig_node->router->addr, orig_node->batman_if->raw_sock ) < 0 )
-						return -1;
-
-				} else {
-
-					/*unsigned char *pay_buff = (unsigned char *)packet_buff + sizeof(struct batman_packet);
-					printf( "not found: %s\n", addr_to_string( ((struct ether_header *)payload_ptr)->ether_dhost ) ); */
-
-				}
-
-			}
-
-		}
-
-		if ( errno != EWOULDBLOCK ) {
-
-			debug_output( 0, "Error - couldn't read data from tap interface: %s\n", strerror(errno) );
-			return -1;
-
-		}
+	if (FD_ISSET(tap_sock, &tmp_wait_set)) {
+		ret = receive_packet_tap(packet_buff, packet_buff_len, pay_buff_len);
+		if (ret != 0) 
+			return(ret);
 
 	}
 
-
-	list_for_each( if_pos, &if_list ) {
-
-		batman_if = list_entry( if_pos, struct batman_if, list );
-
-		if ( FD_ISSET( batman_if->raw_sock, &tmp_wait_set ) ) {
-
-			while ( ( *pay_buff_len = rawsock_read( batman_if->raw_sock, &ether_header, packet_buff, packet_buff_len - 1 ) ) > -1 ) {
-
-				/* drop packet if it has no batman packet type field */
-				if ( *pay_buff_len < 1 )
-					continue;
-
-				/* batman packet */
-				if ( packet_buff[0] == BAT_PACKET ) {
-
-					/* drop packet if it has no batman packet payload */
-					if ( *pay_buff_len < sizeof(struct batman_packet) )
-						continue;
-
-					((struct batman_packet *)packet_buff)->seqno = ntohs( ((struct batman_packet *)packet_buff)->seqno ); /* network to host order for our 16bit seqno. */
-
-					(*if_incoming) = batman_if;
-					memcpy( neigh, ether_header.ether_shost, ETH_ALEN );
-
-					return 1;
-
-				/* batman icmp packet or unicast packet */
-				} else if ( ( packet_buff[0] == BAT_ICMP ) || ( packet_buff[0] == BAT_UNICAST ) ) {
-
-					/* packet with unicast indication but broadcast recipient */
-					if ( memcmp( &ether_header.ether_dhost, broadcastAddr, ETH_ALEN ) == 0 )
-						continue;
-
-					/* packet with broadcast sender address */
-					if ( memcmp( &ether_header.ether_shost, broadcastAddr, ETH_ALEN ) == 0 )
-						continue;
-
-					/* drop packet if it has not neccessary minimum size */
-					if ( ( packet_buff[0] == BAT_ICMP ) && ( *pay_buff_len < sizeof(struct icmp_packet) ) )
-						continue;
-
-					/* drop packet if it has not neccessary minimum size - 1 byte ttl, 1 byte payload */
-					if ( ( packet_buff[0] == BAT_UNICAST ) && ( *pay_buff_len < sizeof(struct unicast_packet) ) )
-						continue;
-
-
-					/* packet for me */
-					if ( isMyMac( ( packet_buff[0] == BAT_ICMP ? ((struct icmp_packet *)packet_buff)->dst : ((struct ether_header *)(packet_buff + sizeof(struct unicast_packet)))->ether_dhost ) ) == 1 ) {
-
-						if ( packet_buff[0] == BAT_UNICAST ) {
-
-							tap_write( tap_sock, packet_buff + sizeof(struct unicast_packet), *pay_buff_len - sizeof(struct unicast_packet) );
-
-						} else {
-
-							/* answer ping request (ping) */
-							if ( ((struct icmp_packet *)packet_buff)->msg_type == ECHO_REQUEST ) {
-
-								/* get routing information */
-								orig_node = find_orig_node( ((struct icmp_packet *)packet_buff)->orig );
-
-								if ( ( orig_node != NULL ) && ( orig_node->batman_if != NULL ) && ( orig_node->router != NULL ) ) {
-
-									memcpy( ((struct icmp_packet *)packet_buff)->dst, ((struct icmp_packet *)packet_buff)->orig, ETH_ALEN );
-									memcpy( ((struct icmp_packet *)packet_buff)->orig, ether_header.ether_dhost, ETH_ALEN );
-									((struct icmp_packet *)packet_buff)->msg_type = ECHO_REPLY;
-									((struct icmp_packet *)packet_buff)->ttl = TTL;
-
-									memcpy( ether_header.ether_shost, orig_node->batman_if->hw_addr, ETH_ALEN );
-									memcpy( ether_header.ether_dhost, orig_node->router->addr, ETH_ALEN );
-
-									if ( rawsock_write( orig_node->batman_if->raw_sock, &ether_header, packet_buff, *pay_buff_len ) < 0 ) {
-
-										debug_output( 0, "Error - can't send data through raw socket: %s\n", strerror(errno) );
-										return -1;
-
-									}
-
-								}
-
-							} else {
-
-								/* give data to unix client */
-								if ( unix_packet[((struct icmp_packet *)packet_buff)->uid] != NULL )
-									write( ((struct unix_client *)(unix_packet[((struct icmp_packet *)packet_buff)->uid]))->sock, packet_buff, sizeof(struct icmp_packet) );
-
-							}
-
-						}
-
-					/* route it */
-					} else {
-
-						/* TTL exceeded */
-						if ( ( ( packet_buff[0] == BAT_ICMP ) && ( ((struct icmp_packet *)packet_buff)->ttl < 2 ) ) || ( ( packet_buff[0] == BAT_UNICAST ) && ( ((struct unicast_packet *)packet_buff)->ttl < 2 ) ) ) {
-
-							debug_output( 0, "Error - can't send packet from %s to %s: ttl exceeded\n", addr_to_string( ( packet_buff[0] == BAT_ICMP ? ((struct icmp_packet *)packet_buff)->orig : ((struct ether_header *)(packet_buff + sizeof(struct unicast_packet)))->ether_shost ) ), addr_to_string( ( packet_buff[0] == BAT_ICMP ? ((struct icmp_packet *)packet_buff)->dst : ((struct ether_header *)(packet_buff + sizeof(struct unicast_packet)))->ether_dhost ) ) );
-
-							/* send TTL exceed if packet is an echo request (traceroute) */
-							if ( ( packet_buff[0] == BAT_ICMP ) && ( ((struct icmp_packet *)packet_buff)->msg_type == ECHO_REQUEST ) ) {
-
-								/* get routing information */
-								orig_node = find_orig_node( ((struct icmp_packet *)packet_buff)->orig );
-
-								if ( ( orig_node != NULL ) && ( orig_node->batman_if != NULL ) && ( orig_node->router != NULL ) ) {
-
-									memcpy( ((struct icmp_packet *)packet_buff)->dst, ((struct icmp_packet *)packet_buff)->orig, ETH_ALEN );
-									memcpy( ((struct icmp_packet *)packet_buff)->orig, ether_header.ether_dhost, ETH_ALEN );
-									((struct icmp_packet *)packet_buff)->msg_type = TTL_EXCEEDED;
-									((struct icmp_packet *)packet_buff)->ttl = TTL;
-
-									memcpy( ether_header.ether_shost, orig_node->batman_if->hw_addr, ETH_ALEN );
-									memcpy( ether_header.ether_dhost, orig_node->router->addr, ETH_ALEN );
-
-									if ( rawsock_write( orig_node->batman_if->raw_sock, &ether_header, packet_buff, *pay_buff_len ) < 0 ) {
-
-										debug_output( 0, "Error - can't send data through raw socket: %s\n", strerror(errno) );
-										return -1;
-
-									}
-
-								}
-
-							}
-
-							continue;
-
-						}
-
-						/* get routing information */
-						orig_node = find_orig_node( ( packet_buff[0] == BAT_ICMP ? ((struct icmp_packet *)packet_buff)->dst : ((struct ether_header *)(packet_buff + sizeof(struct unicast_packet)))->ether_dhost ) );
-
-						if ( ( orig_node != NULL ) && ( orig_node->batman_if != NULL ) && ( orig_node->router != NULL ) ) {
-
-							memcpy( ether_header.ether_dhost, orig_node->router->addr, ETH_ALEN );
-							memcpy( ether_header.ether_shost, orig_node->batman_if->hw_addr, ETH_ALEN );
-
-							/* decrement ttl */
-							if ( packet_buff[0] == BAT_ICMP ) {
-								((struct icmp_packet *)packet_buff)->ttl--;
-							} else {
-								((struct unicast_packet *)packet_buff)->ttl--;
-							}
-
-							if ( rawsock_write( orig_node->batman_if->raw_sock, &ether_header, packet_buff, *pay_buff_len ) < 0 ) {
-
-								debug_output( 0, "Error - can't send data through raw socket: %s\n", strerror(errno) );
-								return -1;
-
-							}
-
-						}
-
-					}
-
-				/* broadcast */
-				} else if ( packet_buff[0] == BAT_BCAST ) {
-
-					/* packet with broadcast indication but not broadcast recipient */
-					if ( memcmp( &ether_header.ether_dhost, broadcastAddr, ETH_ALEN ) != 0 )
-						continue;
-
-					/* packet with broadcast sender address */
-					if ( memcmp( &ether_header.ether_shost, broadcastAddr, ETH_ALEN ) == 0 )
-						continue;
-
-					/* drop packet if it has not neccessary minimum size - orig source mac, 2 byte seqno, 1 byte padding, 1 byte payload */
-					if ( *pay_buff_len < sizeof(struct bcast_packet) )
-						continue;
-
-					/* ignore broadcasts sent by myself */
-					if ( isMyMac( ether_header.ether_shost ) == 1 )
-						continue;
-
-					orig_node = find_orig_node( ((struct bcast_packet *)packet_buff)->orig );
-
-					if ( orig_node != NULL ) {
-
-						/* check flood history */
-						if ( get_bit_status( orig_node->seq_bits, orig_node->last_bcast_seqno, htons( ((struct bcast_packet *)packet_buff)->seqno ) ) )
-							continue;
-
-						/* mark broadcast in flood history */
-						bit_get_packet( orig_node->seq_bits, htons( ((struct bcast_packet *)packet_buff)->seqno ) - orig_node->last_bcast_seqno, 1 );
-
-						/* broadcast for me */
-						tap_write( tap_sock, packet_buff + sizeof(struct bcast_packet), *pay_buff_len - sizeof(struct bcast_packet) );
-
-						/* rebroadcast packet */
-						list_for_each(if_pos, &if_list) {
-
-							batman_if = list_entry(if_pos, struct batman_if, list);
-
-							memcpy( ether_header.ether_shost, batman_if->hw_addr, ETH_ALEN );
-
-							if ( rawsock_write( orig_node->batman_if->raw_sock, &ether_header, packet_buff, *pay_buff_len ) < 0 ) {
-
-								debug_output( 0, "Error - can't send rebroadcast data through raw socket: %s\n", strerror(errno) );
-								return -1;
-
-							}
-
-						}
-
-					}
-
-				}
-
-			}
-
-			if ( errno != EWOULDBLOCK ) {
-
-				debug_output( 0, "Error - couldn't read data from raw socket(%s): %s\n", batman_if->dev, strerror(errno) );
-				return -1;
-
-			}
-
+	list_for_each(if_pos, &if_list) {
+		batman_if = list_entry(if_pos, struct batman_if, list);
+
+		if (FD_ISSET(batman_if->raw_sock, &tmp_wait_set)) {
+			ret = receive_packet_batiface(packet_buff, packet_buff_len, pay_buff_len, neigh, if_incoming, batman_if);
+			if (ret != 0) 
+				return(ret);
 		}
 
 	}
@@ -1718,18 +1834,28 @@ int8_t receive_packet( unsigned char *packet_buff, int16_t packet_buff_len, int1
 
 int8_t send_packet( unsigned char *packet_buff, int16_t packet_buff_len, uint8_t *send_addr, uint8_t *recv_addr, int32_t send_sock ) {
 
+	int i;
 	struct ether_header ether_header;
 
 	memcpy( ether_header.ether_dhost, recv_addr, ETH_ALEN );
 	memcpy( ether_header.ether_shost, send_addr, ETH_ALEN );
 
-	/*debug_output( 0, "send packet: send addr %s,", addr_to_string( send_addr ) );
-	debug_output( 0, "recv addr %s,", addr_to_string( recv_addr ) );
-	debug_output( 0, "%02x %02x %02x %02x %02x \n", packet_buff[0], packet_buff[1], packet_buff[2], packet_buff[3], packet_buff[4] );*/
+//	debug_output( 4, "send packet: send addr %s,", addr_to_string( send_addr ) );
+//	debug_output( 4, "recv addr %s,", addr_to_string( recv_addr ) );
+//	debug_output( 4, "%02x %02x %02x %02x %02x \n", packet_buff[0], packet_buff[1], packet_buff[2], packet_buff[3], packet_buff[4] );
 
-	if ( rawsock_write( send_sock, &ether_header, packet_buff, packet_buff_len ) < 0 )
-		return -1;
-
+	/* Try sending PACKETS_PER_CYCLE times to send the packet, and drop it otherwise. */
+	for (i=0; i< PACKETS_PER_CYCLE; i++) {
+		if ( rawsock_write( send_sock, &ether_header, packet_buff, packet_buff_len ) < 0 ) {
+			if (errno == EAGAIN || errno == ESPIPE){
+				debug_output( 4, "send packet failed, but we retry\n" );
+				continue;
+			} else {
+				debug_output( 0, "send packet failed.\n" );
+				return -1;
+			}
+		} else break;
+	}
 	return 0;
 
 }
@@ -2070,7 +2196,7 @@ void restore_and_exit( uint8_t is_sigsegv ) {
 
 
 
-void segmentation_fault( int32_t sig ) {
+void segmentation_fault( int32_t BATUNUSED(sig) ) {
 
 	signal( SIGSEGV, SIG_DFL );
 

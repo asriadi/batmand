@@ -62,5 +62,6 @@ void cleanup();
 void segmentation_fault( int32_t sig );
 void restore_and_exit( uint8_t is_sigsegv );
 
+int8_t send_udp_packet( unsigned char *packet_buff, int32_t packet_buff_len, struct sockaddr_in *broad, int32_t send_sock );
 
 #endif
