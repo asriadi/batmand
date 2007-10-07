@@ -342,7 +342,7 @@ void write_data_in_buffer() {
 					neigh = list_entry( list_pos, struct neighbour, list );
 
 					/* never ever divide by zero */
-					if ( neigh->packet_count > 0 ) {
+					if ( neigh->tq_avg > 0 ) {
 
 						/* find out if neighbour is a secondary interface of another neighbour */
 						secif = (struct secif *)hash_find( secif_hash, &neigh->addr );
@@ -353,7 +353,7 @@ void write_data_in_buffer() {
 						else
 							addr_to_string( neigh->addr, to_str, sizeof( to_str ) );
 
-						snprintf( tmp, sizeof( tmp ), "\"%s\" -> \"%s\"[label=\"%.2f\"]\n", from_str, to_str, (float)( orig_node->seq_range / (float)neigh->packet_count ) );
+						snprintf( tmp, sizeof( tmp ), "\"%s\" -> \"%s\"[label=\"%.2f\"]\n", from_str, to_str, (float)( orig_node->tq_max / (float)neigh->tq_avg ) );
 						fillme->buffer = (char *)debugRealloc( fillme->buffer, strlen( tmp ) + strlen( fillme->buffer ) + 1, 408 );
 
 						strncat( fillme->buffer, tmp, strlen( tmp ) );
