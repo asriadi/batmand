@@ -85,6 +85,9 @@ struct orig_node *get_orig_node( uint8_t *addr ) {
 	memcpy( &orig_node->orig, addr, sizeof(orig_node->orig) );
 	orig_node->router = NULL;
 	orig_node->batman_if = NULL;
+	orig_node->hna_buff = NULL;
+	orig_node->num_hna = 0;
+	INIT_DLIST_HEAD(&orig_node->hna_list);
 
 	orig_node->bidirect_link = debugMalloc( found_ifs * sizeof(uint16_t), 402 );
 	memset( orig_node->bidirect_link, 0, found_ifs * sizeof(uint16_t) );
@@ -112,7 +115,7 @@ struct orig_node *get_orig_node( uint8_t *addr ) {
 
 
 
-void update_orig( struct orig_node *orig_node, struct batman_packet *in, uint8_t *neigh, struct batman_if *if_incoming, uint32_t rcvd_time ) {
+void update_orig(struct orig_node *orig_node, struct batman_packet *in, uint8_t *neigh, struct batman_if *if_incoming, unsigned char *hna_recv_buff, int16_t hna_buff_len, uint32_t rcvd_time) {
 
 	struct list_head *neigh_pos;
 	struct neigh_node *neigh_node = NULL, *tmp_neigh_node = NULL, *best_neigh_node = NULL;
@@ -190,7 +193,7 @@ void update_orig( struct orig_node *orig_node, struct batman_packet *in, uint8_t
 	}
 
 	/* update routing table */
-	update_routes( orig_node, best_neigh_node );
+	update_routes( orig_node, best_neigh_node, hna_recv_buff, hna_buff_len );
 
 	if ( orig_node->gwflags != in->gwflags )
 		update_gw_list( orig_node, in->gwflags );
@@ -224,6 +227,8 @@ void purge_orig( uint32_t curr_time ) {
 
 			hash_remove_bucket( orig_hash, hashit );
 
+
+
 			/* for all neighbours towards this originator ... */
 			list_for_each_safe( neigh_pos, neigh_temp, &orig_node->neigh_list ) {
 
@@ -255,7 +260,7 @@ void purge_orig( uint32_t curr_time ) {
 
 			}
 
-			update_routes( orig_node, NULL );
+			update_routes( orig_node, NULL, NULL, 0 );
 
 			debugFree( orig_node->bidirect_link, 1402 );
 			debugFree( orig_node, 1403 );
@@ -289,7 +294,7 @@ void purge_orig( uint32_t curr_time ) {
 			}
 
 			if ( ( neigh_purged ) && ( ( best_neigh_node == NULL ) || ( orig_node->router == NULL ) || ( best_neigh_node->packet_count > orig_node->router->packet_count ) ) )
-				update_routes( orig_node, best_neigh_node );
+				update_routes(orig_node, best_neigh_node, orig_node->hna_buff, orig_node->hna_buff_len);
 
 		}
 

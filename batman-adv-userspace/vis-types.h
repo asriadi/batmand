@@ -1,5 +1,8 @@
-/* Copyright (C) 2006 B.A.T.M.A.N. contributors:
- * Simon Wunderlich, Marek Lindner
+/*
+ * vis-types.h
+ *
+ * Copyright (C) 2006 Marek Lindner:
+ *
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of version 2 of the GNU General Public
@@ -18,6 +21,28 @@
  */
 
 
-void schedule_own_packet( struct batman_if *batman_if );
-void schedule_forward_packet( struct batman_packet *in, uint8_t unidirectional, uint8_t directlink, struct batman_if *if_outgoing, int buff_len );
-void send_outstanding_packets();
+
+#include <stdint.h>
+
+
+
+#define DATA_TYPE_NEIGH 1
+#define DATA_TYPE_SEC_IF 2
+#define DATA_TYPE_HNA 3
+
+
+
+struct vis_packet {
+	uint8_t gw_class;
+	uint8_t seq_range;
+	uint8_t pad[2];		/* padding to have the version-flag at the same position at the vis */
+	uint8_t version;
+	uint8_t sender_mac[6];
+} __attribute__((packed));
+
+struct vis_data {
+	uint8_t type;
+	uint8_t data;
+	uint8_t mac[6];
+} __attribute__((packed));
+

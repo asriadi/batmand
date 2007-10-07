@@ -1,0 +1,94 @@
+.\"                                      Hey, EMACS: -*- nroff -*-
+.\" First parameter, NAME, should be all caps
+.\" Second parameter, SECTION, should be 1-8, maybe w/ subsection
+.\" other parameters are allowed: see man(7), man(1)
+.TH BATMAND-ADV SECTION "Sep 17, 2007"
+.\" Please adjust this date whenever revising the manpage.
+.\"
+.\" Some roff macros, for reference:
+.\" .nh        disable hyphenation
+.\" .hy        enable hyphenation
+.\" .ad l      left justify
+.\" .ad b      justify to both left and right margins
+.\" .nf        disable filling
+.\" .fi        enable filling
+.\" .br        insert line break
+.\" .sp <n>    insert n+1 empty lines
+.\" for manpage-specific macros, see man(7)
+.TH "batmand-adv" 8
+.SH NAME
+batmand-adv \- better approach to mobile ad-hoc networking, Layer 2 version batman-advanced
+.SH SYNOPSIS
+.B batmand-adv
+.RI [ options ] \ interface \ [ interface ... ]
+.br
+.SH DESCRIPTION
+.B B.A.T.M.A.N
+means better approach to mobile ad-hoc networking, this is a new routing protocol for multi-hop ad-hoc mesh networks. Go to http://open-mesh.net/batman to get more information.
+.PP
+Unlike batmand, batmand-adv operates on Layer 2, using Ethernet frames to encapsulate protocol and payload data and not UDP/IP. A batmand-adv mesh network is acting like a switch, and after starting the daemon you'll get a virtual network interface "bat0" which can be used like a usual LAN interface. Communication is tunneled directly to other batmand-adv participants.
+.PP
+The following document will explain how to use the \fBbatman-advanced daemon\fP.
+.PP
+The batmand-adv binary can be run in 2 different ways. First you need to start the daemon with "batmand-adv [options] interface" (daemon mode) and then you can connect to that daemon to issue further commands with "batmand-adv -c [options]" (client mode). Some of the options below are always available, some are not. See the example section to get an idea.
+.SH OPTIONS
+.TP
+.B \-b run debug connection in batch mode
+The debug information are updated after a period of time by default, so if you use "-b" it will execute once and then stop. This option is useful for script integration of the debug output and is only available in client mode together with "-d 1" or "-d 2".
+.TP
+.B \-c connect via unix socket
+Use this option to switch to client mode. Deploy it without any arguments to get the current configuration even if changed at runtime.
+.TP
+.B \-d debug level
+The debug level can be set to five values.
+.RS 17
+default: 0 -> debug disabled
+.RE
+.RS 10
+allowed values: 1 -> list neighbors
+.RE
+.RS 25
+ 2 -> list gateways
+ 3 -> observe batman
+ 4 -> observe batman (verbose)
+ 5 -> memory debug / cpu usage
+.RE
+.RS 7
+Note that debug level 5 can be disabled at compile time.
+.RE
+.TP
+.B \-h short help
+.TP
+.B \-H verbose help
+.TP
+.B \-o orginator interval in ms
+A node transmits broadcast messages (we call them originator message or OGM) to inform the neighboring nodes about it's existence.
+Originator interval is the time to wait after sending one message and before sending the next message. The default value is 1000 ms (1 second).
+In a mobile network, you may want to detect network changes very quickly, so you need to send message very often, for example, use a value of 500 ms.
+In a static network, you can save bandwidth by using a higher value.
+This option is only available in daemon mode.
+In batman-advanced, hosts behind a bridge are announced with the originator messages. If you want roaming which is faster than 1 second, you should tweak here. 
+Every participant should use the same value!
+.TP
+.B \-s visualization server
+Since no topology database is computed by the protocol an additional solution to create topology graphs has been implemented, the vis server. Batman daemons may send their local view about their single-hop neighbors to the vis server. It collects the information and provides data in a format similar to OLSR's topology information output. Therefore existing solutions to draw topology graphs developed for OLSR can be used to visualize mesh-clouds using B.A.T.M.A.N.
+For batmand-adv, the vis-adv (and not the vis) server must be used.
+.TP
+.B \-v print version
+.SH EXAMPLES
+.TP
+.B batmand-adv eth1 wlan0:test
+Start batman-advanced daemon on interface "eth1" and on alias interface "wlan0:test"
+.TP
+.B batmand-adv -s 192.168.1.1 -d 1 eth1
+Start batman daemon on interface "eth1", sending topology information to 192.168.1.1 and with debug level 1 (does not fork into the background).
+.TP
+.B batmand-adv eth1 && batmand-adv -c -d 1 -b
+Start batman daemon on interface "eth1". Connect in client mode to get the debug level 1 output once (batch mode).
+.br
+.SH SEE ALSO
+\fI battool\fP (8)
+.SH AUTHOR
+batmand-adv was written by Marek Lindner <lindner_marek-at-yahoo.de>, Axel Neumann <axel-at-open-mesh.net>, Stefan Sperling <stsp-at-stsp.in-berlin.de>, Corinna 'Elektra' Aichele <onelektra-at-gmx.net>, Thomas Lopatic  <thomas-at-lopatic.de>, Felix Fietkau <nbd-at-nbd.name>, Ludger Schmudde <lui-at-schmudde.com>, Simon Wunderlich <siwu-at-hrz.tu-chemnitz.de>, Andreas Langer <a.langer-at-q-dsl.de>.
+.PP
+This manual page was written by Wesley Tasi <wesleyboy42@gmail.com> and updated for batman-advanced by Simon Wunderlich <siwu@hrz.tu-chemnitz.de>, for the Debian GNU/Linux system.

@@ -121,6 +121,7 @@ int32_t rawsock_read(int32_t rawsock, struct ether_header *recv_header, unsigned
 int32_t rawsock_write(int32_t rawsock, struct ether_header *send_header, unsigned char *buf, int16_t size) {
 	struct iovec vector[2];
 	int32_t ret;
+	int i;
 
 	vector[0].iov_base = send_header;
 	vector[0].iov_len  = sizeof(struct ether_header);
@@ -128,11 +129,25 @@ int32_t rawsock_write(int32_t rawsock, struct ether_header *send_header, unsigne
 	vector[1].iov_len  = size;
 
 	send_header->ether_type = htons(ETH_P_BATMAN);
+/*	if (buf[0] != BAT_PACKET) {
 
-	/*printf("source = %s, ", ether_ntoa((struct ether_addr *)send_header->ether_shost) );
-	printf("dest   = %s, ", ether_ntoa((struct ether_addr *)send_header->ether_dhost));
-	printf("type: %08x, len %i\n",ntohs(send_header->ether_type), size );
-
+	debug_output(4, "[B]batman source = %s, ", ether_ntoa((struct ether_addr *)send_header->ether_shost) );
+	debug_output(4, "dest   = %s, ", ether_ntoa((struct ether_addr *)send_header->ether_dhost));
+	debug_output(4, "type: %08x, len %i, battype %d\n",ntohs(send_header->ether_type), size, buf[0]);
+	if ( buf[0] == BAT_UNICAST) {
+		debug_output(4, "[E]ther source = %s ", 	ether_ntoa((struct ether_addr *)((struct ether_header *)(buf + sizeof(struct unicast_packet)))->ether_shost));
+		debug_output(4, "dest   = %s ", 			ether_ntoa((struct ether_addr *)((struct ether_header *)(buf + sizeof(struct unicast_packet)))->ether_dhost));
+		debug_output(4, "type   = %04x", 			((struct ether_header *)(buf + sizeof(struct unicast_packet)))->ether_type);
+	}
+	if ( buf[0] == BAT_BCAST) {
+		debug_output(4, "[E]ther source = %s ", ether_ntoa((struct ether_addr *)((struct ether_header *)(buf + sizeof(struct bcast_packet)))->ether_shost));
+		debug_output(4, "dest   = %s ", ether_ntoa((struct ether_addr *)((struct ether_header *)(buf + sizeof(struct bcast_packet)))->ether_dhost));
+		debug_output(4, "type   = %04x ", ((struct ether_header *)(buf + sizeof(struct bcast_packet)))->ether_type);
+		debug_output(4, "seqno =  %d\n", ntohs(((struct bcast_packet *)buf)->seqno) );
+	}
+	}
+	printf("\n");*/
+/*
 	if ( memcmp( send_header->ether_dhost, broadcastAddr, 6 ) == 0 ) {
 
 		if ( size == sizeof(struct batman_packet) ) {
@@ -155,9 +170,20 @@ int32_t rawsock_write(int32_t rawsock, struct ether_header *send_header, unsigne
 
 	}*/
 
+	/* Try sending PACKETS_PER_CYCLE times to send the packet, and drop it otherwise. */
+	for (i=0; i< PACKETS_PER_CYCLE; i++) {
+		if ( ( ret = writev(rawsock, vector, 2) ) < 0 ) {
+			if (errno == EAGAIN || errno == ESPIPE){
+				debug_output( 4, "Error - can't write to raw socket: %s , but we retry\n", strerror(errno) );
+				continue;
+			} else {
+				debug_output( 0, "Error - can't write to raw socket: %s \n", strerror(errno) );
+				return -1;
+			}
+		} else break;
+	}
+	return 0;
 
-	if ( ( ret = writev(rawsock, vector, 2) ) < 0 )
-		debug_output( 0, "Error - can't write to raw socket: %s \n", strerror(errno) );
 
 	return(ret);
 
@@ -274,14 +300,14 @@ int32_t tap_create( int16_t mtu ) {
 	tap_opts = fcntl( fd, F_GETFL, 0 );
 	fcntl( fd, F_SETFL, tap_opts | O_NONBLOCK );
 
-	/* set MTU of tap interface: real MTU - 28 */
+	/* set MTU of tap interface: real MTU - BATMAN_MAXFRAMESIZE */
 	if ( mtu < 100 ) {
 
 		debug_output( 0, "Warning - MTU smaller than 100 -> can't reduce MTU anymore \n" );
 
 	} else {
 
-		ifr_tap.ifr_mtu = mtu - 28;
+		ifr_tap.ifr_mtu = mtu - BATMAN_MAXFRAMESIZE;
 
 		if ( ioctl( tmp_fd, SIOCSIFMTU, &ifr_tap ) < 0 ) {
 
