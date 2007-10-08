@@ -47,13 +47,13 @@ while ( <BATMANLOG> ) {
 
 	} else {
 
-		if ( m/Received\ BATMAN\ packet\ via NB:\ ([\d]+\.[\d]+\.[\d]+\.[\d]+).*?from OG:\ ([\d]+\.[\d]+\.[\d]+\.[\d]+),\ seqno ([\d]+),\ TTL ([\d]+)/ ) {
+		if ( m/Received\ BATMAN\ packet\ via\ NB:\ ([\d]+\.[\d]+\.[\d]+\.[\d]+).*?from OG:\ ([\d]+\.[\d]+\.[\d]+\.[\d]+),\ seqno ([\d]+),\ tq ([\d]+),\ TTL ([\d]+)/ ) {
 
 			$receive_hash{ $2 }{ $1 }{ "num_recv" }++;
 			$last_orig = $2;
 			$last_neigh = $1;
 			$last_seq = $3;
-			$last_ttl = $4;
+			$last_ttl = $5;
 
 		} elsif ( m/Forwarding\ packet\ \(originator\ ([\d]+\.[\d]+\.[\d]+\.[\d]+)/ ) {
 
@@ -67,7 +67,7 @@ while ( <BATMANLOG> ) {
 
 			} else {
 
-				print "Not equal: $_ <> $1\n";
+				print "Not equal: $_ <> '$1' '$last_orig'\n";
 
 			}
 
@@ -130,7 +130,7 @@ while ( <BATMANLOG> ) {
 
 				$forward_hash{ $last_orig }{ $last_neigh }{ "direct_uni" }++;
 
-			} elsif ( m/rebroadcast\ orginator\ packet/ ) {
+			} elsif ( m/rebroadcast\ originator\ packet/ ) {
 
 				$forward_hash{ $last_orig }{ $last_neigh }{ "rebroad" }++;
 
@@ -255,7 +255,7 @@ if ( $ARGV[0] eq "-p" ) {
 
 	foreach my $orginator ( keys %seq_hash ) {
 
-		print "\n\nOrginator: $orginator\n^^^^^^^^^\n";
+		print "\n\nOriginator: $orginator\n^^^^^^^^^\n";
 
 		foreach my $neighbour ( keys %{ $seq_hash{ $orginator } } ) {
 
