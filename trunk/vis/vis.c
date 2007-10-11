@@ -252,6 +252,7 @@ void clean_node_hash() {
 	struct list_head *list_pos, *list_pos_tmp;
 	struct hash_it_t *hashit = NULL;
 	struct hna *hna;
+	struct secif_lst *secif_lst;
 
 
 	if ( node_hash->elements == 0 )
@@ -275,6 +276,14 @@ void clean_node_hash() {
 			hna = list_entry( list_pos, struct hna, list );
 
 			debugFree( hna, 2016 );
+
+		}
+
+		list_for_each_safe( list_pos, list_pos_tmp, &orig_node->secif_list ) {
+
+			secif_lst = list_entry( list_pos, struct secif_lst, list );
+
+			debugFree( secif_lst, 2017 );
 
 		}
 
@@ -311,7 +320,7 @@ void clean_buffer() {
 
 void write_data_in_buffer() {
 
-	struct neighbour *neigh;
+	struct neighbour *neigh, *tmp_neigh;
 	struct node *orig_node;
 	struct secif *secif;
 	struct secif_lst *secif_lst;
@@ -348,10 +357,32 @@ void write_data_in_buffer() {
 						secif = (struct secif *)hash_find( secif_hash, &neigh->addr );
 
 						/* neighbour is a secondary interface */
-						if ( secif != NULL )
+						if ( secif != NULL ) {
+
+							/* skip this entry if ip of sec iface is in neigh list too */
+							tmp_neigh = NULL;
+
+							list_for_each( list_pos_tmp, &orig_node->neigh_list ) {
+
+								tmp_neigh = list_entry( list_pos_tmp, struct neighbour, list );
+
+								if ( tmp_neigh->addr == secif->orig->addr )
+									break;
+
+								tmp_neigh = NULL;
+
+							}
+
+							if ( tmp_neigh != NULL )
+								continue;
+
 							addr_to_string( secif->orig->addr, to_str, sizeof( to_str ) );
-						else
+
+						} else {
+
 							addr_to_string( neigh->addr, to_str, sizeof( to_str ) );
+
+						}
 
 						snprintf( tmp, sizeof( tmp ), "\"%s\" -> \"%s\"[label=\"%.2f\"]\n", from_str, to_str, (float)( orig_node->tq_max / (float)neigh->tq_avg ) );
 						fillme->buffer = (char *)debugRealloc( fillme->buffer, strlen( tmp ) + strlen( fillme->buffer ) + 1, 408 );
