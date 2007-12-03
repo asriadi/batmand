@@ -724,26 +724,29 @@ int8_t batman() {
 
 	debug_timeout = get_time();
 
+	if ( NULL == ( orig_hash = hash_new( 128, compare_orig, choose_orig ) ) )
+		return(-1);
+
 	list_for_each( if_pos, &if_list ) {
 
 		batman_if = list_entry( if_pos, struct batman_if, list );
 
-		memcpy( batman_if->out.orig, batman_if->hw_addr, 6 );
 		batman_if->out.packet_type = BAT_PACKET;
+		batman_if->out.version = COMPAT_VERSION;
 		batman_if->out.flags = 0x00;
 		batman_if->out.ttl = TTL;
-		batman_if->out.seqno = 1;
 		batman_if->out.gwflags = gateway_class;
-		batman_if->out.version = COMPAT_VERSION;
+		batman_if->out.tq = TQ_MAX_VALUE;
+		batman_if->out.seqno = 1;
+
+		memcpy(batman_if->out.orig, batman_if->hw_addr, 6);
+		memcpy(batman_if->out.old_orig, batman_if->hw_addr, 6);
 
 		batman_if->bcast_seqno = 1;
 
 		schedule_own_packet( batman_if );
 
 	}
-
-	if ( NULL == ( orig_hash = hash_new( 128, compare_orig, choose_orig ) ) )
-		return(-1);
 
 	if ( -1 == transtable_init())
 		return(-1);
