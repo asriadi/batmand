@@ -589,7 +589,7 @@ void apply_init_args( int argc, char *argv[] ) {
 			case 'o':
 
 				errno = 0;
-				originator_interval = strtol (optarg, NULL , 10);
+				originator_interval = strtol (optarg, NULL, 10);
 
 				if ( originator_interval < 1 ) {
 
@@ -1387,7 +1387,7 @@ int8_t is_broadcast_address( uint8_t *dst_addr ) {
 
 /* check multicast range: address range 01:00:5e:00:00:00 - 01:00:5e:7f:ff:ff */
 int8_t is_multicast_address( uint8_t *dst_addr ) {
-	if ((dst_addr[0] == 0x01) && (dst_addr[1] == 0x00) && (dst_addr[2] == 0x5e) && (!(dst_addr[3] & 0x80))) 
+	if ((dst_addr[0] == 0x01) && (dst_addr[1] == 0x00) && (dst_addr[2] == 0x5e) && (!(dst_addr[3] & 0x80)))
 		return 1;
 	return 0;
 }
@@ -1415,7 +1415,7 @@ int8_t receive_packet_tap(unsigned char *packet_buff, int16_t packet_buff_len, i
 
 			hna_add( ((struct ether_header *)payload_ptr)->ether_shost, ((struct batman_if *)if_list.next)->hw_addr);
 			dhost = transtable_search(((struct ether_header *) payload_ptr)->ether_dhost);
-			if (dhost == NULL) 
+			if (dhost == NULL)
 				debug_output(4, "HNA: Could not look up destination %s :(\n", addr_to_string(((struct ether_header *) payload_ptr)->ether_dhost) );
 
 
@@ -1482,7 +1482,7 @@ int8_t receive_packet_tap(unsigned char *packet_buff, int16_t packet_buff_len, i
 
 			}
 
-		} else 
+		} else
 			break;		/* can't receive anymore? jump out! */
 	}
 
@@ -1494,8 +1494,8 @@ int8_t receive_packet_tap(unsigned char *packet_buff, int16_t packet_buff_len, i
 	}
 	return(0);
 }
-int8_t receive_packet_batiface( unsigned char *packet_buff, int16_t packet_buff_len, int16_t *pay_buff_len, 
-								uint8_t *neigh, struct batman_if **if_incoming, struct batman_if *batman_if ) 
+int8_t receive_packet_batiface( unsigned char *packet_buff, int16_t packet_buff_len, int16_t *pay_buff_len,
+								uint8_t *neigh, struct batman_if **if_incoming, struct batman_if *batman_if )
 {
 	struct ether_header 	 ether_header;
 	unsigned char 			*dhost = NULL;
@@ -1540,7 +1540,7 @@ int8_t receive_packet_batiface( unsigned char *packet_buff, int16_t packet_buff_
 				dhost = ((struct unicast_packet *)packet_buff)->dest;
 	/*
 				dhost = transtable_search( ((struct ether_header *)(packet_buff + sizeof(struct unicast_packet)))->ether_dhost);
-				if (dhost == NULL) 
+				if (dhost == NULL)
 					dhost = ((struct ether_header *)(packet_buff + sizeof(struct unicast_packet)))->ether_dhost;
 					*/
 
@@ -1556,8 +1556,8 @@ int8_t receive_packet_batiface( unsigned char *packet_buff, int16_t packet_buff_
 					/* TTL exceeded */
 					if (  ((struct unicast_packet *)packet_buff)->ttl < 2 ) {
 
-						debug_output( 0, "Error - can't send packet from %s to %s: ttl exceeded\n", 
-								addr_to_string( ((struct ether_header *)(packet_buff + sizeof(struct unicast_packet)))->ether_shost ), 
+						debug_output( 0, "Error - can't send packet from %s to %s: ttl exceeded\n",
+								addr_to_string( ((struct ether_header *)(packet_buff + sizeof(struct unicast_packet)))->ether_shost ),
 								addr_to_string( ((struct ether_header *)(packet_buff + sizeof(struct unicast_packet)))->ether_dhost ));
 
 						continue;
@@ -1599,7 +1599,7 @@ int8_t receive_packet_batiface( unsigned char *packet_buff, int16_t packet_buff_
 					continue;
 
 				/* drop packet if it has not neccessary minimum size */
-				if ( *pay_buff_len < (int)sizeof(struct icmp_packet) ) 
+				if ( *pay_buff_len < (int)sizeof(struct icmp_packet) )
 					continue;
 
 				/* packet for me */
@@ -1644,12 +1644,12 @@ int8_t receive_packet_batiface( unsigned char *packet_buff, int16_t packet_buff_
 					/* TTL exceeded */
 					if ( ((struct icmp_packet *)packet_buff)->ttl < 2 )   {
 
-						debug_output( 0, "Error - can't send packet from %s to %s: ttl exceeded\n", 
-								addr_to_string( ( packet_buff[0] == BAT_ICMP 
-										? ((struct icmp_packet *)packet_buff)->orig 
-										: ((struct ether_header *)(packet_buff + sizeof(struct unicast_packet)))->ether_shost ) ), 
-								addr_to_string( ( packet_buff[0] == BAT_ICMP 
-										? ((struct icmp_packet *)packet_buff)->dst 
+						debug_output( 0, "Error - can't send packet from %s to %s: ttl exceeded\n",
+								addr_to_string( ( packet_buff[0] == BAT_ICMP
+										? ((struct icmp_packet *)packet_buff)->orig
+										: ((struct ether_header *)(packet_buff + sizeof(struct unicast_packet)))->ether_shost ) ),
+								addr_to_string( ( packet_buff[0] == BAT_ICMP
+										? ((struct icmp_packet *)packet_buff)->dst
 										: ((struct ether_header *)(packet_buff + sizeof(struct unicast_packet)))->ether_dhost ) ) );
 
 						/* send TTL exceed if packet is an echo request (traceroute) */
@@ -1773,7 +1773,7 @@ int8_t receive_packet_batiface( unsigned char *packet_buff, int16_t packet_buff_
 	return(0);
 }
 
-int8_t receive_packet( unsigned char *packet_buff, int16_t packet_buff_len, int16_t *pay_buff_len, uint8_t *neigh, uint32_t timeout, struct batman_if **if_incoming ) 
+int8_t receive_packet( unsigned char *packet_buff, int16_t packet_buff_len, int16_t *pay_buff_len, uint8_t *neigh, uint32_t timeout, struct batman_if **if_incoming )
 {
 
 	struct timeval 			 tv;
@@ -1810,7 +1810,7 @@ int8_t receive_packet( unsigned char *packet_buff, int16_t packet_buff_len, int1
 
 	if (FD_ISSET(tap_sock, &tmp_wait_set)) {
 		ret = receive_packet_tap(packet_buff, packet_buff_len, pay_buff_len);
-		if (ret != 0) 
+		if (ret != 0)
 			return(ret);
 
 	}
@@ -1820,7 +1820,7 @@ int8_t receive_packet( unsigned char *packet_buff, int16_t packet_buff_len, int1
 
 		if (FD_ISSET(batman_if->raw_sock, &tmp_wait_set)) {
 			ret = receive_packet_batiface(packet_buff, packet_buff_len, pay_buff_len, neigh, if_incoming, batman_if);
-			if (ret != 0) 
+			if (ret != 0)
 				return(ret);
 		}
 
