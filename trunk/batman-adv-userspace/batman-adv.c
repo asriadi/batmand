@@ -301,7 +301,7 @@ void verbose_usage( void ) {
 
 
 
-void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, unsigned char *hna_recv_buff, int16_t hna_buff_len ) 
+void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, unsigned char *hna_recv_buff, int16_t hna_buff_len )
 {
 
 	debug_output( 4, "update_routes() \n" );
@@ -359,19 +359,19 @@ void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, 
 	} else {
 		int changed=0;
 
-		if (hna_buff_len != orig_node->hna_buff_len)	
+		if (hna_buff_len != orig_node->hna_buff_len)
 			changed=1;
 		else if(memcmp(hna_recv_buff, orig_node->hna_buff, hna_buff_len) == 0)
 			changed=1;
 		if (changed) {
 			/* need to update table */
-			hna_del_buff(orig_node); 
+			hna_del_buff(orig_node);
 			orig_node->hna_buff = debugMalloc( hna_buff_len, 102 );
 			orig_node->hna_buff_len = hna_buff_len;
 
 			memcpy( orig_node->hna_buff, hna_recv_buff, hna_buff_len );
 
-			hna_add_buff(orig_node); 
+			hna_add_buff(orig_node);
 		}
 	}
 }
@@ -429,7 +429,7 @@ void update_gw_list( struct orig_node *orig_node, uint8_t new_gwflags ) {
 
 
 
-int isDuplicate( struct orig_node *orig_node, uint16_t seqno ) {
+/*int isDuplicate( struct orig_node *orig_node, uint16_t seqno ) {
 
 	struct list_head *neigh_pos;
 	struct neigh_node *neigh_node;
@@ -456,17 +456,79 @@ int isBntog( uint8_t *neigh, struct orig_node *orig_tog_node ) {
 
 	return 0;
 
-}
+}*/
 
 
 
-int isBidirectionalNeigh( struct orig_node *orig_neigh_node, struct batman_if *if_incoming ) {
+int isBidirectionalNeigh(struct orig_node *orig_node, struct orig_node *orig_neigh_node, struct batman_packet *in, uint32_t recv_time, struct batman_if *if_incoming)
+{
+	struct list_head *list_pos;
+	struct neigh_node *neigh_node = NULL, *tmp_neigh_node = NULL;
+	uint8_t total_count;
 
-	if ( ( if_incoming->out.seqno - 2 - orig_neigh_node->bidirect_link[if_incoming->if_num] ) < BIDIRECT_TIMEOUT )
+
+	if (orig_node == orig_neigh_node) {
+
+		list_for_each(list_pos, &orig_node->neigh_list) {
+			tmp_neigh_node = list_entry(list_pos, struct neigh_node, list);
+
+			if ((compare_orig(tmp_neigh_node->addr, orig_neigh_node->orig) == 0) && (tmp_neigh_node->if_incoming == if_incoming) )
+				neigh_node = tmp_neigh_node;
+		}
+
+		if (neigh_node == NULL)
+			neigh_node = create_neighbor(orig_node, orig_neigh_node, orig_neigh_node->orig, if_incoming);
+
+		neigh_node->last_valid = recv_time;
+	} else {
+		/* find packet count of corresponding one hop neighbor */
+		list_for_each(list_pos, &orig_neigh_node->neigh_list) {
+			tmp_neigh_node = list_entry(list_pos, struct neigh_node, list);
+
+			if ((compare_orig(tmp_neigh_node->addr, orig_neigh_node->orig) == 0) && (tmp_neigh_node->if_incoming == if_incoming))
+				neigh_node = tmp_neigh_node;
+		}
+
+		if ( neigh_node == NULL )
+			neigh_node = create_neighbor(orig_neigh_node, orig_neigh_node, orig_neigh_node->orig, if_incoming);
+	}
+
+	orig_node->last_valid = recv_time;
+
+	/* pay attention to not get a value bigger than 100 % */
+	total_count = (orig_neigh_node->bcast_own_sum[if_incoming->if_num] > neigh_node->real_packet_count ? neigh_node->real_packet_count : orig_neigh_node->bcast_own_sum[if_incoming->if_num]);
+
+	/* if we have too few packets (too less data) we set tq_own to zero */
+	/* if we receive too few packets it is not considered bidirectional */
+	if ((total_count < TQ_LOCAL_BIDRECT_SEND_MINIMUM) || (neigh_node->real_packet_count < TQ_LOCAL_BIDRECT_RECV_MINIMUM))
+		orig_neigh_node->tq_own = 0;
+	else
+		/* neigh_node->real_packet_count is never zero as we only purge old information when getting new information */
+		orig_neigh_node->tq_own = (TQ_MAX_VALUE * total_count) / neigh_node->real_packet_count;
+
+	/* 1 - ((1-x)**2), normalized to TQ_MAX_VALUE */
+	/* this does affect the nearly-symmetric links only a little,
+	* but punishes asymetric links more. */
+	/* this will give a value between 0 and TQ_MAX_VALUE */
+	orig_neigh_node->tq_asym_penality = TQ_MAX_VALUE - (TQ_MAX_VALUE * (TQ_LOCAL_WINDOW_SIZE - neigh_node->real_packet_count) * (TQ_LOCAL_WINDOW_SIZE - neigh_node->real_packet_count))
+										/ (TQ_LOCAL_WINDOW_SIZE * TQ_LOCAL_WINDOW_SIZE);
+
+	in->tq = ((in->tq * orig_neigh_node->tq_own * orig_neigh_node->tq_asym_penality) / (TQ_MAX_VALUE *  TQ_MAX_VALUE));
+
+	/*static char orig_str[ADDR_STR_LEN], neigh_str[ADDR_STR_LEN];
+	addr_to_string( orig_node->orig, orig_str, ADDR_STR_LEN );
+	addr_to_string( orig_neigh_node->orig, neigh_str, ADDR_STR_LEN );*/
+
+	/*debug_output( 3, "bidirectional: orig = %-15s neigh = %-15s => own_bcast = %2i, real recv = %2i, local tq: %3i, asym_penality: %3i, total tq: %3i \n",
+	orig_str, neigh_str, total_count, neigh_node->real_packet_count, orig_neigh_node->tq_own, orig_neigh_node->tq_asym_penality, in->tq );*/
+	debug_output( 4, "bidirectional: orig = %-15s neigh = %-15s => own_bcast = %2i, real recv = %2i, local tq: %3i, asym_penality: %3i, total tq: %3i \n",
+		      addr_to_string(orig_node->orig), addr_to_string(orig_neigh_node->orig), total_count, neigh_node->real_packet_count, orig_neigh_node->tq_own, orig_neigh_node->tq_asym_penality, in->tq );
+
+	/* if link has the minimum required transmission quality consider it bidirectional */
+	if (in->tq >= TQ_TOTAL_BIDRECT_LIMIT)
 		return 1;
 
 	return 0;
-
 }
 
 
@@ -524,7 +586,7 @@ void generate_vis_packet() {
 		orig_node = hashit->bucket->data;
 
 		/* we interested in 1 hop neighbours only */
-		if ( ( orig_node->router != NULL ) && ( memcmp(orig_node->orig, orig_node->router->addr, 6) == 0 ) && ( orig_node->router->packet_count > 0 ) ) {
+		if ( ( orig_node->router != NULL ) && ( memcmp(orig_node->orig, orig_node->router->addr, 6) == 0 ) && ( orig_node->router->tq_avg > 0 ) ) {
 
 			vis_packet_size += sizeof(struct vis_data);
 
@@ -534,10 +596,10 @@ void generate_vis_packet() {
 
 			memcpy( vis_data->mac, (unsigned char *)&orig_node->orig, 6 );
 
-			vis_data->data = orig_node->router->packet_count;
+			vis_data->data = orig_node->router->tq_avg;
 			vis_data->type = DATA_TYPE_NEIGH;
 
-		} 
+		}
 
 	}
 
@@ -607,19 +669,57 @@ void send_vis_packet() {
 
 }
 
+uint8_t count_real_packets(uint8_t *neigh, struct batman_packet *in, struct batman_if *if_incoming)
+{
+	struct list_head *list_pos;
+	struct orig_node *orig_node;
+	struct neigh_node *tmp_neigh_node;
+	uint8_t is_duplicate = 0;
+
+
+	orig_node = get_orig_node(in->orig);
+
+	/*static char orig_str[ADDR_STR_LEN], neigh_str[ADDR_STR_LEN];
+
+	addr_to_string( in->orig, orig_str, ADDR_STR_LEN );
+	addr_to_string( neigh, neigh_str, ADDR_STR_LEN );
+
+	debug_output( 3, "count_real_packets: orig = %s, neigh = %s, seq = %i, last seq = %i\n", orig_str, neigh_str, in->seqno, orig_node->last_real_seqno );*/
+
+	list_for_each(list_pos, &orig_node->neigh_list) {
+		tmp_neigh_node = list_entry(list_pos, struct neigh_node, list);
+
+		if (!is_duplicate)
+			is_duplicate = get_bit_status(tmp_neigh_node->real_bits, orig_node->last_real_seqno, in->seqno);
+
+		if ((compare_orig(tmp_neigh_node->addr, neigh) == 0) && (tmp_neigh_node->if_incoming == if_incoming))
+			bit_get_packet(tmp_neigh_node->real_bits, in->seqno - orig_node->last_real_seqno, 1);
+		else
+			bit_get_packet(tmp_neigh_node->real_bits, in->seqno - orig_node->last_real_seqno, 0);
+
+		tmp_neigh_node->real_packet_count = bit_packet_count(tmp_neigh_node->real_bits);
+	}
+
+	if (!is_duplicate) {
+		debug_output( 4, "updating last_seqno: old %d, new %d \n", orig_node->last_real_seqno, in->seqno );
+		orig_node->last_real_seqno = in->seqno;
+	}
+
+	return is_duplicate;
+}
+
 int8_t batman() {
 
-	struct list_head *if_pos, *neigh_pos, *forw_pos, *forw_pos_tmp;
+	struct list_head *if_pos, *forw_pos, *forw_pos_tmp;
 	struct orig_node *orig_neigh_node, *orig_node;
 	struct batman_if *batman_if, *if_incoming;
-	struct neigh_node *neigh_node;
 	struct forw_node *forw_node;
 	uint32_t debug_timeout, select_timeout;
 	unsigned char in[2000];
 	int16_t in_len;
 	int16_t in_hna_len;
 	uint8_t *in_hna_buff;
-	uint8_t neigh[6], is_my_addr, is_my_orig, is_broadcast, is_duplicate, is_bidirectional, is_bntog, forward_duplicate_packet, has_unidirectional_flag, has_directlink_flag, has_version;
+	uint8_t neigh[6], is_my_addr, is_my_orig, is_my_oldorig, is_broadcast, is_duplicate, is_bidirectional, is_single_hop_neigh, has_unidirectional_flag, has_directlink_flag, has_version;
 	int8_t res;
 
 	debug_timeout = get_time();
@@ -665,25 +765,27 @@ int8_t batman() {
 
 			curr_time = get_time();
 
-			is_my_addr = is_my_orig = is_broadcast = is_duplicate = is_bidirectional = is_bntog = forward_duplicate_packet = 0;
+			is_my_addr = is_my_orig = is_my_oldorig = is_broadcast = is_duplicate = is_bidirectional = 0;
 
 			has_unidirectional_flag = ((struct batman_packet *)&in)->flags & UNIDIRECTIONAL ? 1 : 0;
 			has_directlink_flag = ((struct batman_packet *)&in)->flags & DIRECTLINK ? 1 : 0;
 			has_version = ((struct batman_packet *)&in)->version;
 
+			is_single_hop_neigh = (compare_orig(neigh, ((struct batman_packet *)&in)->orig) == 0 ? 1 : 0);
+
 			in_hna_buff = in + sizeof(struct batman_packet);
 			in_hna_len = in_len - sizeof(struct batman_packet);
 
 
-			debug_output( 4, "Received BATMAN packet via NB: %s ,IF: %s %s (from OG: %s, seqno %d, TTL %d, V %d, UDF %d, IDF %d) \n", 
-					addr_to_string( neigh ), 
-					if_incoming->dev, 
-					addr_to_string( if_incoming->hw_addr ), 
-					addr_to_string( ((struct batman_packet *)&in)->orig ), 
-					((struct batman_packet *)&in)->seqno, 
-					((struct batman_packet *)&in)->ttl, 
-					has_version, 
-					has_unidirectional_flag, 
+			debug_output( 4, "Received BATMAN packet via NB: %s ,IF: %s %s (from OG: %s, seqno %d, TTL %d, V %d, UDF %d, IDF %d) \n",
+					addr_to_string( neigh ),
+					if_incoming->dev,
+					addr_to_string( if_incoming->hw_addr ),
+					addr_to_string( ((struct batman_packet *)&in)->orig ),
+					((struct batman_packet *)&in)->seqno,
+					((struct batman_packet *)&in)->ttl,
+					has_version,
+					has_unidirectional_flag,
 					has_directlink_flag );
 
 			list_for_each( if_pos, &if_list ) {
@@ -695,6 +797,9 @@ int8_t batman() {
 
 				if ( compare_orig( ((struct batman_packet *)&in)->orig, batman_if->hw_addr ) == 0 )
 					is_my_orig = 1;
+
+				if (compare_orig(((struct batman_packet *)&in)->old_orig, batman_if->hw_addr) == 0)
+					is_my_oldorig = 1;
 
 				if ( compare_orig( neigh, broadcastAddr ) == 0 )
 					is_broadcast = 1;
@@ -721,132 +826,85 @@ int8_t batman() {
 
 				orig_neigh_node = get_orig_node( neigh );
 
-				debug_output( 4, "received my own OGM via NB lastTxIfSeqno: %d, currRxSeqno: %d, prevRxSeqno: %d, currRxSeqno-prevRxSeqno %d \n", 
-						( if_incoming->out.seqno - 2 ), 
-						((struct batman_packet *)&in)->seqno, 
-						orig_neigh_node->bidirect_link[if_incoming->if_num], 
-						((struct batman_packet *)&in)->seqno - orig_neigh_node->bidirect_link[if_incoming->if_num] );
-
 				/* neighbour has to indicate direct link and it has to come via the corresponding interface */
 				/* if received seqno equals last send seqno save new seqno for bidirectional check */
-				if ( ( ((struct batman_packet *)&in)->flags & DIRECTLINK ) && ( compare_orig( if_incoming->hw_addr, ((struct batman_packet *)&in)->orig ) == 0 ) && ( ((struct batman_packet *)&in)->seqno + 2 == if_incoming->out.seqno ) ) {
-
-					orig_neigh_node->bidirect_link[if_incoming->if_num] = ((struct batman_packet *)&in)->seqno;
-
-					debug_output( 4, "indicating bidirectional link - updating bidirect_link seqno \n");
-
-				} else {
-
-					debug_output( 4, "NOT indicating bidirectional link - NOT updating bidirect_link seqno \n");
-
+				if (has_directlink_flag && (((struct batman_packet *)&in)->seqno - if_incoming->out.seqno + 2 == 0)) {
+					bit_mark((TYPE_OF_WORD *)&(orig_neigh_node->bcast_own[if_incoming->if_num * NUM_WORDS]), 0);
+					orig_neigh_node->bcast_own_sum[if_incoming->if_num] = bit_packet_count((TYPE_OF_WORD *)&(orig_neigh_node->bcast_own[if_incoming->if_num * NUM_WORDS]));
 				}
 
 				debug_output( 4, "Drop packet: originator packet from myself (via neighbour) \n" );
 
-			} else if ( ((struct batman_packet *)&in)->flags & UNIDIRECTIONAL ) {
+			} else if (has_unidirectional_flag) {
+
+				count_real_packets(neigh, (struct batman_packet *)&in, if_incoming);
 
 				debug_output( 4, "Drop packet: originator packet with unidirectional flag \n" );
 
+			} else if (((struct batman_packet *)&in)->tq == 0) {
+
+				count_real_packets(neigh, (struct batman_packet *)&in, if_incoming);
+
+				debug_output(4, "Drop packet: originator packet with tq equal 0 \n");
+
+			} else if (is_my_oldorig) {
+
+				debug_output(4, "Drop packet: ignoring all rebroadcast echos (sender: %s) \n", addr_to_string(neigh));
+
 			} else {
+				is_duplicate = count_real_packets(neigh, (struct batman_packet *)&in, if_incoming);
 
 				orig_node = get_orig_node( ((struct batman_packet *)&in)->orig );
 
 				/* if sender is a direct neighbor the sender mac equals originator mac */
-				orig_neigh_node = ( compare_orig( ((struct batman_packet *)&in)->orig, neigh ) == 0 ? orig_node : get_orig_node( neigh ) );
+				orig_neigh_node = (is_single_hop_neigh ? orig_node : get_orig_node(neigh));
 
 				/* drop packet if sender is not a direct neighbor and if we no route towards it */
-				if ( ( compare_orig( ((struct batman_packet *)&in)->orig, neigh ) != 0 ) && ( orig_neigh_node->router == NULL ) ) {
+				if (!is_single_hop_neigh && (orig_neigh_node->router == NULL)) {
 
 					debug_output( 4, "Drop packet: OGM via unkown neighbor! \n" );
 
 				} else {
 
-					is_duplicate = isDuplicate( orig_node, ((struct batman_packet *)&in)->seqno );
-					is_bidirectional = isBidirectionalNeigh( orig_neigh_node, if_incoming );
+					is_bidirectional = isBidirectionalNeigh(orig_node, orig_neigh_node, (struct batman_packet *)&in, curr_time, if_incoming);
 
-					/* update ranking */
-					if ( ( is_bidirectional ) && ( !is_duplicate ) )
-						update_orig( orig_node, (struct batman_packet *)&in, neigh, if_incoming, in_hna_buff, in_hna_len, curr_time );	
-
-					is_bntog = isBntog( neigh, orig_node );
+					/* update ranking if it is not a duplicate or has the same seqno and similar ttl as the non-duplicate */
+					if (is_bidirectional && (!is_duplicate || ((orig_node->last_real_seqno == ((struct batman_packet *)&in)->seqno) && (orig_node->last_ttl - 3 <= ((struct batman_packet *)&in)->ttl))))
+						update_orig(orig_node, neigh, (struct batman_packet *)&in, if_incoming, in_hna_buff, in_hna_len, is_duplicate, curr_time);
 
 					/* is single hop (direct) neighbour */
-					if ( compare_orig( ((struct batman_packet *)&in)->orig, neigh ) == 0 ) {
+					if (is_single_hop_neigh) {
 
-						/* it is our best route towards him */
-						if ( is_bidirectional && is_bntog ) {
+						/* mark direct link on incoming interface */
+						schedule_forward_packet(orig_node, neigh, (struct batman_packet *)&in, 0, 1, in_hna_len, if_incoming);
 
-							/* mark direct link on incoming interface */
-							schedule_forward_packet( (struct batman_packet *)&in, 0, 1, if_incoming, in_len );
-
-							debug_output( 4, "Forward packet: rebroadcast neighbour packet with direct link flag \n" );
-
-						/* if an unidirectional neighbour sends us a packet - retransmit it with unidirectional flag to tell him that we get its packets */
-						/* if a bidirectional neighbour sends us a packet - retransmit it with unidirectional flag if it is not our best link to it in order to prevent routing problems */
-						} else if ( ( is_bidirectional && !is_bntog ) || ( !is_bidirectional ) ) {
-
-							schedule_forward_packet( (struct batman_packet *)&in, 1, 1, if_incoming, in_len );
-
-							debug_output( 4, "Forward packet: rebroadcast neighbour packet with direct link and unidirectional flag \n" );
-
-						}
+						debug_output(4, "Forward packet: rebroadcast neighbour packet with direct link flag \n" );
 
 					/* multihop originator */
 					} else {
 
-						if ( is_bidirectional && is_bntog ) {
+						if (is_bidirectional) {
 
-							if ( !is_duplicate ) {
+							if (!is_duplicate) {
 
-								schedule_forward_packet( (struct batman_packet *)&in, 0, 0, if_incoming, in_len );
+								schedule_forward_packet(orig_node, neigh, (struct batman_packet *)&in, 0, 0, in_hna_len, if_incoming);
 
-								debug_output( 4, "Forward packet: rebroadcast originator packet \n" );
+								debug_output(4, "Forward packet: rebroadcast originator packet \n" );
 
-							} else { /* is_bntog anyway */
+							} else {
 
-								list_for_each( neigh_pos, &orig_node->neigh_list ) {
-
-									neigh_node = list_entry(neigh_pos, struct neigh_node, list);
-
-									if ( ( compare_orig( neigh_node->addr, neigh ) == 0 ) && ( neigh_node->if_incoming == if_incoming ) ) {
-
-										if ( neigh_node->last_ttl == ((struct batman_packet *)&in)->ttl ) {
-
-											forward_duplicate_packet = 1;
-
-											/* also update only last_valid time if arrived (and rebroadcasted because best neighbor) */
-											orig_node->last_valid = curr_time;
-											neigh_node->last_valid = curr_time;
-
-										}
-
-										break;
-
-									}
-
-								}
-
-								/* we are forwarding duplicate o-packets if they come via our best neighbour and ttl is valid */
-								if ( forward_duplicate_packet ) {
-
-									schedule_forward_packet( (struct batman_packet *)&in, 0, 0, if_incoming, in_len );
-
-									debug_output( 4, "Forward packet: duplicate packet received via best neighbour with best ttl \n" );
-
-								} else {
-
-									debug_output( 4, "Drop packet: duplicate packet received via best neighbour but not best ttl \n" );
-
-								}
+								debug_output(4, "Drop packet: duplicate packet received\n" );
 
 							}
 
 						} else {
 
-							debug_output( 4, "Drop packet: received via bidirectional link: %s, BNTOG: %s !\n", ( is_bidirectional ? "YES" : "NO" ), ( is_bntog ? "YES" : "NO" ) );
+							debug_output(4, "Drop packet: not received via bidirectional link\n" );
 
 						}
+
 					}
+
 				}
 			}
 		}

@@ -47,7 +47,7 @@
 
 #define UNIX_PATH "/var/run/batmand-adv.socket"
 
-/* this might only work in gcc, for other compiler remove this. 
+/* this might only work in gcc, for other compiler remove this.
  * We should ask the makefile to check this for us. */
 #define UNUSEDPARAM_ATTRIBUTE	1
 #ifndef BATUNUSED
@@ -87,22 +87,31 @@
 
 #define JITTER 100
 #define TTL 50                /* Time To Live of broadcast messages */
-#define BIDIRECT_TIMEOUT 2
 #define PURGE_TIMEOUT 200000  /* purge originators after time in ms if no valid packet comes in -> TODO: check influence on SEQ_RANGE */
+
+#define TQ_MAX_VALUE 255
+#define TQ_LOCAL_WINDOW_SIZE 64     /* sliding packet range of received originator messages in squence numbers (should be a multiple of our word size) */
+#define TQ_TOTAL_WINDOW_SIZE 10
+#define TQ_LOCAL_BIDRECT_SEND_MINIMUM TQ_LOCAL_WINDOW_SIZE / 8
+#define TQ_LOCAL_BIDRECT_RECV_MINIMUM TQ_LOCAL_WINDOW_SIZE / 8
+#define TQ_TOTAL_BIDRECT_LIMIT TQ_MAX_VALUE / 10
+
+#define PERFECT_TQ_PENALTY 5
+
 #define SEQ_RANGE 128         /* sliding packet range of received originator messages in squence numbers (should be a multiple of our word size) */
 #define PACKETS_PER_CYCLE 10  /* this seems to be a reasonable value (i've tested for different setups) */
-							  /* how many packets to read from the virtual interfaces, maximum. 
+							  /* how many packets to read from the virtual interfaces, maximum.
 							   * low value = high throughput, high CPU-load
 							   * big value = low throughput, low CPU-load
 							   * infinity = as it was before. */
 #define BROADCAST_UNKNOWN_DEST	1
 							  /* if a packet with unknown destination should be sent, that means the port
-							   * can not be looked up in the translation table, a switch usually 
+							   * can not be looked up in the translation table, a switch usually
 							   * broadcasts the packet. This should happen very rarely, as the switch
 							   * will learn source-MACs with every sent frame, but it is intended as
-							   * fallback solution. 
-							   * Because it is a broadcast, and therefore expensive, it might be better 
-							   * to turn it off. A client must do ARP-Requests then or wait for the 
+							   * fallback solution.
+							   * Because it is a broadcast, and therefore expensive, it might be better
+							   * to turn it off. A client must do ARP-Requests then or wait for the
 							   * destination to send/broadcast something. */
 #define BATMAN_MAXPACKETSIZE	(sizeof(struct unicast_packet)>sizeof(struct bcast_packet)?sizeof(struct unicast_packet):sizeof(struct bcast_packet))
 								/* maximum size of a packet which carries payload. This should be calculated by the compiler.*/
@@ -157,7 +166,6 @@ struct orig_node                    /* structure for orig_list maintaining nodes
 	uint8_t  orig[6];           /* important, must be first entry! (for faster hash comparison) */
 	struct neigh_node *router;
 	struct batman_if *batman_if;
-	uint16_t *bidirect_link;    /* if node is a bidrectional neighbour, when my originator packet was broadcasted (replied) by this node and received by me */
 	uint32_t last_valid;        /* when last packet from this node was received */
 	uint16_t last_seqno;        /* last and best known sequence number */
 	uint16_t last_bcast_seqno;  /* last broadcast sequence number received by this host */
@@ -165,20 +173,30 @@ struct orig_node                    /* structure for orig_list maintaining nodes
 	uint8_t *hna_buff;
 	struct  dlist_head hna_list;
 	int16_t  hna_buff_len;
-	TYPE_OF_WORD seq_bits[ NUM_WORDS ];
 	struct list_head_first neigh_list;
 	uint8_t  gwflags;           /* flags related to gateway functions: gateway class */
+	TYPE_OF_WORD *bcast_own;
+	uint8_t *bcast_own_sum;
+	uint8_t tq_own;
+	int tq_asym_penality;
+	uint16_t last_real_seqno;
+	uint8_t last_ttl;
+	TYPE_OF_WORD seq_bits[NUM_WORDS];
 }; /* __attribute((packed));*/	/* TODO: why packed? that prevents the compiler from optimizing this structure,
 								   and this structure is never sent on the network (as far as i can see) */
 
 struct neigh_node
 {
 	struct list_head list;
-	uint8_t  addr[6];
-	uint8_t packet_count;
-	uint8_t  last_ttl;         /* ttl of last received packet */
+	uint8_t addr[6];
+	uint8_t real_packet_count;
+	uint8_t tq_recv[TQ_TOTAL_WINDOW_SIZE];
+	uint8_t tq_index;
+	uint8_t tq_avg;
+	uint8_t last_ttl;         /* ttl of last received packet */
 	uint32_t last_valid;       /* when last packet via this neighbour was received */
-	TYPE_OF_WORD seq_bits[ NUM_WORDS ];
+	TYPE_OF_WORD real_bits[NUM_WORDS];
+	struct orig_node *orig_node;
 	struct batman_if *if_incoming;
 };
 
