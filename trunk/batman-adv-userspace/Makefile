@@ -20,7 +20,7 @@
 CC =			gcc
 CFLAGS =		-Wall -W -O1 -g
 STRIP=			strip
-LDFLAGS =		-lpthread
+LDFLAGS =		-lpthread -g
 
 CFLAGS_MIPS =	-Wall -W -O1 -g -DREVISION_VERSION=$(REVISION_VERSION)
 LDFLAGS_MIPS =	-lpthread
@@ -33,6 +33,7 @@ SRC_FILES= "\(\.c\)\|\(\.h\)\|\(Makefile\)\|\(INSTALL\)\|\(LIESMICH\)\|\(README\
 
 SRC_C= batman-adv.c originator.c schedule.c list-batman.c posix-specific.c posix.c linux.c allocate.c bitarray.c hash.c trans_table.c ring_buffer.c $(OS_C)
 SRC_H= batman-adv.h originator.h schedule.h list-batman.h os.h allocate.h bitarray.h hash.h packet.h trans_table.h dlist.h vis-types.h ring_buffer.h
+SRC_O= $(SRC_C:.c=.o)
 
 PACKAGE_NAME=	batmand-adv-userspace
 
@@ -86,10 +87,12 @@ LINK_AND_TAR=		tar czvf $(FILE_NAME).tgz $(FILE_NAME) && \
 			ln -f $(FILE_NAME)* dl/misc/ && \
 			ln -f $(FILE_CURRENT)* dl/misc/
 
+.SUFFIXES: .c.o
+
 all:		$(BINARY_NAME)
 
-$(BINARY_NAME):	$(SRC_C) $(SRC_H) Makefile
-	$(CC) $(CFLAGS) -o $@ $(SRC_C) $(LDFLAGS)
+$(BINARY_NAME):	$(SRC_O) $(SRC_H) Makefile
+	$(CC) -o $@ $(SRC_O) $(LDFLAGS)
 
 
 long:	sources i386  arm-oe mipsel-kk-bc mips-kk-at mipsel-wr
@@ -122,8 +125,8 @@ sources:
 
 i386: i386-gc-elf-32-lsb-static i386-gc-elf-32-lsb-dynamic
 
-i386-gc-elf-32-lsb-static:	$(SRC_C) $(SRC_H) Makefile
-	$(CC) $(CFLAGS) -DREVISION_VERSION=$(REVISION_VERSION) -o $(FILE_NAME) $(SRC_C) $(LDFLAGS) -static
+i386-gc-elf-32-lsb-static:	$(SRC_O) $(SRC_H) Makefile
+	$(CC) -DREVISION_VERSION=$(REVISION_VERSION) -o $(FILE_NAME) $(SRC_O) $(LDFLAGS) -static
 	$(STRIP) $(FILE_NAME)
 	$(IPKG_BUILD) i386
 	$(LINK_AND_TAR)
@@ -133,8 +136,8 @@ i386-gc-elf-32-lsb-static:	$(SRC_C) $(SRC_H) Makefile
 	ln -f $(FILE_CURRENT).tgz dl/i386/
 
 
-i386-gc-elf-32-lsb-dynamic:	$(SRC_C) $(SRC_H) Makefile
-	$(CC) $(CFLAGS) -DREVISION_VERSION=$(REVISION_VERSION) -o $(FILE_NAME) $(SRC_C) $(LDFLAGS)
+i386-gc-elf-32-lsb-dynamic:	$(SRC_O) $(SRC_H) Makefile
+	$(CC) -DREVISION_VERSION=$(REVISION_VERSION) -o $(FILE_NAME) $(SRC_O) $(LDFLAGS)
 	$(STRIP) $(FILE_NAME)
 	$(IPKG_BUILD) i386
 	$(LINK_AND_TAR)
@@ -144,6 +147,8 @@ i386-gc-elf-32-lsb-dynamic:	$(SRC_C) $(SRC_H) Makefile
 	ln -f $(FILE_NAME).tgz dl/i386/
 	ln -f $(FILE_CURRENT).tgz dl/i386/
 
+.c.o:
+	$(CC) $(CFLAGS) -DREVISION_VERSION=$(REVISION_VERSION) -c -o $@ $<
 
 
 mipsel-kk-bc:	mipsel-kk-elf-32-lsb-static mipsel-kk-elf-32-lsb-dynamic
