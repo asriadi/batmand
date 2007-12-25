@@ -1465,7 +1465,6 @@ int8_t receive_packet_tap(unsigned char *packet_buff, int16_t packet_buff_len, i
 					unicast_packet->packet_type = BAT_UNICAST;
 					/* set unicast ttl */
 					unicast_packet->ttl = TTL;
-					memcpy( unicast_packet->orig, ((struct batman_if *)if_list.next)->hw_addr, 6 );
 					/* copy the destination for faster routing */
 					memcpy( unicast_packet->dest, dhost, 6 );
 
