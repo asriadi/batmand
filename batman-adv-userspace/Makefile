@@ -18,11 +18,11 @@
 
 
 CC =			gcc
-CFLAGS =		-Wall -W -O1 -g
+CFLAGS =		-Wall -W -O1 -g  -DDEBUG_MALLOC
 STRIP=			strip
 LDFLAGS =		-lpthread -g
 
-CFLAGS_MIPS =	-Wall -W -O1 -g -DREVISION_VERSION=$(REVISION_VERSION)
+CFLAGS_MIPS =	-Wall -W -O1 -g -DREVISION_VERSION=$(REVISION_VERSION) -DDEBUG_MALLOC
 LDFLAGS_MIPS =	-lpthread
 
 UNAME=		$(shell uname)

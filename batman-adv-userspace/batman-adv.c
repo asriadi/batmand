@@ -879,7 +879,7 @@ int8_t batman() {
 					if (is_single_hop_neigh) {
 
 						/* mark direct link on incoming interface */
-						schedule_forward_packet(orig_node, neigh, (struct batman_packet *)&in, 0, 1, in_hna_len, if_incoming);
+						schedule_forward_packet(orig_node, neigh, (struct batman_packet *)&in, 0, 1, in_len, if_incoming);
 
 						debug_output(4, "Forward packet: rebroadcast neighbour packet with direct link flag \n" );
 
@@ -890,7 +890,7 @@ int8_t batman() {
 
 							if (!is_duplicate) {
 
-								schedule_forward_packet(orig_node, neigh, (struct batman_packet *)&in, 0, 0, in_hna_len, if_incoming);
+								schedule_forward_packet(orig_node, neigh, (struct batman_packet *)&in, 0, 0, in_len, if_incoming);
 
 								debug_output(4, "Forward packet: rebroadcast originator packet \n" );
 
