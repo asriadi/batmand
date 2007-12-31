@@ -101,7 +101,7 @@ void sym_print( char x, char y, char *z ) {
 
 }
 
-int8_t send_udp_packet( unsigned char *packet_buff, int32_t packet_buff_len, struct sockaddr_in *broad, int32_t send_sock ) 
+int8_t send_udp_packet( unsigned char *packet_buff, int32_t packet_buff_len, struct sockaddr_in *broad, int32_t send_sock )
 {
 
 	if ( sendto( send_sock, packet_buff, packet_buff_len, 0, (struct sockaddr *)broad, sizeof(struct sockaddr_in) ) < 0 ) {
@@ -205,12 +205,14 @@ void print_animation( void ) {
 
 }
 
+int addr_to_string(char *buff, uint8_t *hw_addr)
+{
+	return sprintf(buff, "%02x:%02x:%02x:%02x:%02x:%02x", hw_addr[0], hw_addr[1], hw_addr[2], hw_addr[3], hw_addr[4], hw_addr[5]);
+}
 
-
-char *addr_to_string( uint8_t *hw_addr ) {
-
+char *addr_to_string_static(uint8_t *hw_addr)
+{
 	return ether_ntoa( (struct ether_addr *)hw_addr );
-
 }
 
 

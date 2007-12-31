@@ -303,14 +303,18 @@ void verbose_usage( void ) {
 
 void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, unsigned char *hna_recv_buff, int16_t hna_buff_len )
 {
+	char str1[ETH_STR_LEN], str2[ETH_STR_LEN];
 
 	debug_output( 4, "update_routes() \n" );
 
 
 	if ( ( orig_node != NULL ) && ( orig_node->router != neigh_node ) ) {
 
+		addr_to_string(str1, orig_node->orig);
+		addr_to_string(str2, neigh_node->addr);
+
 		if ( ( orig_node != NULL ) && ( neigh_node != NULL ) )
-			debug_output( 4, "Route to %s via %s\n", addr_to_string( orig_node->orig ), addr_to_string( neigh_node->addr ) );
+			debug_output( 4, "Route to %s via %s\n", str1, str2);
 
 		/* route altered or deleted */
 		if ( ( ( orig_node->router != NULL ) && ( neigh_node != NULL ) ) || ( neigh_node == NULL ) ) {
@@ -389,13 +393,13 @@ void update_gw_list( struct orig_node *orig_node, uint8_t new_gwflags ) {
 
 		if ( gw_node->orig_node == orig_node ) {
 
-			debug_output( 3, "Gateway class of originator %s changed from %i to %i \n", addr_to_string( gw_node->orig_node->orig ), gw_node->orig_node->gwflags, new_gwflags );
+			debug_output(3, "Gateway class of originator %s changed from %i to %i \n", addr_to_string_static(gw_node->orig_node->orig), gw_node->orig_node->gwflags, new_gwflags);
 
 			if ( new_gwflags == 0 ) {
 
 				gw_node->deleted = get_time();
 
-				debug_output( 3, "Gateway %s removed from gateway list \n", addr_to_string( gw_node->orig_node->orig ) );
+				debug_output(3, "Gateway %s removed from gateway list \n", addr_to_string_static(gw_node->orig_node->orig));
 
 			} else {
 
@@ -411,7 +415,7 @@ void update_gw_list( struct orig_node *orig_node, uint8_t new_gwflags ) {
 
 	}
 
-	debug_output( 3, "Found new gateway %s -> class: %i - %s \n", addr_to_string( orig_node->orig ), new_gwflags, gw2string[new_gwflags] );
+	debug_output(3, "Found new gateway %s -> class: %i - %s \n", addr_to_string_static(orig_node->orig), new_gwflags, gw2string[new_gwflags]);
 
 	gw_node = debugMalloc( sizeof(struct gw_node), 103 );
 	memset( gw_node, 0, sizeof(struct gw_node) );
@@ -465,6 +469,7 @@ int isBidirectionalNeigh(struct orig_node *orig_node, struct orig_node *orig_nei
 	struct list_head *list_pos;
 	struct neigh_node *neigh_node = NULL, *tmp_neigh_node = NULL;
 	uint8_t total_count;
+	char str1[ETH_STR_LEN], str2[ETH_STR_LEN];
 
 
 	if (orig_node == orig_neigh_node) {
@@ -521,8 +526,10 @@ int isBidirectionalNeigh(struct orig_node *orig_node, struct orig_node *orig_nei
 
 	/*debug_output( 3, "bidirectional: orig = %-15s neigh = %-15s => own_bcast = %2i, real recv = %2i, local tq: %3i, asym_penality: %3i, total tq: %3i \n",
 	orig_str, neigh_str, total_count, neigh_node->real_packet_count, orig_neigh_node->tq_own, orig_neigh_node->tq_asym_penality, in->tq );*/
+	addr_to_string(str1, orig_node->orig);
+	addr_to_string(str2, orig_neigh_node->orig);
 	debug_output( 4, "bidirectional: orig = %-15s neigh = %-15s => own_bcast = %2i, real recv = %2i, local tq: %3i, asym_penality: %3i, total tq: %3i \n",
-		      addr_to_string(orig_node->orig), addr_to_string(orig_neigh_node->orig), total_count, neigh_node->real_packet_count, orig_neigh_node->tq_own, orig_neigh_node->tq_asym_penality, in->tq );
+		      str1, str2, total_count, neigh_node->real_packet_count, orig_neigh_node->tq_own, orig_neigh_node->tq_asym_penality, in->tq );
 
 	/* if link has the minimum required transmission quality consider it bidirectional */
 	if (in->tq >= TQ_TOTAL_BIDRECT_LIMIT)
@@ -578,7 +585,7 @@ void generate_vis_packet() {
 
 	((struct vis_packet *)vis_packet)->version = VIS_COMPAT_VERSION;
 	((struct vis_packet *)vis_packet)->gw_class = gateway_class;
-	((struct vis_packet *)vis_packet)->seq_range = SEQ_RANGE;
+	((struct vis_packet *)vis_packet)->seq_range = TQ_MAX_VALUE;
 
 	/* neighbor list */
 	while ( NULL != ( hashit = hash_iterate( orig_hash, hashit ) ) ) {
@@ -716,6 +723,7 @@ int8_t batman() {
 	struct forw_node *forw_node;
 	uint32_t debug_timeout, select_timeout;
 	unsigned char in[2000];
+	char str1[ETH_STR_LEN], str2[ETH_STR_LEN], str3[ETH_STR_LEN];
 	int16_t in_len;
 	int16_t in_hna_len;
 	uint8_t *in_hna_buff;
@@ -779,12 +787,15 @@ int8_t batman() {
 			in_hna_buff = in + sizeof(struct batman_packet);
 			in_hna_len = in_len - sizeof(struct batman_packet);
 
+			addr_to_string(str1, neigh);
+			addr_to_string(str2, if_incoming->hw_addr);
+			addr_to_string(str3, ((struct batman_packet *)&in)->orig);
 
 			debug_output( 4, "Received BATMAN packet via NB: %s ,IF: %s %s (from OG: %s, seqno %d, TTL %d, V %d, UDF %d, IDF %d) \n",
-					addr_to_string( neigh ),
+					str1,
 					if_incoming->dev,
-					addr_to_string( if_incoming->hw_addr ),
-					addr_to_string( ((struct batman_packet *)&in)->orig ),
+					str2,
+					str3,
 					((struct batman_packet *)&in)->seqno,
 					((struct batman_packet *)&in)->ttl,
 					has_version,
@@ -819,11 +830,11 @@ int8_t batman() {
 
 			} else if ( is_my_addr ) {
 
-				debug_output( 4, "Drop packet: received my own broadcast (sender: %s)\n", addr_to_string( neigh ) );
+				debug_output(4, "Drop packet: received my own broadcast (sender: %s)\n", str1);
 
 			} else if ( is_broadcast ) {
 
-				debug_output( 4, "Drop packet: ignoring all packets with broadcast source IP (sender: %s)\n", addr_to_string( neigh ) );
+				debug_output( 4, "Drop packet: ignoring all packets with broadcast source IP (sender: %s)\n", str1);
 
 			} else if ( is_my_orig ) {
 
@@ -852,7 +863,7 @@ int8_t batman() {
 
 			} else if (is_my_oldorig) {
 
-				debug_output(4, "Drop packet: ignoring all rebroadcast echos (sender: %s) \n", addr_to_string(neigh));
+				debug_output(4, "Drop packet: ignoring all rebroadcast echos (sender: %s) \n", str1);
 
 			} else {
 				is_duplicate = count_real_packets(neigh, (struct batman_packet *)&in, if_incoming);

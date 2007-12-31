@@ -185,7 +185,7 @@ void send_outstanding_packets() {
 
 				if ( forw_node->if_outgoing != NULL ) {
 
-					debug_output( 4, "Forwarding packet (originator %s, seqno %d, TTL %d) on interface %s\n", addr_to_string( ((struct batman_packet *)forw_node->pack_buff)->orig ), ntohs( ((struct batman_packet *)forw_node->pack_buff)->seqno ), ((struct batman_packet *)forw_node->pack_buff)->ttl, forw_node->if_outgoing->dev );
+					debug_output(4, "Forwarding packet (originator %s, seqno %d, TTL %d) on interface %s\n", addr_to_string_static(((struct batman_packet *)forw_node->pack_buff)->orig), ntohs( ((struct batman_packet *)forw_node->pack_buff)->seqno ), ((struct batman_packet *)forw_node->pack_buff)->ttl, forw_node->if_outgoing->dev);
 
 					if ( send_packet( forw_node->pack_buff, forw_node->pack_buff_len, forw_node->if_outgoing->hw_addr, broadcastAddr, forw_node->if_outgoing->raw_sock ) < 0 )
 						restore_and_exit(0);
@@ -221,7 +221,7 @@ void send_outstanding_packets() {
 					/* non-primary interfaces are only broadcasted on their interface */
 					if ( ( forw_node->own ) && ( forw_node->if_outgoing->if_num > 0 ) ) {
 
-						debug_output( 4, "Forwarding packet (originator %s, seqno %d, TTL %d) on interface %s \n", addr_to_string( ((struct batman_packet *)forw_node->pack_buff)->orig ), ntohs( ((struct batman_packet *)forw_node->pack_buff)->seqno ), ((struct batman_packet *)forw_node->pack_buff)->ttl, forw_node->if_outgoing->dev );
+						debug_output(4, "Forwarding packet (originator %s, seqno %d, TTL %d) on interface %s \n", addr_to_string_static(((struct batman_packet *)forw_node->pack_buff)->orig), ntohs( ((struct batman_packet *)forw_node->pack_buff)->seqno ), ((struct batman_packet *)forw_node->pack_buff)->ttl, forw_node->if_outgoing->dev);
 
 						if ( send_packet(forw_node->pack_buff, forw_node->pack_buff_len, forw_node->if_outgoing->hw_addr, broadcastAddr, forw_node->if_outgoing->raw_sock ) < 0 )
 							restore_and_exit(0);
@@ -238,7 +238,7 @@ void send_outstanding_packets() {
 								((struct batman_packet *)forw_node->pack_buff)->flags = 0x00;
 							}
 
-							debug_output( 4, "Forwarding packet (originator %s, seqno %d, TTL %d) on interface %s \n", addr_to_string( ((struct batman_packet *)forw_node->pack_buff)->orig ), ntohs( ((struct batman_packet *)forw_node->pack_buff)->seqno ), ((struct batman_packet *)forw_node->pack_buff)->ttl, batman_if->dev );
+							debug_output(4, "Forwarding packet (originator %s, seqno %d, TTL %d) on interface %s \n", addr_to_string_static(((struct batman_packet *)forw_node->pack_buff)->orig), ntohs( ((struct batman_packet *)forw_node->pack_buff)->seqno ), ((struct batman_packet *)forw_node->pack_buff)->ttl, batman_if->dev);
 
 							if ( send_packet( forw_node->pack_buff, forw_node->pack_buff_len, batman_if->hw_addr, broadcastAddr, batman_if->raw_sock ) < 0 )
 								restore_and_exit(0);
