@@ -310,11 +310,15 @@ void update_routes( struct orig_node *orig_node, struct neigh_node *neigh_node, 
 
 	if ( ( orig_node != NULL ) && ( orig_node->router != neigh_node ) ) {
 
-		addr_to_string(str1, orig_node->orig);
-		addr_to_string(str2, neigh_node->addr);
 
-		if ( ( orig_node != NULL ) && ( neigh_node != NULL ) )
+
+		if ((orig_node != NULL) && (neigh_node != NULL)) {
+
+			addr_to_string(str1, orig_node->orig);
+			addr_to_string(str2, neigh_node->addr);
 			debug_output( 4, "Route to %s via %s\n", str1, str2);
+
+		}
 
 		/* route altered or deleted */
 		if ( ( ( orig_node->router != NULL ) && ( neigh_node != NULL ) ) || ( neigh_node == NULL ) ) {
