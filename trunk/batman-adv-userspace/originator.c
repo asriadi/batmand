@@ -97,7 +97,7 @@ struct orig_node *get_orig_node( uint8_t *addr ) {
 	if ( orig_node != NULL )
 		return orig_node;
 
-	debug_output( 4, "Creating new originator: %s \n", addr_to_string( addr ) );
+	debug_output(4, "Creating new originator: %s \n", addr_to_string_static(addr));
 
 	orig_node = debugMalloc( sizeof(struct orig_node), 401 );
 	memset(orig_node, 0, sizeof(struct orig_node));
@@ -244,7 +244,7 @@ void purge_orig( uint32_t curr_time ) {
 
 		if ( (int)( ( orig_node->last_valid + PURGE_TIMEOUT ) < curr_time ) ) {
 
-			debug_output( 4, "Originator timeout: originator %s, last_valid %u \n", addr_to_string( orig_node->orig ), orig_node->last_valid );
+			debug_output(4, "Originator timeout: originator %s, last_valid %u \n", addr_to_string_static(orig_node->orig), orig_node->last_valid);
 
 			hash_remove_bucket( orig_hash, hashit );
 
@@ -267,7 +267,7 @@ void purge_orig( uint32_t curr_time ) {
 
 				if ( gw_node->orig_node == orig_node ) {
 
-					debug_output( 3, "Removing gateway %s from gateway list \n", addr_to_string( gw_node->orig_node->orig ) );
+					debug_output(3, "Removing gateway %s from gateway list \n", addr_to_string_static(gw_node->orig_node->orig));
 
 					gw_node->deleted = get_time();
 
@@ -362,7 +362,7 @@ void debug_orig() {
 	if ( debug_clients.clients_num[1] > 0 ) {
 
 		debug_output( 2, "BOD \n" );
-		debug_output( 2, "%''14s     (%s/%i) %''17s [%10s], gw_class ... [B.A.T.M.A.N. %s%s, MainIF/IP: %s/%s, UT: %id%2ih%2im] \n", "Gateway", "#", TQ_MAX_VALUE, "Nexthop", "outgoingIF", SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), ((struct batman_if *)if_list.next)->dev, addr_to_string(((struct batman_if *)if_list.next)->hw_addr), uptime_sec/86400, ((uptime_sec%86400)/3600), ((uptime_sec)%3600)/60 );
+		debug_output( 2, "%''14s     (%s/%i) %''17s [%10s], gw_class ... [B.A.T.M.A.N. %s%s, MainIF/IP: %s/%s, UT: %id%2ih%2im] \n", "Gateway", "#", TQ_MAX_VALUE, "Nexthop", "outgoingIF", SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), ((struct batman_if *)if_list.next)->dev, addr_to_string_static(((struct batman_if *)if_list.next)->hw_addr), uptime_sec/86400, ((uptime_sec%86400)/3600), ((uptime_sec)%3600)/60 );
 
 		if ( list_empty( &gw_list ) ) {
 
@@ -401,7 +401,7 @@ void debug_orig() {
 	if ( ( debug_clients.clients_num[0] > 0 ) || ( debug_clients.clients_num[3] > 0 ) ) {
 
 		debug_output( 1, "BOD \n" );
-		debug_output( 1, "  %-14s %''16s (%s/%i): %''20s... [B.A.T.M.A.N. %s%s, Mac: %s, UT: %id%2ih%2im] \n", "Originator", "Router", "#", SEQ_RANGE, "Potential routers", SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), addr_to_string( ((struct batman_if *)if_list.next)->hw_addr ), uptime_sec/86400, ((uptime_sec%86400)/3600), ((uptime_sec)%3600)/60 );
+		debug_output( 1, "  %-14s %''16s (%s/%i): %''20s... [B.A.T.M.A.N. %s%s, Mac: %s, UT: %id%2ih%2im] \n", "Originator", "Router", "#", TQ_MAX_VALUE, "Potential routers", SOURCE_VERSION, ( strncmp( REVISION_VERSION, "0", 1 ) != 0 ? REVISION_VERSION : "" ), addr_to_string_static(((struct batman_if *)if_list.next)->hw_addr), uptime_sec/86400, ((uptime_sec%86400)/3600), ((uptime_sec)%3600)/60 );
 
 		if ( debug_clients.clients_num[3] > 0 ) {
 
@@ -409,12 +409,12 @@ void debug_orig() {
 			debug_output( 4, "Forward list \n" );
 
 			list_for_each( forw_pos, &forw_list ) {
-				forw_node = list_entry( forw_pos, struct forw_node, list );
-				debug_output( 4, "    %s at %u \n", addr_to_string( ((struct batman_packet *)forw_node->pack_buff)->orig ), forw_node->send_time );
+				forw_node = list_entry(forw_pos, struct forw_node, list);
+				debug_output(4, "    %s at %u \n", addr_to_string_static(((struct batman_packet *)forw_node->pack_buff)->orig), forw_node->send_time);
 			}
 
 			debug_output( 4, "Originator list \n" );
-			debug_output( 4, "  %-14s %''16s (%s/%i): %''20s\n", "Originator", "Router", "#", SEQ_RANGE, "Potential routers" );
+			debug_output( 4, "  %-14s %''16s (%s/%i): %''20s\n", "Originator", "Router", "#", TQ_MAX_VALUE, "Potential routers" );
 
 		}
 
@@ -428,16 +428,16 @@ void debug_orig() {
 			batman_count++;
 
 			/* addr_to_string create a static buffer which will be used for orig and router */
-			debug_output( 1, "%-17s ", addr_to_string( orig_node->orig ) );
-			debug_output( 1, "%''17s (%3i):", addr_to_string( orig_node->router->addr ), orig_node->router->tq_avg );
-			debug_output( 4, "%-17s ", addr_to_string( orig_node->orig ) );
-			debug_output( 4, "%''17s (%3i), last_valid: %u: \n", addr_to_string( orig_node->router->addr ), orig_node->router->tq_avg, orig_node->last_valid );
+			debug_output(1, "%-17s ", addr_to_string_static(orig_node->orig));
+			debug_output(1, "%''17s (%3i):", addr_to_string_static(orig_node->router->addr), orig_node->router->tq_avg);
+			debug_output(4, "%-17s ", addr_to_string_static(orig_node->orig));
+			debug_output(4, "%''17s (%3i), last_valid: %u: \n", addr_to_string_static(orig_node->router->addr), orig_node->router->tq_avg, orig_node->last_valid);
 
 			list_for_each( neigh_pos, &orig_node->neigh_list ) {
 				neigh_node = list_entry( neigh_pos, struct neigh_node, list );
 
-				debug_output( 1, " %''17s (%3i)", addr_to_string( neigh_node->addr ), neigh_node->tq_avg );
-				debug_output( 4, "\t\t%''17s (%3i) \n", addr_to_string( neigh_node->addr ), neigh_node->tq_avg );
+				debug_output(1, " %''17s (%3i)", addr_to_string_static(neigh_node->addr), neigh_node->tq_avg);
+				debug_output(4, "\t\t%''17s (%3i) \n", addr_to_string_static(neigh_node->addr), neigh_node->tq_avg);
 
 			}
 

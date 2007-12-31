@@ -55,11 +55,11 @@ int transtable_add(unsigned char *mac, unsigned char *batman_mac) {
 	if (memcmp( mac, zero_addr, 6) == 0) return(-1);
 	if ((mac[0] == 0x01) && (mac[1] == 0x00) && (mac[2] == 0x5e) && (!(mac[3] & 0x80))) return(-1);
 
-	elem = hash_find(trans_hash, mac);	/* first check, then add saves us a malloc() in 
+	elem = hash_find(trans_hash, mac);	/* first check, then add saves us a malloc() in
 										 * most of the times where no mac is to add,
 										 * so this should be faster */
-	if (elem != NULL) 
-		if (memcmp(batman_mac, elem->batman_mac, 6) != 0) { 
+	if (elem != NULL)
+		if (memcmp(batman_mac, elem->batman_mac, 6) != 0) {
 			/* host changed to a new batman_mac. delete it and reassign. */
 			dlist_del(&elem->list_link);
 			hash_remove(trans_hash, elem);
@@ -76,10 +76,10 @@ int transtable_add(unsigned char *mac, unsigned char *batman_mac) {
 		memcpy(elem->batman_mac, batman_mac, 6);
 		elem->age= curr_time;
 		hash_add(trans_hash, elem);
-		debug_output( 4, "MAC: Add %s\n",	addr_to_string(mac));
-		debug_output( 4, "MAC: to originator %s\n",	addr_to_string(batman_mac));
+		debug_output( 4, "MAC: Add %s\n",	addr_to_string_static(mac));
+		debug_output( 4, "MAC: to originator %s\n",	addr_to_string_static(batman_mac));
 		return(0);
-	} 
+	}
 	return(-1);
 }
 
@@ -89,18 +89,18 @@ unsigned char *transtable_search(unsigned char *mac) {
 
 	elem= hash_find(trans_hash, mac);
 	if ( elem != NULL)	{
-/*		debug_output( 4, "HNA: transtable_search Found MAC %s at ",	addr_to_string(elem->mac)); 
+/*		debug_output( 4, "HNA: transtable_search Found MAC %s at ",	addr_to_string(elem->mac));
 		debug_output( 4, "HNA: at %s\n",							addr_to_string(elem->batman_mac)); */
 
 		return(elem->batman_mac);
 	}
-	else {					
+	else {
 /*		debug_output( 4, "HNA: transtable_search COULD NOT FIND MAC %s at ",	addr_to_string(mac)); */
 		return(NULL);
 	}
 }
 /* delete an host from the table */
-void hna_del(struct trans_element_t *elem) 
+void hna_del(struct trans_element_t *elem)
 {
 
 /*	debug_output(4, "HNA: hna_del(%s) \n", addr_to_string(elem->mac) ); */
@@ -115,7 +115,7 @@ void hna_add(unsigned char *mac, unsigned char *mymac)
 	struct trans_element_t *elem;
 	elem = hash_find(trans_hash, mac);
 
-	debug_output(4, "HNA: hna_add(%s) \n", addr_to_string(mac) );
+	debug_output(4, "HNA: hna_add(%s) \n", addr_to_string_static(mac) );
 	if (elem != NULL) {
 		if (is_my_mac(elem->batman_mac)) {
 			elem->age = curr_time;
@@ -127,7 +127,7 @@ void hna_add(unsigned char *mac, unsigned char *mymac)
 	}
 	if (elem == NULL) { /* not found or deleted */
 		transtable_add( mac, mymac);
-		elem = hash_find(trans_hash, mac);	
+		elem = hash_find(trans_hash, mac);
 		if (elem != NULL) {
 			elem->age = curr_time;
 			dlist_add(&elem->list_link, &hna_list);
@@ -151,18 +151,18 @@ void hna_remove_list(struct dlist_head *list) {
 }
 
 /* iterate through the list and remove old entries */
-void hna_update() 
+void hna_update()
 {
 	struct trans_element_t *elem, *tmp;
 	int cnt_hna = 0;
-	
+
 /*	debug_output(4, "HNA: hna_update() (curr_time = %d)", curr_time);*/
 	dlist_for_each_entry_safe(elem, tmp, &hna_list, list_link) {
 		if ((curr_time - elem->age) > AGE_THRESHOLD) {
-			debug_output(4, "HNA: hna_update: purge old mac %s.\n", addr_to_string(elem->mac) );
+			debug_output(4, "HNA: hna_update: purge old mac %s.\n", addr_to_string_static(elem->mac) );
 			hna_del(elem);
-		} else 
-			cnt_hna++; 
+		} else
+			cnt_hna++;
 	}
 	if (hna_changed == 1) {
 		/* rewrite the HNA-buffer */
@@ -171,7 +171,7 @@ void hna_update()
 		debug_output(4, "HNA: Local HNA changed: (%d hnas counted)\n", cnt_hna );
 		cnt_hna = 0;
 		dlist_for_each_entry(elem, &hna_list, list_link) {
-			debug_output(4, "HNA: %d: %s  \n", cnt_hna, addr_to_string(elem->mac));
+			debug_output(4, "HNA: %d: %s  \n", cnt_hna, addr_to_string_static(elem->mac));
 			memcpy(&hna_buff[6*cnt_hna], elem->mac, 6);
 			cnt_hna++;
 		}
@@ -185,7 +185,7 @@ void hna_update()
 }
 
 /* add the hosts from the hna_buff into the hashtable and linked list */
-void hna_add_buff(struct orig_node *orig_node) 
+void hna_add_buff(struct orig_node *orig_node)
 {
 	int 				 	 i;
 	unsigned char 			*host;
@@ -194,14 +194,14 @@ void hna_add_buff(struct orig_node *orig_node)
 	for (i = 0 ; i < orig_node->hna_buff_len/6 ; i++) {
 		host = &orig_node->hna_buff[i * 6];
 		if (transtable_add(host, orig_node->orig) == 0) {
-			elem = hash_find(trans_hash, host);	
+			elem = hash_find(trans_hash, host);
 			dlist_add(&elem->list_link, &orig_node->hna_list);
 		}
 	}
 }
 
 /* removes and clears the hna_list from an orig_node */
-void hna_del_buff( struct orig_node *orig_node) 
+void hna_del_buff( struct orig_node *orig_node)
 {
 	hna_remove_list(&orig_node->hna_list);
 	debugFree(orig_node->hna_buff, 1101);

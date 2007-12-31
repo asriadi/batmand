@@ -98,7 +98,6 @@
 
 #define PERFECT_TQ_PENALTY 5
 
-#define SEQ_RANGE 128         /* sliding packet range of received originator messages in squence numbers (should be a multiple of our word size) */
 #define PACKETS_PER_CYCLE 10  /* this seems to be a reasonable value (i've tested for different setups) */
 							  /* how many packets to read from the virtual interfaces, maximum.
 							   * low value = high throughput, high CPU-load
@@ -117,10 +116,12 @@
 								/* maximum size of a packet which carries payload. This should be calculated by the compiler.*/
 #define BATMAN_MAXFRAMESIZE		(sizeof(struct ether_header) + BATMAN_MAXPACKETSIZE)	/* size of an ethernet frame. */
 
-#define NUM_WORDS ((int)( SEQ_RANGE / WORD_BIT_SIZE ))
+#define NUM_WORDS (TQ_LOCAL_WINDOW_SIZE / WORD_BIT_SIZE)
 
 #define AGE_THRESHOLD		300000
 			/* purge from local hna list after 5 minutes. */
+
+#define ETH_STR_LEN 20
 
 
 extern unsigned char broadcastAddr[];

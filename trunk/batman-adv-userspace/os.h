@@ -24,7 +24,8 @@
 
 int8_t is_aborted();
 int32_t rand_num( int32_t limit );
-char *addr_to_string( uint8_t *hw_addr );
+int addr_to_string(char *buff, uint8_t *hw_addr);
+char *addr_to_string_static(uint8_t *hw_addr);
 uint32_t get_time( void );
 uint32_t get_time_sec( void );
 
