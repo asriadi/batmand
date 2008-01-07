@@ -241,7 +241,7 @@ void *unix_listen( void BATUNUSED(*arg) ) {
 	int32_t status, max_sock, unix_opts;
 	int8_t res;
 	uint8_t i;
-	unsigned char buff[20];
+	unsigned char buff[50];
 	fd_set wait_sockets, tmp_wait_sockets;
 	socklen_t sun_size = sizeof(struct sockaddr_un);
 
