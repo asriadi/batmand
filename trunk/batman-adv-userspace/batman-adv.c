@@ -750,6 +750,7 @@ int8_t batman() {
 		batman_if->out.gwflags = gateway_class;
 		batman_if->out.tq = TQ_MAX_VALUE;
 		batman_if->out.seqno = 1;
+		batman_if->out.num_hna = 0;
 
 		memcpy(batman_if->out.orig, batman_if->hw_addr, 6);
 		memcpy(batman_if->out.old_orig, batman_if->hw_addr, 6);

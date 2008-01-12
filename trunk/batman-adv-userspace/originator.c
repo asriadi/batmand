@@ -144,6 +144,7 @@ void update_orig(struct orig_node *orig_node, uint8_t *neigh, struct batman_pack
 	struct list_head *list_pos;
 	struct neigh_node *neigh_node = NULL, *tmp_neigh_node = NULL, *best_neigh_node = NULL;
 	uint8_t max_tq = 0, max_bcast_own = 0;
+	int16_t tmp_hna_buff_len;
 
 
 	debug_output( 4, "update_originator(): Searching and updating originator entry of received packet,  \n" );
@@ -214,8 +215,10 @@ void update_orig(struct orig_node *orig_node, uint8_t *neigh, struct batman_pack
 
 	}
 
+	tmp_hna_buff_len = (hna_buff_len > in->num_hna * ETH_ALEN ? in->num_hna * ETH_ALEN : hna_buff_len);
+
 	/* update routing table */
-	update_routes( orig_node, best_neigh_node, hna_recv_buff, hna_buff_len );
+	update_routes(orig_node, best_neigh_node, hna_recv_buff, tmp_hna_buff_len);
 
 	if ( orig_node->gwflags != in->gwflags )
 		update_gw_list( orig_node, in->gwflags );
