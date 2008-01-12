@@ -168,7 +168,6 @@ void hna_update()
 	if (hna_changed == 1) {
 		/* rewrite the HNA-buffer */
 		num_hna = cnt_hna;
-		((struct batman_if *)if_list.next)->out.num_hna = cnt_hna;
 		hna_buff = debugRealloc(hna_buff, num_hna*6, 601);
 		debug_output(3, "HNA: Local HNA changed: (%d hnas counted)\n", cnt_hna );
 		cnt_hna = 0;
@@ -179,10 +178,12 @@ void hna_update()
 		}
 		hna_changed = 0;
 
-		/* only announce as many hosts as possible in the batman-packet. That also
-		 * should give a limit to MAC-flooding. */
-		if (num_hna > (tap_mtu - BATMAN_MAXFRAMESIZE)/6)
-			num_hna = (tap_mtu - BATMAN_MAXFRAMESIZE)/6;
+		/* only announce as many hosts as possible in the batman-packet and space in batman_packet->num_hna
+		   That also should give a limit to MAC-flooding. */
+		if ((num_hna > (tap_mtu - BATMAN_MAXFRAMESIZE)/6) || (num_hna > sizeof(uint8_t)))
+			num_hna = ((tap_mtu - BATMAN_MAXFRAMESIZE)/6 > sizeof(uint8_t) ? sizeof(uint8_t) : (tap_mtu - BATMAN_MAXFRAMESIZE)/6);
+
+		((struct batman_if *)if_list.next)->out.num_hna = num_hna;
 	}
 }
 
