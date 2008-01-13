@@ -180,8 +180,8 @@ void hna_update()
 
 		/* only announce as many hosts as possible in the batman-packet and space in batman_packet->num_hna
 		   That also should give a limit to MAC-flooding. */
-		if ((num_hna > (tap_mtu - BATMAN_MAXFRAMESIZE)/6) || (num_hna > sizeof(uint8_t)))
-			num_hna = ((tap_mtu - BATMAN_MAXFRAMESIZE)/6 > sizeof(uint8_t) ? sizeof(uint8_t) : (tap_mtu - BATMAN_MAXFRAMESIZE)/6);
+		if ((num_hna > (tap_mtu - BATMAN_MAXFRAMESIZE)/6) || (num_hna > 255))
+			num_hna = ((tap_mtu - BATMAN_MAXFRAMESIZE)/6 > 255 ? 255 : (tap_mtu - BATMAN_MAXFRAMESIZE)/6);
 
 		((struct batman_if *)if_list.next)->out.num_hna = num_hna;
 	}
