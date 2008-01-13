@@ -193,19 +193,21 @@ void handle_packet( unsigned char *buff, int32_t buff_len, struct unix_client *u
 
 	struct ether_header ether_header;
 	struct orig_node *orig_node;
+	struct icmp_packet *icmp_packet;
 
 	if ( ( ((struct icmp_packet *)buff)->packet_type == BAT_ICMP ) && ( ((struct icmp_packet *)buff)->msg_type == ECHO_REQUEST ) ) {
 
+		icmp_packet = (struct icmp_packet *)buff;
 		/* get routing information */
-		orig_node = find_orig_node( ((struct icmp_packet *)buff)->dst );
+		orig_node = find_orig_node( icmp_packet->dst );
 
-		if ( ( orig_node != NULL ) && ( orig_node->batman_if != NULL ) && ( orig_node->router != NULL ) && ( ((struct icmp_packet *)buff)->ttl > 0 ) ) {
+		if ( ( orig_node != NULL ) && ( orig_node->batman_if != NULL ) && ( orig_node->router != NULL ) && ( icmp_packet->ttl > 0 ) ) {
 
 			memcpy( ether_header.ether_shost, orig_node->batman_if->hw_addr, ETH_ALEN );
 			memcpy( ether_header.ether_dhost, orig_node->router->addr, ETH_ALEN );
 
-			((struct icmp_packet *)buff)->uid = unix_client->uid;
-			memcpy( ((struct icmp_packet *)buff)->orig, orig_node->batman_if->hw_addr, ETH_ALEN );
+			icmp_packet->uid = unix_client->uid;
+			memcpy( icmp_packet->orig, orig_node->batman_if->hw_addr, ETH_ALEN );
 
 			if ( rawsock_write( orig_node->batman_if->raw_sock, &ether_header, buff, buff_len ) < 0 ) {
 
@@ -215,7 +217,7 @@ void handle_packet( unsigned char *buff, int32_t buff_len, struct unix_client *u
 
 		} else {
 
-			((struct icmp_packet *)buff)->msg_type = DESTINATION_UNREACHABLE;
+			icmp_packet->msg_type = DESTINATION_UNREACHABLE;
 
 			write( unix_client->sock, buff, buff_len );
 
@@ -1502,6 +1504,10 @@ int8_t receive_packet_batiface( unsigned char *packet_buff, int16_t packet_buff_
 	struct list_head 		*if_pos;
 	int 					 i;
 	char str1[ETH_STR_LEN], str2[ETH_STR_LEN];
+	struct icmp_packet		*icmp_packet;
+	struct batman_packet	*batman_packet;
+	struct bcast_packet		*bcast_packet;
+	struct unicast_packet 	*unicast_packet;
 
 	for (i=0; i<PACKETS_PER_CYCLE; i++) {
 		if ((*pay_buff_len = rawsock_read(batman_if->raw_sock, &ether_header, packet_buff, packet_buff_len-1)) > -1) {
@@ -1518,7 +1524,9 @@ int8_t receive_packet_batiface( unsigned char *packet_buff, int16_t packet_buff_
 				if ( *pay_buff_len < (int)sizeof(struct batman_packet) )
 					continue;
 
-				((struct batman_packet *)packet_buff)->seqno = ntohs( ((struct batman_packet *)packet_buff)->seqno ); /* network to host order for our 16bit seqno. */
+				batman_packet = ((struct batman_packet *)packet_buff);
+
+				batman_packet->seqno = ntohs( batman_packet->seqno ); /* network to host order for our 16bit seqno. */
 
 				(*if_incoming) = batman_if;
 				memcpy( neigh, ether_header.ether_shost, ETH_ALEN );
@@ -1538,7 +1546,9 @@ int8_t receive_packet_batiface( unsigned char *packet_buff, int16_t packet_buff_
 				if ( *pay_buff_len < (int)sizeof(struct unicast_packet) )
 					continue;
 
-				dhost = ((struct unicast_packet *)packet_buff)->dest;
+				unicast_packet = (struct unicast_packet *)packet_buff;
+
+				dhost = unicast_packet->dest;
 	/*
 				dhost = transtable_search( ((struct ether_header *)(packet_buff + sizeof(struct unicast_packet)))->ether_dhost);
 				if (dhost == NULL)
@@ -1555,7 +1565,7 @@ int8_t receive_packet_batiface( unsigned char *packet_buff, int16_t packet_buff_
 				} else {
 
 					/* TTL exceeded */
-					if (  ((struct unicast_packet *)packet_buff)->ttl < 2 ) {
+					if (unicast_packet->ttl < 2 ) {
 
 						addr_to_string(str1, ((struct ether_header *)(packet_buff + sizeof(struct unicast_packet)))->ether_shost);
 						addr_to_string(str2, ((struct ether_header *)(packet_buff + sizeof(struct unicast_packet)))->ether_dhost);
@@ -1575,7 +1585,7 @@ int8_t receive_packet_batiface( unsigned char *packet_buff, int16_t packet_buff_
 						memcpy( ether_header.ether_shost, orig_node->batman_if->hw_addr, ETH_ALEN );
 
 						/* decrement ttl */
-						((struct unicast_packet *)packet_buff)->ttl--;
+						unicast_packet->ttl--;
 
 						if ( rawsock_write( orig_node->batman_if->raw_sock, &ether_header, packet_buff, *pay_buff_len ) < 0 ) {
 
@@ -1604,21 +1614,23 @@ int8_t receive_packet_batiface( unsigned char *packet_buff, int16_t packet_buff_
 				if ( *pay_buff_len < (int)sizeof(struct icmp_packet) )
 					continue;
 
+				icmp_packet = (struct icmp_packet *)packet_buff;
+
 				/* packet for me */
-				if ( is_my_mac( ((struct icmp_packet *)packet_buff)->dst ) == 1 ) {
+				if ( is_my_mac( icmp_packet->dst ) == 1 ) {
 
 						/* answer ping request (ping) */
-						if ( ((struct icmp_packet *)packet_buff)->msg_type == ECHO_REQUEST ) {
+						if ( icmp_packet->msg_type == ECHO_REQUEST ) {
 
 							/* get routing information */
-							orig_node = find_orig_node( ((struct icmp_packet *)packet_buff)->orig );
+							orig_node = find_orig_node( icmp_packet->orig );
 
 							if ( ( orig_node != NULL ) && ( orig_node->batman_if != NULL ) && ( orig_node->router != NULL ) ) {
 
-								memcpy( ((struct icmp_packet *)packet_buff)->dst, ((struct icmp_packet *)packet_buff)->orig, ETH_ALEN );
-								memcpy( ((struct icmp_packet *)packet_buff)->orig, ether_header.ether_dhost, ETH_ALEN );
-								((struct icmp_packet *)packet_buff)->msg_type = ECHO_REPLY;
-								((struct icmp_packet *)packet_buff)->ttl = TTL;
+								memcpy( icmp_packet->dst, icmp_packet->orig, ETH_ALEN );
+								memcpy( icmp_packet->orig, ether_header.ether_dhost, ETH_ALEN );
+								icmp_packet->msg_type = ECHO_REPLY;
+								icmp_packet->ttl = TTL;
 
 								memcpy( ether_header.ether_shost, orig_node->batman_if->hw_addr, ETH_ALEN );
 								memcpy( ether_header.ether_dhost, orig_node->router->addr, ETH_ALEN );
@@ -1635,8 +1647,8 @@ int8_t receive_packet_batiface( unsigned char *packet_buff, int16_t packet_buff_
 						} else {
 
 							/* give data to unix client */
-							if ( unix_packet[((struct icmp_packet *)packet_buff)->uid] != NULL )
-								write( ((struct unix_client *)(unix_packet[((struct icmp_packet *)packet_buff)->uid]))->sock, packet_buff, sizeof(struct icmp_packet) );
+							if ( unix_packet[icmp_packet->uid] != NULL )
+								write( ((struct unix_client *)(unix_packet[icmp_packet->uid]))->sock, packet_buff, sizeof(struct icmp_packet) );
 
 						}
 
@@ -1644,30 +1656,25 @@ int8_t receive_packet_batiface( unsigned char *packet_buff, int16_t packet_buff_
 				} else {
 
 					/* TTL exceeded */
-					if ( ((struct icmp_packet *)packet_buff)->ttl < 2 )   {
+					if ( icmp_packet->ttl < 2 )   {
 
-						addr_to_string(str1, (packet_buff[0] == BAT_ICMP
-							? ((struct icmp_packet *)packet_buff)->orig
-							: ((struct ether_header *)(packet_buff + sizeof(struct unicast_packet)))->ether_shost ) );
-
-						addr_to_string(str2, (packet_buff[0] == BAT_ICMP
-							? ((struct icmp_packet *)packet_buff)->dst
-							: ((struct ether_header *)(packet_buff + sizeof(struct unicast_packet)))->ether_dhost));
+						addr_to_string(str1, icmp_packet->orig);
+						addr_to_string(str2, icmp_packet->dst);
 
 						debug_output( 0, "Error - can't send packet from %s to %s: ttl exceeded\n", str1, str2);
 
 						/* send TTL exceed if packet is an echo request (traceroute) */
-						if (((struct icmp_packet *)packet_buff)->msg_type == ECHO_REQUEST ) {
+						if (icmp_packet->msg_type == ECHO_REQUEST ) {
 
 							/* get routing information */
-							orig_node = find_orig_node( ((struct icmp_packet *)packet_buff)->orig );
+							orig_node = find_orig_node( icmp_packet->orig );
 
 							if ( ( orig_node != NULL ) && ( orig_node->batman_if != NULL ) && ( orig_node->router != NULL ) ) {
 
-								memcpy( ((struct icmp_packet *)packet_buff)->dst, ((struct icmp_packet *)packet_buff)->orig, ETH_ALEN );
-								memcpy( ((struct icmp_packet *)packet_buff)->orig, ether_header.ether_dhost, ETH_ALEN );
-								((struct icmp_packet *)packet_buff)->msg_type = TTL_EXCEEDED;
-								((struct icmp_packet *)packet_buff)->ttl = TTL;
+								memcpy( icmp_packet->dst, icmp_packet->orig, ETH_ALEN );
+								memcpy( icmp_packet->orig, ether_header.ether_dhost, ETH_ALEN );
+								icmp_packet->msg_type = TTL_EXCEEDED;
+								icmp_packet->ttl = TTL;
 
 								memcpy( ether_header.ether_shost, orig_node->batman_if->hw_addr, ETH_ALEN );
 								memcpy( ether_header.ether_dhost, orig_node->router->addr, ETH_ALEN );
@@ -1688,7 +1695,7 @@ int8_t receive_packet_batiface( unsigned char *packet_buff, int16_t packet_buff_
 					}
 
 					/* get routing information */
-					orig_node = find_orig_node( ((struct icmp_packet *)packet_buff)->dst );
+					orig_node = find_orig_node( icmp_packet->dst );
 
 					if ( ( orig_node != NULL ) && ( orig_node->batman_if != NULL ) && ( orig_node->router != NULL ) ) {
 
@@ -1696,7 +1703,7 @@ int8_t receive_packet_batiface( unsigned char *packet_buff, int16_t packet_buff_
 						memcpy( ether_header.ether_shost, orig_node->batman_if->hw_addr, ETH_ALEN );
 
 						/* decrement ttl */
-						((struct icmp_packet *)packet_buff)->ttl--;
+						icmp_packet->ttl--;
 
 						if ( rawsock_write( orig_node->batman_if->raw_sock, &ether_header, packet_buff, *pay_buff_len ) < 0 ) {
 
@@ -1730,17 +1737,19 @@ int8_t receive_packet_batiface( unsigned char *packet_buff, int16_t packet_buff_
 				if ( is_my_mac( ether_header.ether_shost ) == 1 )
 					continue;
 
-				orig_node = find_orig_node( ((struct bcast_packet *)packet_buff)->orig );
+				bcast_packet = (struct bcast_packet *)packet_buff;
+
+				orig_node = find_orig_node( bcast_packet->orig );
 
 				if ( orig_node != NULL ) {
 
 					/* check flood history */
-					if (get_bit_status(orig_node->seq_bits, orig_node->last_bcast_seqno, ntohs( ((struct bcast_packet *)packet_buff)->seqno)))
+					if (get_bit_status(orig_node->seq_bits, orig_node->last_bcast_seqno, ntohs( bcast_packet->seqno)))
 						continue;
 
 					/* mark broadcast in flood history */
-					if (bit_get_packet( orig_node->seq_bits, ntohs(((struct bcast_packet *) packet_buff)->seqno)-orig_node->last_bcast_seqno, 1))
-						orig_node->last_bcast_seqno= ntohs( ((struct bcast_packet *)packet_buff)->seqno );
+					if (bit_get_packet( orig_node->seq_bits, ntohs(bcast_packet->seqno) - orig_node->last_bcast_seqno, 1))
+						orig_node->last_bcast_seqno= ntohs( bcast_packet->seqno );
 
 					/* broadcast for me */
 					tap_write( tap_sock, packet_buff + sizeof(struct bcast_packet), *pay_buff_len - sizeof(struct bcast_packet) );
