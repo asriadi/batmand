@@ -40,6 +40,9 @@ unsigned char 		 bcast_addr[6]= { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
 int transtable_init() {
 	INIT_DLIST_HEAD(&hna_list);
 	trans_hash= hash_new( 4096, compare_orig, choose_orig);
+	/* add ourselves */
+	if (trans_hash != NULL)
+		hna_add(((struct batman_if *)if_list.next)->hw_addr, ((struct batman_if *)if_list.next)->hw_addr);
 	return ( (trans_hash == NULL)?-1:0 );
 }
 
@@ -158,7 +161,8 @@ void hna_update()
 
 /*	debug_output(4, "HNA: hna_update() (curr_time = %d)", curr_time);*/
 	dlist_for_each_entry_safe(elem, tmp, &hna_list, list_link) {
-		if ((curr_time - elem->age) > AGE_THRESHOLD) {
+		/* purge old entries, but never ourselves */
+		if (((curr_time - elem->age) > AGE_THRESHOLD) && (memcmp(elem->mac, ((struct batman_if *)if_list.next)->hw_addr, 6)!= 0)) {
 			debug_output(3, "HNA: hna_update: purge old mac %s.\n", addr_to_string_static(elem->mac) );
 			hna_del(elem);
 			hna_changed = 1;
