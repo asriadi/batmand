@@ -118,8 +118,8 @@
 
 #define NUM_WORDS (TQ_LOCAL_WINDOW_SIZE / WORD_BIT_SIZE)
 
-#define AGE_THRESHOLD		300000
-			/* purge from local hna list after 5 minutes. */
+#define AGE_THRESHOLD		3600000
+			/* purge from local hna list after 60 minutes. */
 
 #define ETH_STR_LEN 20
 
