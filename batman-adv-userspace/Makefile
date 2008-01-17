@@ -28,7 +28,7 @@ LOG_BRANCH= trunk/batman-adv-userspace
 
 SRC_FILES= "\(\.c\)\|\(\.h\)\|\(Makefile\)\|\(INSTALL\)\|\(LIESMICH\)\|\(README\)\|\(THANKS\)\|\(TRASH\)\|\(Doxyfile\)\|\(./posix\)\|\(./linux\)\|\(./bsd\)\|\(./man\)\|\(./doc\)"
 
-SRC_C= batman-adv.c originator.c schedule.c list-batman.c posix-specific.c posix.c linux.c allocate.c bitarray.c hash.c trans_table.c ring_buffer.c $(OS_C)
+SRC_C= batman-adv.c originator.c schedule.c list-batman.c posix-specific.c posix.c linux.c allocate.c bitarray.c hash.c trans_table.c ring_buffer.c
 SRC_H= batman-adv.h originator.h schedule.h list-batman.h os.h allocate.h bitarray.h hash.h packet.h trans_table.h dlist.h vis-types.h ring_buffer.h
 SRC_O= $(SRC_C:.c=.o)
 
