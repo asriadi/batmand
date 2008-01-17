@@ -4,7 +4,7 @@ use strict;
 use utf8;
 
 
-my ( %myself_hash, %receive_hash, %forward_hash, $last_orig, $last_neigh, $last_seq, $last_ttl, $orig_interval, $total_seconds, %to_do_hash, %seq_hash, $rt_table );
+my ( %myself_hash, %receive_hash, %forward_hash, %sum_hash, $last_orig, $last_neigh, $last_seq, $last_ttl, $orig_interval, $total_seconds, %to_do_hash, %seq_hash, $rt_table );
 
 $orig_interval = 1000;
 
@@ -47,21 +47,22 @@ while ( <BATMANLOG> ) {
 
 	} else {
 
-		if ( m/Received\ BATMAN\ packet\ via\ NB:\ ([\d]+\.[\d]+\.[\d]+\.[\d]+).*?from OG:\ ([\d]+\.[\d]+\.[\d]+\.[\d]+),\ seqno ([\d]+),\ tq ([\d]+),\ TTL ([\d]+)/ ) {
+		if ( m/Received\ BATMAN\ packet\ via\ NB:\ ([\d]+\.[\d]+\.[\d]+\.[\d]+), IF: (.*?) ([\d]+\.[\d]+\.[\d]+\.[\d]+)\ \(from OG:\ ([\d]+\.[\d]+\.[\d]+\.[\d]+),\ via\ old\ OG:\ ([\d]+\.[\d]+\.[\d]+\.[\d]+),\ seqno ([\d]+),\ tq ([\d]+),\ TTL ([\d]+)/ ) {
 
-			$receive_hash{ $2 }{ $1 }{ "num_recv" }++;
-			$last_orig = $2;
+			$receive_hash{ $4 }{ $1 }{ "num_recv" }++;
+			$myself_hash{ $3 }{ "if" } = $2;
+			$last_orig = $4;
 			$last_neigh = $1;
-			$last_seq = $3;
-			$last_ttl = $5;
+			$last_seq = $6;
+			$last_ttl = $8;
 
-		} elsif ( m/Forwarding\ packet\ \(originator\ ([\d]+\.[\d]+\.[\d]+\.[\d]+)/ ) {
+		} elsif ( m/Forwarding\ packet\ \(originator\ ([\d]+\.[\d]+\.[\d]+\.[\d]+),\ seqno ([\d]+),\ TTL\ ([\d]+)/ ) {
 
 			if ( $1 eq $last_orig ) {
 
 	# 			$receive_hash{ $last_orig }{ $last_neigh }{ "num_forw" }++;
 
-			} elsif ( $myself_hash{ $1 } ) {
+ 			} elsif ( ( $myself_hash{ $1 } ) || ($3 == 50)) {
 
 				$myself_hash{ $1 }{ "sent" }++;
 
@@ -91,6 +92,10 @@ while ( <BATMANLOG> ) {
 
 				$receive_hash{ $last_orig }{ $last_neigh }{ "own_rebroad" }++;
 
+			} elsif ( m/originator\ packet\ with\ tq\ is\ 0/ ) {
+
+				$receive_hash{ $last_orig }{ $last_neigh }{ "tq_zero" }++;
+
 			} elsif ( m/originator\ packet\ with\ unidirectional\ flag/ ) {
 
 				$receive_hash{ $last_orig }{ $last_neigh }{ "uni_flag" }++;
@@ -99,7 +104,11 @@ while ( <BATMANLOG> ) {
 
 				$receive_hash{ $last_orig }{ $last_neigh }{ "unknown" }++;
 
-			} elsif ( m/received\ via\ bidirectional\ link:[\ ]+NO/ ) {
+			} elsif ( m/ignoring\ all\ rebroadcast\ echos/ ) {
+
+				$receive_hash{ $last_orig }{ $last_neigh }{ "bcast_echo" }++;
+
+			} elsif ( m/\ not\ received\ via\ bidirectional\ link/ ) {
 
 				$receive_hash{ $last_orig }{ $last_neigh }{ "uni_link" }++;
 
@@ -200,8 +209,10 @@ if ( $ARGV[0] eq "-p" ) {
 
 	foreach my $orginator ( keys %receive_hash ) {
 
-		my $sum = 0;
+		my ($sum, $sum_dropped, $sum_forw, $sum_ver, $sum_own_broad, $sum_rebroad, $sum_bcast_echo, $sum_tq_zero, $sum_uni_flag, $sum_unknown, $sum_uni_link, $sum_bntog, $sum_bcast_src, $sum_dup, $sum_ttl);
 		my $string = "";
+
+		$sum = 0, $sum_dropped = 0, $sum_forw = 0, $sum_ver = 0, $sum_own_broad = 0, $sum_rebroad = 0, $sum_bcast_echo = 0, $sum_tq_zero = 0, $sum_uni_flag = 0, $sum_unknown = 0, $sum_uni_link = 0, $sum_bntog = 0, $sum_bcast_src = 0, $sum_dup = 0, $sum_ttl = 0;
 
 		foreach my $neighbour ( keys %{ $receive_hash{ $orginator } } ) {
 
@@ -210,26 +221,74 @@ if ( $ARGV[0] eq "-p" ) {
 			$string .= " recv = " . $receive_hash{ $orginator }{ $neighbour }{ "num_recv" };
 			$string .= " <> forw = " . ( $forward_hash{ $orginator }{ $neighbour }{ "num_forw" } ? $forward_hash{ $orginator }{ $neighbour }{ "num_forw" } : "0" );
 			$string .= " <> drop = " . ( $receive_hash{ $orginator }{ $neighbour }{ "num_drop" } ? $receive_hash{ $orginator }{ $neighbour }{ "num_drop" } : "0" );
-			$string .= " \t [ version = " . ( $receive_hash{ $orginator }{ $neighbour }{ "version" } ? $receive_hash{ $orginator }{ $neighbour }{ "version" } : "0" );
-			$string .= "; own_broad = " . ( $receive_hash{ $orginator }{ $neighbour }{ "own_broad" } ? $receive_hash{ $orginator }{ $neighbour }{ "own_broad" } : "0" );
-			$string .= "; own_rebroad = " . ( $receive_hash{ $orginator }{ $neighbour }{ "own_rebroad" } ? $receive_hash{ $orginator }{ $neighbour }{ "own_rebroad" } : "0" );
-			$string .= "; uni_flag = " . ( $receive_hash{ $orginator }{ $neighbour }{ "uni_flag" } ? $receive_hash{ $orginator }{ $neighbour }{ "uni_flag" } : "0" );
-			$string .= "; unknown = " . ( $receive_hash{ $orginator }{ $neighbour }{ "unknown" } ? $receive_hash{ $orginator }{ $neighbour }{ "unknown" } : "0" );
-			$string .= "; uni_link = " . ( $receive_hash{ $orginator }{ $neighbour }{ "uni_link" } ? $receive_hash{ $orginator }{ $neighbour }{ "uni_link" } : "0" );
-			$string .= "; btnog = " . ( $receive_hash{ $orginator }{ $neighbour }{ "bntog" } ? $receive_hash{ $orginator }{ $neighbour }{ "bntog" } : "0" );
-			$string .= "; bcast_src = " . ( $receive_hash{ $orginator }{ $neighbour }{ "bcast_src" } ? $receive_hash{ $orginator }{ $neighbour }{ "bcast_src" } : "0" );
-			$string .= "; dup = " . ( $receive_hash{ $orginator }{ $neighbour }{ "dup" } ? $receive_hash{ $orginator }{ $neighbour }{ "dup" } : "0" );
-			$string .= "; ttl = " . ( $receive_hash{ $orginator }{ $neighbour }{ "ttl" } ? $receive_hash{ $orginator }{ $neighbour }{ "ttl" } : "0" ) . " ]";
-			$string .= " [ direct_link = " . ( $forward_hash{ $orginator }{ $neighbour }{ "direct_link" } ? $forward_hash{ $orginator }{ $neighbour }{ "direct_link" } : "0" );
-			$string .= "; direct_uni = " . ( $forward_hash{ $orginator }{ $neighbour }{ "direct_uni" } ? $forward_hash{ $orginator }{ $neighbour }{ "direct_uni" } : "0" );
-			$string .= "; rebroad = " . ( $forward_hash{ $orginator }{ $neighbour }{ "rebroad" } ? $forward_hash{ $orginator }{ $neighbour }{ "rebroad" } : "0" );
-			$string .= "; dup = " . ( $forward_hash{ $orginator }{ $neighbour }{ "dup" } ? $forward_hash{ $orginator }{ $neighbour }{ "dup" } : "0" ) . " ]\n";
+			$string .= " \t [";
+			$string .= ( $receive_hash{ $orginator }{ $neighbour }{ "version" } ? "version = " . $receive_hash{ $orginator }{ $neighbour }{ "version" } . "; "  : "" );
+			$string .= ( $receive_hash{ $orginator }{ $neighbour }{ "own_broad" } ? "own_broad = " . $receive_hash{ $orginator }{ $neighbour }{ "own_broad" } . "; "  : "" );
+			$string .= ( $receive_hash{ $orginator }{ $neighbour }{ "own_rebroad" } ? "own_rebroad = " . $receive_hash{ $orginator }{ $neighbour }{ "own_rebroad" } . "; "  : "" );
+			$string .= ( $receive_hash{ $orginator }{ $neighbour }{ "bcast_echo" } ? "bcast_echo = " . $receive_hash{ $orginator }{ $neighbour }{ "bcast_echo" } . "; "  : "" );
+			$string .= ( $receive_hash{ $orginator }{ $neighbour }{ "tq_zero" } ? "tq_zero = " . $receive_hash{ $orginator }{ $neighbour }{ "tq_zero" } . "; "  : "" );
+			$string .= ( $receive_hash{ $orginator }{ $neighbour }{ "uni_flag" } ? "uni_flag = " . $receive_hash{ $orginator }{ $neighbour }{ "uni_flag" } . "; "  : "" );
+			$string .= ( $receive_hash{ $orginator }{ $neighbour }{ "unknown" } ? "unknown = " . $receive_hash{ $orginator }{ $neighbour }{ "unknown" } . "; "  : "" );
+			$string .= ( $receive_hash{ $orginator }{ $neighbour }{ "uni_link" } ? "uni_link = " . $receive_hash{ $orginator }{ $neighbour }{ "uni_link" } . "; "  : "" );
+			$string .= ( $receive_hash{ $orginator }{ $neighbour }{ "bntog" } ? "btnog = " . $receive_hash{ $orginator }{ $neighbour }{ "bntog" } . "; "  : "" );
+			$string .= ( $receive_hash{ $orginator }{ $neighbour }{ "bcast_src" } ? "bcast_src = " . $receive_hash{ $orginator }{ $neighbour }{ "bcast_src" } . "; "  : "" );
+			$string .= ( $receive_hash{ $orginator }{ $neighbour }{ "dup" } ? "dup = " . $receive_hash{ $orginator }{ $neighbour }{ "dup" } . "; "  : "" );
+			$string .= ( $receive_hash{ $orginator }{ $neighbour }{ "ttl" } ? "ttl = " . $receive_hash{ $orginator }{ $neighbour }{ "ttl" } . "; "  : "" );
+			$string .= "] [";
+			$string .= ( $forward_hash{ $orginator }{ $neighbour }{ "direct_link" } ? "direct_link = " . $forward_hash{ $orginator }{ $neighbour }{ "direct_link" } . "; "  : "" );
+			$string .= ( $forward_hash{ $orginator }{ $neighbour }{ "direct_uni" } ? "direct_uni = " . $forward_hash{ $orginator }{ $neighbour }{ "direct_uni" } . "; "  : "" );
+			$string .= ( $forward_hash{ $orginator }{ $neighbour }{ "rebroad" } ? "rebroad = " . $forward_hash{ $orginator }{ $neighbour }{ "rebroad" } . "; "  : "" );
+			$string .= ( $forward_hash{ $orginator }{ $neighbour }{ "dup" } ? "dup = " . $forward_hash{ $orginator }{ $neighbour }{ "dup" } . "; "  : "" );
+			$string .= "]\n";
+
+			$sum_dropped += $receive_hash{ $orginator }{ $neighbour }{ "num_drop" } if $receive_hash{ $orginator }{ $neighbour }{ "num_drop" };
+			$sum_forw += $forward_hash{ $orginator }{ $neighbour }{ "num_forw" } if $forward_hash{ $orginator }{ $neighbour }{ "num_forw" };
+
+			$sum_ver += $receive_hash{ $orginator }{ $neighbour }{ "version" } if $receive_hash{ $orginator }{ $neighbour }{ "version" };
+			$sum_own_broad += $receive_hash{ $orginator }{ $neighbour }{ "own_broad" } if $receive_hash{ $orginator }{ $neighbour }{ "own_broad" };
+			$sum_rebroad += $receive_hash{ $orginator }{ $neighbour }{ "own_rebroad" } if $receive_hash{ $orginator }{ $neighbour }{ "own_rebroad" };
+			$sum_bcast_echo += $receive_hash{ $orginator }{ $neighbour }{ "bcast_echo" } if $receive_hash{ $orginator }{ $neighbour }{ "bcast_echo" };
+			$sum_tq_zero += $receive_hash{ $orginator }{ $neighbour }{ "tq_zero" } if $receive_hash{ $orginator }{ $neighbour }{ "tq_zero" };
+			$sum_uni_flag += $receive_hash{ $orginator }{ $neighbour }{ "uni_flag" } if $receive_hash{ $orginator }{ $neighbour }{ "uni_flag" };
+			$sum_unknown += $receive_hash{ $orginator }{ $neighbour }{ "unknown" } if $receive_hash{ $orginator }{ $neighbour }{ "unknown" };
+			$sum_uni_link += $receive_hash{ $orginator }{ $neighbour }{ "uni_link" } if $receive_hash{ $orginator }{ $neighbour }{ "uni_link" };
+			$sum_bntog += $receive_hash{ $orginator }{ $neighbour }{ "bntog" } if $receive_hash{ $orginator }{ $neighbour }{ "bntog" };
+			$sum_bcast_src += $receive_hash{ $orginator }{ $neighbour }{ "bcast_src" } if $receive_hash{ $orginator }{ $neighbour }{ "bcast_src" };
+			$sum_dup += $receive_hash{ $orginator }{ $neighbour }{ "dup" } if $receive_hash{ $orginator }{ $neighbour }{ "dup" };
+			$sum_ttl += $receive_hash{ $orginator }{ $neighbour }{ "ttl" } if $receive_hash{ $orginator }{ $neighbour }{ "ttl" };
 
 		}
 
 		print "\norginator $orginator" . ( $myself_hash{ $orginator } ? " (myself)" : "" ) . ": total recv = $sum\n";
 		print $string;
 
+		$sum_hash{"num_orig"}++;
+		$sum_hash{"total_recv"} += $sum;
+		$sum_hash{"total_dropped"} += $sum_dropped;
+		$sum_hash{"total_forw"} += $sum_forw;
+		$sum_hash{"drop"}{"version"} += $sum_ver;
+		$sum_hash{"drop"}{"own_broad"} += $sum_own_broad;
+		$sum_hash{"drop"}{"own_rebroad"} += $sum_rebroad;
+		$sum_hash{"drop"}{"bcast_echo"} += $sum_bcast_echo;
+		$sum_hash{"drop"}{"tq_zero"} += $sum_tq_zero;
+		$sum_hash{"drop"}{"uni_flag"} += $sum_uni_flag;
+		$sum_hash{"drop"}{"unknown"} += $sum_unknown;
+		$sum_hash{"drop"}{"uni_link"} += $sum_uni_link;
+		$sum_hash{"drop"}{"bntog"} += $sum_bntog;
+		$sum_hash{"drop"}{"bcast_src"} += $sum_bcast_src;
+		$sum_hash{"drop"}{"dup"} += $sum_dup;
+		$sum_hash{"drop"}{"ttl"} += $sum_ttl;
+
+	}
+
+	print "\n\nSummary:\n^^^^^^^\n";
+	print "num originators: $sum_hash{'num_orig'}\n";
+	print "total recv: $sum_hash{'total_recv'}\n";
+	printf("total dropped: $sum_hash{'total_dropped'} (%.2f%)\n", $sum_hash{'total_dropped'} * 100 / $sum_hash{'total_recv'});
+	printf("total forwarded: $sum_hash{'total_forw'} (%.2f%)\n", $sum_hash{'total_forw'} * 100 / $sum_hash{'total_recv'});
+
+	foreach my $drop (sort keys %{$sum_hash{"drop"}}) {
+		printf("drop reason: $drop, num drops: $sum_hash{'drop'}{$drop} (%.2f%)\n", $sum_hash{'drop'}{$drop} * 100 / $sum_hash{'total_dropped'}) if ($sum_hash{'drop'}{$drop} != 0);
 	}
 
 	print "\n\nHelp:\n^^^^\n";
@@ -237,6 +296,8 @@ if ( $ARGV[0] eq "-p" ) {
 	print "\tversion     = received packet indicated incompatible batman version\n";
 	print "\town_broad   = received my own broadcast\n";
 	print "\town_rebroad = received rebroadcast of my packet via neighbour\n";
+	print "\tbcast_echo  = received rebroadcast of a packet I already rebroadcasted\n";
+	print "\tbcast_echo  = received rebroadcast with a tq of zero\n";
 	print "\tuni_flag    = received packet with unidrectional flag\n";
 	print "\tunknown     = received packet via unknown neighbour\n";
 	print "\tuni_link    = received packet via unidirectional link\n";
