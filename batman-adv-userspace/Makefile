@@ -21,6 +21,7 @@ CC =			gcc
 CFLAGS =		-Wall -W -O1 -g  -DDEBUG_MALLOC -DREVISION_VERSION=$(REVISION_VERSION)
 STRIP=			strip
 LDFLAGS =		-lpthread -g
+SBINDIR =		$(INSTALL_PREFIX)/usr/sbin
 
 UNAME=		$(shell uname)
 
@@ -74,3 +75,6 @@ clean:
 clean-long:
 	rm -rf $(PACKAGE_NAME)_*
 
+install:
+	mkdir -p $(SBINDIR)
+	install -m 0755 batmand $(SBINDIR)

@@ -287,7 +287,7 @@ if ( $ARGV[0] eq "-p" ) {
 	printf("total dropped: $sum_hash{'total_dropped'} (%.2f%)\n", $sum_hash{'total_dropped'} * 100 / $sum_hash{'total_recv'});
 	printf("total forwarded: $sum_hash{'total_forw'} (%.2f%)\n", $sum_hash{'total_forw'} * 100 / $sum_hash{'total_recv'});
 
-	foreach my $drop (sort keys %{$sum_hash{"drop"}}) {
+	foreach my $drop (keys %{$sum_hash{"drop"}}) {
 		printf("drop reason: $drop, num drops: $sum_hash{'drop'}{$drop} (%.2f%)\n", $sum_hash{'drop'}{$drop} * 100 / $sum_hash{'total_dropped'}) if ($sum_hash{'drop'}{$drop} != 0);
 	}
 
@@ -297,7 +297,7 @@ if ( $ARGV[0] eq "-p" ) {
 	print "\town_broad   = received my own broadcast\n";
 	print "\town_rebroad = received rebroadcast of my packet via neighbour\n";
 	print "\tbcast_echo  = received rebroadcast of a packet I already rebroadcasted\n";
-	print "\tbcast_echo  = received rebroadcast with a tq of zero\n";
+	print "\ttq_zero  = received rebroadcast with a tq of zero\n";
 	print "\tuni_flag    = received packet with unidrectional flag\n";
 	print "\tunknown     = received packet via unknown neighbour\n";
 	print "\tuni_link    = received packet via unidirectional link\n";
