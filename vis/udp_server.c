@@ -30,7 +30,7 @@
 
 
 
-void handle_node( unsigned int sender_ip, unsigned char *buff, int buff_len, unsigned char gw_class, unsigned char tq_max ) {
+void handle_node( unsigned int sender_ip, unsigned char *buff, int buff_len, unsigned char gw_class, uint16_t tq_max ) {
 
 	struct node *orig_node;
 	struct secif *secif;
@@ -91,6 +91,9 @@ void handle_node( unsigned int sender_ip, unsigned char *buff, int buff_len, uns
 
 			/* is neighbour */
 			if ( ((struct vis_data *)(buff + i * sizeof(struct vis_data)))->type == DATA_TYPE_NEIGH ) {
+
+				/* network to host order for our 16bit tq */
+				((struct vis_data *)(buff + i * sizeof(struct vis_data)))->data = ntohs(((struct vis_data *)(buff + i * sizeof(struct vis_data)))->data);
 
 				if ( ((struct vis_data *)(buff + i * sizeof(struct vis_data)))->data > orig_node->tq_max )
 					continue;
