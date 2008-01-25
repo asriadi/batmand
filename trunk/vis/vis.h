@@ -36,7 +36,7 @@
 
 #define SOURCE_VERSION "0.3-beta" //put exactly one distinct word inside the string like "0.3-pre-alpha" or "0.3-rc1" or "0.3"
 
-#define VIS_COMPAT_VERSION 21
+#define VIS_COMPAT_VERSION 22
 
 #define MAXCHAR 4096
 
@@ -69,7 +69,7 @@ struct thread_data {
 struct neighbour {
 	struct list_head list;
 	unsigned int addr;
-	unsigned char tq_avg;
+	uint16_t tq_avg;
 	unsigned char last_seen;
 };
 
@@ -84,7 +84,7 @@ struct node {
 	unsigned int addr;
 	unsigned char last_seen;
 	unsigned char gw_class;
-	unsigned char tq_max;
+	uint16_t tq_max;
 	struct list_head_first neigh_list;
 	struct list_head_first secif_list;
 	struct list_head_first hna_list;
