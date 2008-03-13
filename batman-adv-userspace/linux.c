@@ -30,7 +30,6 @@
 #include <net/if.h>             /* struct ifreq */
 #include <net/ethernet.h>       /* ETH_P_ALL, struct ether_header */
 #include <netpacket/packet.h>   /* sockaddr_ll */
-#include <netinet/ether.h>      /* ether_ntoa() */
 #include <errno.h>              /* errno */
 #include <fcntl.h>              /* O_RDWR */
 #include <netinet/ip.h>         /* tunnel stuff */
@@ -107,8 +106,8 @@ int32_t rawsock_read(int32_t rawsock, struct ether_header *recv_header, unsigned
 
 	}
 
-/*	printf("source = %s\n", ether_ntoa((struct ether_addr *)recv_header->ether_shost));
-	printf("dest   = %s\n", ether_ntoa((struct ether_addr *)recv_header->ether_dhost));
+/*	printf("source = %s\n", addr_to_string_static((struct ether_addr *)recv_header->ether_shost));
+	printf("dest   = %s\n", addr_to_string_static((struct ether_addr *)recv_header->ether_dhost));
 	printf("type: %08x\n",ntohs(recv_header->ether_type));*/
 
 	return packet_size - sizeof(struct ether_header);
@@ -131,17 +130,17 @@ int32_t rawsock_write(int32_t rawsock, struct ether_header *send_header, unsigne
 	send_header->ether_type = htons(ETH_P_BATMAN);
 /*	if (buf[0] != BAT_PACKET) {
 
-	debug_output(4, "[B]batman source = %s, ", ether_ntoa((struct ether_addr *)send_header->ether_shost) );
-	debug_output(4, "dest   = %s, ", ether_ntoa((struct ether_addr *)send_header->ether_dhost));
+	debug_output(4, "[B]batman source = %s, ", addr_to_string_static((struct ether_addr *)send_header->ether_shost) );
+	debug_output(4, "dest   = %s, ", addr_to_string_static((struct ether_addr *)send_header->ether_dhost));
 	debug_output(4, "type: %08x, len %i, battype %d\n",ntohs(send_header->ether_type), size, buf[0]);
 	if ( buf[0] == BAT_UNICAST) {
-		debug_output(4, "[E]ther source = %s ", 	ether_ntoa((struct ether_addr *)((struct ether_header *)(buf + sizeof(struct unicast_packet)))->ether_shost));
-		debug_output(4, "dest   = %s ", 			ether_ntoa((struct ether_addr *)((struct ether_header *)(buf + sizeof(struct unicast_packet)))->ether_dhost));
+		debug_output(4, "[E]ther source = %s ", 	addr_to_string_static((struct ether_addr *)((struct ether_header *)(buf + sizeof(struct unicast_packet)))->ether_shost));
+		debug_output(4, "dest   = %s ", 			addr_to_string_static((struct ether_addr *)((struct ether_header *)(buf + sizeof(struct unicast_packet)))->ether_dhost));
 		debug_output(4, "type   = %04x", 			((struct ether_header *)(buf + sizeof(struct unicast_packet)))->ether_type);
 	}
 	if ( buf[0] == BAT_BCAST) {
-		debug_output(4, "[E]ther source = %s ", ether_ntoa((struct ether_addr *)((struct ether_header *)(buf + sizeof(struct bcast_packet)))->ether_shost));
-		debug_output(4, "dest   = %s ", ether_ntoa((struct ether_addr *)((struct ether_header *)(buf + sizeof(struct bcast_packet)))->ether_dhost));
+		debug_output(4, "[E]ther source = %s ", addr_to_string_static((struct ether_addr *)((struct ether_header *)(buf + sizeof(struct bcast_packet)))->ether_shost));
+		debug_output(4, "dest   = %s ", addr_to_string_static((struct ether_addr *)((struct ether_header *)(buf + sizeof(struct bcast_packet)))->ether_dhost));
 		debug_output(4, "type   = %04x ", ((struct ether_header *)(buf + sizeof(struct bcast_packet)))->ether_type);
 		debug_output(4, "seqno =  %d\n", ntohs(((struct bcast_packet *)buf)->seqno) );
 	}

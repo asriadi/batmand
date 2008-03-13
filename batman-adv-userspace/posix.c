@@ -210,9 +210,11 @@ int addr_to_string(char *buff, uint8_t *hw_addr)
 	return sprintf(buff, "%02x:%02x:%02x:%02x:%02x:%02x", hw_addr[0], hw_addr[1], hw_addr[2], hw_addr[3], hw_addr[4], hw_addr[5]);
 }
 
+static char static_addr_buf[30];
 char *addr_to_string_static(uint8_t *hw_addr)
 {
-	return ether_ntoa( (struct ether_addr *)hw_addr );
+	sprintf(static_addr_buf, "%02x:%02x:%02x:%02x:%02x:%02x", hw_addr[0], hw_addr[1], hw_addr[2], hw_addr[3], hw_addr[4], hw_addr[5]);
+	return(static_addr_buf);
 }
 
 
