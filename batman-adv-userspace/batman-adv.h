@@ -38,8 +38,7 @@
 
 
 #define SOURCE_VERSION "0.1-alpha"  //put exactly one distinct word inside the string like "0.3-pre-alpha" or "0.3-rc1" or "0.3"
-#define COMPAT_VERSION 1
-#define UNIDIRECTIONAL 0x80
+#define COMPAT_VERSION 5
 #define DIRECTLINK 0x40
 #define ADDR_STR_LEN 16
 #define VIS_COMPAT_VERSION (128 | 20)
@@ -87,16 +86,15 @@
 
 #define JITTER 100
 #define TTL 50                /* Time To Live of broadcast messages */
-#define PURGE_TIMEOUT 200000  /* purge originators after time in ms if no valid packet comes in -> TODO: check influence on SEQ_RANGE */
-
+#define PURGE_TIMEOUT 200000  /* purge originators after time in ms if no valid packet comes in -> TODO: check influence on TQ_LOCAL_WINDOW_SIZE */
 #define TQ_MAX_VALUE 255
 #define TQ_LOCAL_WINDOW_SIZE 64     /* sliding packet range of received originator messages in squence numbers (should be a multiple of our word size) */
-#define TQ_TOTAL_WINDOW_SIZE 10
-#define TQ_LOCAL_BIDRECT_SEND_MINIMUM TQ_LOCAL_WINDOW_SIZE / 8
-#define TQ_LOCAL_BIDRECT_RECV_MINIMUM TQ_LOCAL_WINDOW_SIZE / 8
-#define TQ_TOTAL_BIDRECT_LIMIT TQ_MAX_VALUE / 10
+#define TQ_GLOBAL_WINDOW_SIZE 10
+#define TQ_LOCAL_BIDRECT_SEND_MINIMUM 1
+#define TQ_LOCAL_BIDRECT_RECV_MINIMUM 1
+#define TQ_TOTAL_BIDRECT_LIMIT 1
 
-#define PERFECT_TQ_PENALTY 5
+#define TQ_HOP_PENALTY 10
 
 #define PACKETS_PER_CYCLE 10  /* this seems to be a reasonable value (i've tested for different setups) */
 							  /* how many packets to read from the virtual interfaces, maximum.
@@ -179,19 +177,18 @@ struct orig_node                    /* structure for orig_list maintaining nodes
 	TYPE_OF_WORD *bcast_own;
 	uint8_t *bcast_own_sum;
 	uint8_t tq_own;
-	int tq_asym_penality;
+	int tq_asym_penalty;
 	uint16_t last_real_seqno;
 	uint8_t last_ttl;
 	TYPE_OF_WORD seq_bits[NUM_WORDS];
-}; /* __attribute((packed));*/	/* TODO: why packed? that prevents the compiler from optimizing this structure,
-								   and this structure is never sent on the network (as far as i can see) */
+};
 
 struct neigh_node
 {
 	struct list_head list;
 	uint8_t addr[6];
 	uint8_t real_packet_count;
-	uint8_t tq_recv[TQ_TOTAL_WINDOW_SIZE];
+	uint8_t tq_recv[TQ_GLOBAL_WINDOW_SIZE];
 	uint8_t tq_index;
 	uint8_t tq_avg;
 	uint8_t last_ttl;         /* ttl of last received packet */
