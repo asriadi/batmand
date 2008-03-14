@@ -85,7 +85,7 @@ void schedule_own_packet( struct batman_if *batman_if ) {
 
 
 
-void schedule_forward_packet(struct orig_node *orig_node, uint8_t *neigh, struct batman_packet *in, uint8_t unidirectional, uint8_t directlink, int buff_len, struct batman_if *if_outgoing) {
+void schedule_forward_packet(struct orig_node *orig_node, uint8_t *neigh, struct batman_packet *in, uint8_t directlink, int buff_len, struct batman_if *if_outgoing) {
 
 	struct forw_node *forw_node_new;
 	uint8_t tq_avg = 0;
@@ -122,11 +122,10 @@ void schedule_forward_packet(struct orig_node *orig_node, uint8_t *neigh, struct
 
 			tq_avg = orig_node->router->tq_avg;
 
-			if ((orig_node->router->orig_node->tq_own > TQ_MAX_VALUE - PERFECT_TQ_PENALTY) && (orig_node->router->orig_node->tq_asym_penality > TQ_MAX_VALUE - PERFECT_TQ_PENALTY))
-				((struct batman_packet *)forw_node_new->pack_buff)->tq -= PERFECT_TQ_PENALTY;
-
 		}
 
+		/* apply hop penalty */
+		((struct batman_packet *)forw_node_new->pack_buff)->tq = (((struct batman_packet *)forw_node_new->pack_buff)->tq * (TQ_MAX_VALUE - TQ_HOP_PENALTY)) / (TQ_MAX_VALUE);
 		debug_output(4, "forwarding: tq_orig: %i, tq_avg: %i, tq_forw: %i, ttl_orig: %i, ttl_forw: %i \n", in->tq, tq_avg, ((struct batman_packet *)forw_node_new->pack_buff)->tq, in->ttl - 1, ((struct batman_packet *)forw_node_new->pack_buff)->ttl);
 
 		forw_node_new->send_time = get_time();
@@ -134,19 +133,10 @@ void schedule_forward_packet(struct orig_node *orig_node, uint8_t *neigh, struct
 
 		forw_node_new->if_outgoing = if_outgoing;
 
-		if ( unidirectional ) {
-
-			((struct batman_packet *)forw_node_new->pack_buff)->flags = ( UNIDIRECTIONAL | DIRECTLINK );
-
-		} else if ( directlink ) {
-
+		if ( directlink )
 			((struct batman_packet *)forw_node_new->pack_buff)->flags = DIRECTLINK;
-
-		} else {
-
+		else
 			((struct batman_packet *)forw_node_new->pack_buff)->flags = 0x00;
-
-		}
 
 		list_add( &forw_node_new->list, &forw_list );
 
@@ -180,24 +170,8 @@ void send_outstanding_packets() {
 
 			((struct batman_packet *)forw_node->pack_buff)->seqno = htons( ((struct batman_packet *)forw_node->pack_buff)->seqno ); /* change sequence number to network order */
 
-
-			if ( ((struct batman_packet *)forw_node->pack_buff)->flags & UNIDIRECTIONAL ) {
-
-				if ( forw_node->if_outgoing != NULL ) {
-
-					debug_output(4, "Forwarding packet (originator %s, seqno %d, TTL %d) on interface %s\n", addr_to_string_static(((struct batman_packet *)forw_node->pack_buff)->orig), ntohs( ((struct batman_packet *)forw_node->pack_buff)->seqno ), ((struct batman_packet *)forw_node->pack_buff)->ttl, forw_node->if_outgoing->dev);
-
-					if ( send_packet( forw_node->pack_buff, forw_node->pack_buff_len, forw_node->if_outgoing->hw_addr, broadcastAddr, forw_node->if_outgoing->raw_sock ) < 0 )
-						restore_and_exit(0);
-
-				} else {
-
-					debug_output( 0, "Error - can't forward packet with UDF: outgoing iface not specified \n" );
-
-				}
-
 			/* multihomed peer assumed */
-			} else if ( ( directlink ) && ( ((struct batman_packet *)forw_node->pack_buff)->ttl == 1 ) ) {
+			if ( ( directlink ) && ( ((struct batman_packet *)forw_node->pack_buff)->ttl == 1 ) ) {
 
 				if ( ( forw_node->if_outgoing != NULL ) ) {
 
