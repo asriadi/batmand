@@ -39,6 +39,7 @@ void handle_node( unsigned int sender_ip, unsigned char *buff, int buff_len, uns
 	struct neighbour *neigh;
 	struct hna *hna;
 	struct list_head *list_pos;
+	struct vis_data *vis_data;
 	int packet_count, i;
 
 	/*char from_str[16];
@@ -86,16 +87,17 @@ void handle_node( unsigned int sender_ip, unsigned char *buff, int buff_len, uns
 	packet_count = buff_len / sizeof(struct vis_data);
 
 	for( i = 0; i < packet_count; i++ ) {
+		vis_data = ((struct vis_data *)(buff + i * sizeof(struct vis_data)));
 
-		if ( ((struct vis_data *)(buff + i * sizeof(struct vis_data)))->ip != 0 ) {
+		if ( vis_data->ip != 0 ) {
 
 			/* is neighbour */
-			if ( ((struct vis_data *)(buff + i * sizeof(struct vis_data)))->type == DATA_TYPE_NEIGH ) {
+			if ( vis_data->type == DATA_TYPE_NEIGH ) {
 
 				/* network to host order for our 16bit tq */
-				((struct vis_data *)(buff + i * sizeof(struct vis_data)))->data = ntohs(((struct vis_data *)(buff + i * sizeof(struct vis_data)))->data);
+				vis_data->data = ntohs(vis_data->data);
 
-				if ( ((struct vis_data *)(buff + i * sizeof(struct vis_data)))->data > orig_node->tq_max )
+				if ( vis_data->data > orig_node->tq_max )
 					continue;
 
 				neigh = NULL;
@@ -105,7 +107,7 @@ void handle_node( unsigned int sender_ip, unsigned char *buff, int buff_len, uns
 
 					neigh = list_entry( list_pos, struct neighbour, list );
 
-					if ( ((struct vis_data *)(buff + i * sizeof(struct vis_data)))->ip == neigh->addr )
+					if ( vis_data->ip == neigh->addr )
 						break;
 					else
 						neigh = NULL;
@@ -117,7 +119,7 @@ void handle_node( unsigned int sender_ip, unsigned char *buff, int buff_len, uns
 
 					neigh = debugMalloc( sizeof(struct neighbour), 1101 );
 					memset( neigh, 0, sizeof(struct neighbour) );
-					neigh->addr = ((struct vis_data *)(buff + i * sizeof(struct vis_data)))->ip;
+					neigh->addr = vis_data->ip;
 
 					INIT_LIST_HEAD( &neigh->list );
 
@@ -126,11 +128,11 @@ void handle_node( unsigned int sender_ip, unsigned char *buff, int buff_len, uns
 				}
 
 				/* save new tq value */
-				neigh->tq_avg = ((struct vis_data *)(buff + i * sizeof(struct vis_data)))->data;
+				neigh->tq_avg = vis_data->data;
 				neigh->last_seen = 20;
 
 			/* is secondary interface */
-			} else if ( ((struct vis_data *)(buff + i * sizeof(struct vis_data)))->type == DATA_TYPE_SEC_IF ) {
+			} else if ( vis_data->type == DATA_TYPE_SEC_IF ) {
 
 				if ( secif_hash->elements * 4 > secif_hash->size ) {
 
@@ -144,13 +146,13 @@ void handle_node( unsigned int sender_ip, unsigned char *buff, int buff_len, uns
 				}
 
 				/* use hash for fast processing of secondary interfaces in write_data_in_buffer() */
-				secif = (struct secif *)hash_find( secif_hash, &((struct vis_data *)(buff + i * sizeof(struct vis_data)))->ip );
+				secif = (struct secif *)hash_find( secif_hash, &vis_data->ip );
 
 				if ( secif == NULL ) {
 
 					secif = (struct secif *)debugMalloc( sizeof(struct secif), 1102 );
 
-					secif->addr = ((struct vis_data *)(buff + i * sizeof(struct vis_data)))->ip;
+					secif->addr = vis_data->ip;
 					secif->orig = orig_node;
 
 					hash_add( secif_hash, secif );
@@ -165,7 +167,7 @@ void handle_node( unsigned int sender_ip, unsigned char *buff, int buff_len, uns
 
 					secif_lst = list_entry( list_pos, struct secif_lst, list );
 
-					if ( ((struct vis_data *)(buff + i * sizeof(struct vis_data)))->ip == secif_lst->addr )
+					if ( vis_data->ip == secif_lst->addr )
 						break;
 					else
 						secif_lst = NULL;
@@ -188,9 +190,9 @@ void handle_node( unsigned int sender_ip, unsigned char *buff, int buff_len, uns
 
 				secif_lst->last_seen = 20;
 
-			} else if ( ((struct vis_data *)(buff + i * sizeof(struct vis_data)))->type == DATA_TYPE_HNA ) {
+			} else if ( vis_data->type == DATA_TYPE_HNA ) {
 
-				if ( ((struct vis_data *)(buff + i * sizeof(struct vis_data)))->data > 32 )
+				if ( vis_data->data > 32 )
 					continue;
 
 				hna = NULL;
@@ -200,7 +202,7 @@ void handle_node( unsigned int sender_ip, unsigned char *buff, int buff_len, uns
 
 					hna = list_entry( list_pos, struct hna, list );
 
-					if ( ( ((struct vis_data *)(buff + i * sizeof(struct vis_data)))->ip == hna->addr ) && ( ((struct vis_data *)(buff + i * sizeof(struct vis_data)))->data == hna->netmask ) )
+					if ( ( vis_data->ip == hna->addr ) && ( vis_data->data == hna->netmask ) )
 						break;
 					else
 						hna = NULL;
@@ -212,8 +214,8 @@ void handle_node( unsigned int sender_ip, unsigned char *buff, int buff_len, uns
 
 					hna = debugMalloc( sizeof(struct hna), 1104 );
 					memset( hna, 0, sizeof(struct hna) );
-					hna->addr = ((struct vis_data *)(buff + i * sizeof(struct vis_data)))->ip;
-					hna->netmask = ((struct vis_data *)(buff + i * sizeof(struct vis_data)))->data;
+					hna->addr = vis_data->ip;
+					hna->netmask = vis_data->data;
 
 					INIT_LIST_HEAD( &hna->list );
 
