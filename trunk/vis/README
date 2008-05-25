@@ -36,4 +36,4 @@ You can check your setup by simply connecting with telnet to your vis server ins
 telnet <ip_of_vis_server> 2004
 
 
-Don't forget to adjust your firewal settings in case you use any: On the vis server you need to allow incoming traffic on TCP port 2004 and UDP port 1967.
+Don't forget to adjust your firewal settings in case you use any: On the vis server you need to allow incoming traffic on TCP port 2004 and UDP port 4307.
