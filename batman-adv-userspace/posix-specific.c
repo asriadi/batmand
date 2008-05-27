@@ -1435,6 +1435,7 @@ int8_t receive_packet_tap(unsigned char *packet_buff, int16_t packet_buff_len, i
 
 				bcast_packet = (struct bcast_packet *)(payload_ptr - sizeof(struct bcast_packet));
 
+				bcast_packet->version = COMPAT_VERSION;
 				/* batman packet type: broadcast */
 				bcast_packet->packet_type = BAT_BCAST;
 				/* hw address of first interface is the orig mac because only this mac is known throughout the mesh */
@@ -1463,6 +1464,8 @@ int8_t receive_packet_tap(unsigned char *packet_buff, int16_t packet_buff_len, i
 				if ( ( orig_node != NULL ) && ( orig_node->batman_if != NULL ) && ( orig_node->router != NULL ) ) {
 
 					unicast_packet = (struct unicast_packet *)(payload_ptr - sizeof(struct unicast_packet) );
+
+					unicast_packet->version = COMPAT_VERSION;
 					/* batman packet type: unicast */
 					unicast_packet->packet_type = BAT_UNICAST;
 					/* set unicast ttl */
@@ -1513,8 +1516,13 @@ int8_t receive_packet_batiface( unsigned char *packet_buff, int16_t packet_buff_
 		if ((*pay_buff_len = rawsock_read(batman_if->raw_sock, &ether_header, packet_buff, packet_buff_len-1)) > -1) {
 
 			/* drop packet if it has no batman packet type field */
-			if (*pay_buff_len < 1)
+			if (*pay_buff_len < 2)
 				continue;
+
+			if (packet_buff[1] != COMPAT_VERSION) {
+			    debug_output( 4, "Drop packet: incompatible batman version (%i) \n", packet_buff[1]);
+
+			}
 
 			/* batman packet */
 			switch (packet_buff[0]) {

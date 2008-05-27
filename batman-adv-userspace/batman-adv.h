@@ -37,8 +37,7 @@
 #include "vis-types.h"
 
 
-#define SOURCE_VERSION "0.1-alpha"  //put exactly one distinct word inside the string like "0.3-pre-alpha" or "0.3-rc1" or "0.3"
-#define COMPAT_VERSION 5
+#define SOURCE_VERSION "0.1-beta" 
 #define DIRECTLINK 0x40
 #define ADDR_STR_LEN 16
 #define VIS_COMPAT_VERSION (128 | 20)
