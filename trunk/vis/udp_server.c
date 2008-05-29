@@ -87,15 +87,13 @@ void handle_node( unsigned int sender_ip, unsigned char *buff, int buff_len, uns
 	packet_count = buff_len / sizeof(struct vis_data);
 
 	for( i = 0; i < packet_count; i++ ) {
-		vis_data = ((struct vis_data *)(buff + i * sizeof(struct vis_data)));
+		vis_data = (struct vis_data *)(buff + i * sizeof(struct vis_data));
 
 		if ( vis_data->ip != 0 ) {
 
 			/* is neighbour */
 			if ( vis_data->type == DATA_TYPE_NEIGH ) {
 
-				/* network to host order for our 16bit tq */
-				vis_data->data = ntohs(vis_data->data);
 
 				if ( vis_data->data > orig_node->tq_max )
 					continue;
@@ -180,7 +178,7 @@ void handle_node( unsigned int sender_ip, unsigned char *buff, int buff_len, uns
 					secif_lst = debugMalloc( sizeof(struct secif_lst), 1103 );
 					memset( secif_lst, 0, sizeof(struct secif_lst) );
 
-					secif_lst->addr = ((struct vis_data *)(buff + i * sizeof(struct vis_data)))->ip;
+					secif_lst->addr = vis_data->ip;
 
 					INIT_LIST_HEAD( &secif_lst->list );
 
