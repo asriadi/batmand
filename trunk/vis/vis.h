@@ -122,6 +122,6 @@ void clean_buffer();
 void exit_error(char *format, ...);
 int8_t is_aborted();
 void debug_output(char *format, ...);
-
+void addr_to_string(unsigned int addr, char *str, int len);
 void *udp_server();
 
