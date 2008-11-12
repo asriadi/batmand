@@ -27,10 +27,10 @@ SRC_H= allocate.h hash.h list-batman.h vis.h vis-types.h
 
 
 vis-adv:	$(SRC_C) $(SRC_H) Makefile
-		$(CC) $(CFLAGS) -o $@ $(SRC_C) $(SRC_H) $(LDFLAGS)
+		$(CC) $(CFLAGS) -o $@ $(SRC_C) $(LDFLAGS)
 
 vis-adv-static:	$(SRC_C) $(SRC_H) Makefile
-		$(CC) $(CFLAGS) -o $@ $(SRC_C) $(SRC_H) $(LDFLAGS_STATIC)
+		$(CC) $(CFLAGS) -o $@ $(SRC_C) $(LDFLAGS_STATIC)
 
 clean:
 		rm -f vis-adv vis-adv-static *.o *~
