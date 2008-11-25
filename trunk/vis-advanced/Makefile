@@ -16,6 +16,15 @@
 # 02110-1301, USA
 #
 
+ifneq ($(findstring $(MAKEFLAGS),s),s)
+ifndef V
+	Q_CC = @echo '   ' CC $@;
+	Q_LD = @echo '   ' LD $@;
+	export Q_CC
+	export Q_LD
+endif
+endif
+
 CC = gcc
 CFLAGS =         -Wall -W -O0 -g3 -DDEBUG_MALLOC -DMEMORY_USAGE
 LDFLAGS =        -lpthread
@@ -24,13 +33,20 @@ LDFLAGS_STATIC = -lpthread -static
 
 SRC_C= allocate.c hash.c list-batman.c vis.c udp_server.c
 SRC_H= allocate.h hash.h list-batman.h vis.h vis-types.h
+SRC_O=		$(SRC_C:.c=.o)
 
 
-vis-adv:	$(SRC_C) $(SRC_H) Makefile
-		$(CC) $(CFLAGS) -o $@ $(SRC_C) $(LDFLAGS)
+vis-adv:	$(SRC_O) Makefile
+		$(Q_LD)$(CC) $(CFLAGS) -o $@ $(SRC_O) $(LDFLAGS)
 
-vis-adv-static:	$(SRC_C) $(SRC_H) Makefile
-		$(CC) $(CFLAGS) -o $@ $(SRC_C) $(LDFLAGS_STATIC)
+vis-adv-static:	$(SRC_O) Makefile
+		$(Q_LD)$(CC) $(CFLAGS) -o $@ $(SRC_O) $(LDFLAGS_STATIC)
+
+%.o: %.c %.h
+	$(Q_CC)$(CC) $(CFLAGS) $(EXTRA_CFLAGS) -c $< -o $@
+
+%.o: %.c
+	$(Q_CC)$(CC) $(CFLAGS) $(EXTRA_CFLAGS) -c $< -o $@
 
 clean:
 		rm -f vis-adv vis-adv-static *.o *~
