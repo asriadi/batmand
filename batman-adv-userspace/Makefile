@@ -26,9 +26,9 @@ endif
 endif
 
 CC =		gcc
-CFLAGS =	-Wall -W -O1 -g
+CFLAGS +=	-Wall -W -O1 -g
 EXTRA_CFLAGS =	-DDEBUG_MALLOC -DREVISION_VERSION=$(REVISION_VERSION)
-LDFLAGS =	-lpthread -g
+LDFLAGS +=	-lpthread -g
 
 SBINDIR =	$(INSTALL_PREFIX)/usr/sbin
 
