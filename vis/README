@@ -6,10 +6,16 @@ BETTER APPROACH TO MOBILE AD-HOC NETWORKING
 # PURPOSE          #
 ####################
 
-The fact that no participant in a B.A.T.M.A.N. mesh network knows the entire topology is one of the most interesting features of the B.A.T.M.A.N. protocol.
-Unfortunately, this is quite unhandy if you plan to visualize your network and its connections. In order to overcome that limitation every B.A.T.M.A.N. client has the
-ability to send various information about its neighbours and their link quality to a visualization server. The server collects the data and offers an assembled output in
-the well known "dot draw" format which you can use to visualize your topology with e.g. olsrs3d / meshs3d (part of the s3d project - s3d.berlios.de).
+The fact that no participant in a B.A.T.M.A.N. mesh network knows
+the entire topology is one of the most interesting features of the
+B.A.T.M.A.N. protocol. Unfortunately, this is quite unhandy if you
+plan to visualize your network and its connections. In order to
+overcome that limitation every B.A.T.M.A.N. client has the ability
+to send various information about its neighbours and their link
+quality to a visualization server. The server collects the data
+and offers an assembled output in the well known "dot draw" format
+which you can use to visualize your topology with
+e.g. olsrs3d / meshs3d (part of the s3d project - s3d.berlios.de).
 
 
 ####################
