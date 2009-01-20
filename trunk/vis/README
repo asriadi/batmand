@@ -27,7 +27,7 @@ To start the visualization server issue the following command:
 
 vis <iface1> <iface2>
 
-where iface1 is the interface for incoming B.A.T.M.A.N. packets and iface2 is used for the dot draw output. the server can run on different interfaces but this is not neccessary.
+where iface1 is the interface for incoming B.A.T.M.A.N. packets and iface2 is used for the dot draw output. the server can run on different interfaces but this is not necessary.
 
 
 Every B.A.T.M.A.N. client which should be visible on your visualization must add the "-s" parameter:
@@ -42,4 +42,4 @@ You can check your setup by simply connecting with telnet to your vis server ins
 telnet <ip_of_vis_server> 2004
 
 
-Don't forget to adjust your firewal settings in case you use any: On the vis server you need to allow incoming traffic on TCP port 2004 and UDP port 4307.
+Don't forget to adjust your firewall settings in case you use any: On the vis server you need to allow incoming traffic on TCP port 2004 and UDP port 4307.
