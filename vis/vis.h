@@ -36,7 +36,7 @@
 #include "allocate.h"
 #include "list-batman.h"
 
-#define SOURCE_VERSION "0.3.1-beta" //put exactly one distinct word inside the string like "0.3-pre-alpha" or "0.3-rc1" or "0.3"
+#define SOURCE_VERSION "0.3.2-beta" //put exactly one distinct word inside the string like "0.3-pre-alpha" or "0.3-rc1" or "0.3"
 
 
 #define MAXCHAR 4096
