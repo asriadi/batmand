@@ -42,11 +42,9 @@ vis-adv:	$(SRC_O) Makefile
 vis-adv-static:	$(SRC_O) Makefile
 		$(Q_LD)$(CC) $(CFLAGS) -o $@ $(SRC_O) $(LDFLAGS_STATIC)
 
-%.o: %.c %.h
-	$(Q_CC)$(CC) $(CFLAGS) $(EXTRA_CFLAGS) -c $< -o $@
-
-%.o: %.c
-	$(Q_CC)$(CC) $(CFLAGS) $(EXTRA_CFLAGS) -c $< -o $@
+.c.o:
+	$(Q_CC)$(CC) $(CFLAGS) $(EXTRA_CFLAGS) -MD -c $< -o $@
+-include $(SRC_C:.c=.d)
 
 clean:
-		rm -f vis-adv vis-adv-static *.o *~
+		rm -f vis-adv vis-adv-static *.o *.d *~
