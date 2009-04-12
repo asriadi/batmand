@@ -46,6 +46,10 @@
 
 #define ADDR_STR_LEN 16
 
+#ifndef REVISION_VERSION
+#define REVISION_VERSION "0"
+#endif
+
 
 
 

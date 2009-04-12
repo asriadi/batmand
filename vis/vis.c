@@ -803,7 +803,7 @@ int main( int argc, char **argv ) {
 	}
 
 
-	debug_output( "B.A.T.M.A.N. visualisation server %s successfully started ... \n", SOURCE_VERSION );
+	debug_output("B.A.T.M.A.N. visualisation server %s%s successfully started ... \n", SOURCE_VERSION, (strlen("REVISION_VERSION") > 3 ? REVISION_VERSION : ""));
 
 
 	pthread_create( &udp_server_thread, NULL, &udp_server, NULL );

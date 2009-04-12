@@ -87,28 +87,28 @@ void handle_node( unsigned int sender_ip, unsigned char *buff, int buff_len, uns
 	packet_count = buff_len / sizeofdata;
 
 	for( i = 0; i < packet_count; i++ ) {
-		
+
 		uint32_t vis_data_ip = 0;
 		uint8_t  vis_data_type = 0;
 		uint16_t vis_data_data = 0;
-		
+
 		switch ( version ) {
-			
+
 			case VIS_COMPAT_VERSION21:
 			case VIS_COMPAT_VERSION23:
-				
+
 				vis_data_ip =   ((struct vis_data21 *)(buff + i * sizeofdata))->ip;
 				vis_data_type = ((struct vis_data21 *)(buff + i * sizeofdata))->type;
 				vis_data_data = ((struct vis_data21 *)(buff + i * sizeofdata))->data;
 				break;
-			
+
 			case VIS_COMPAT_VERSION22:
-				
+
 				vis_data_ip =   ((struct vis_data22 *)(buff + i * sizeofdata))->ip;
 				vis_data_type = ((struct vis_data22 *)(buff + i * sizeofdata))->type;
 				vis_data_data = ntohs( ((struct vis_data22 *)(buff + i * sizeofdata))->data );
 				break;
-					
+
 		}
 
 		if ( vis_data_ip != 0 ) {
@@ -303,18 +303,18 @@ void *udp_server() {
 					buff_len = recvfrom( vis_if->udp_sock, receive_buff, sizeof(receive_buff), 0, (struct sockaddr*)&client, &len );
 
 					uint8_t v=0;
-					
+
 					/* drop packet if it has not minumum packet size or not the correct version */
-					if ( 	( (buff_len > sizeof(struct vis_packet21))  &&  
-						  (buff_len - sizeof(struct vis_packet21)) % sizeof(struct vis_data21) == 0  && 
-						  ((v=((struct vis_packet21 *)receive_buff)->version) == VIS_COMPAT_VERSION21) ) || 
-						
-						( (buff_len > sizeof(struct vis_packet22))  &&  
-						  (buff_len - sizeof(struct vis_packet22)) % sizeof(struct vis_data22) == 0  && 
-						  ((v=((struct vis_packet22 *)receive_buff)->version) == VIS_COMPAT_VERSION22) ) || 
-										
-						( (buff_len > sizeof(struct vis_packet23))  &&  
-						  (buff_len - sizeof(struct vis_packet23)) % sizeof(struct vis_data23) == 0  && 
+					if ( ( (buff_len > sizeof(struct vis_packet21))  &&
+						  (buff_len - sizeof(struct vis_packet21)) % sizeof(struct vis_data21) == 0  &&
+						  ((v=((struct vis_packet21 *)receive_buff)->version) == VIS_COMPAT_VERSION21) ) ||
+
+						( (buff_len > sizeof(struct vis_packet22))  &&
+						  (buff_len - sizeof(struct vis_packet22)) % sizeof(struct vis_data22) == 0  &&
+						  ((v=((struct vis_packet22 *)receive_buff)->version) == VIS_COMPAT_VERSION22) ) ||
+
+						( (buff_len > sizeof(struct vis_packet23))  &&
+						  (buff_len - sizeof(struct vis_packet23)) % sizeof(struct vis_data23) == 0  &&
 						  ((v=((struct vis_packet23 *)receive_buff)->version) == VIS_COMPAT_VERSION23) )    ) {
 
 						if ( ((struct vis_packet21 *)receive_buff)->sender_ip != 0 ) {
@@ -326,7 +326,7 @@ void *udp_server() {
 									case VIS_COMPAT_VERSION21:
 									case VIS_COMPAT_VERSION23:
 
-										handle_node( 	((struct vis_packet21 *)receive_buff)->sender_ip, 
+										handle_node( 	((struct vis_packet21 *)receive_buff)->sender_ip,
 												receive_buff + sizeof(struct vis_packet21),
 												buff_len - sizeof(struct vis_packet21),
 												((struct vis_packet21 *)receive_buff)->gw_class,
@@ -335,8 +335,8 @@ void *udp_server() {
 										break;
 
 									case VIS_COMPAT_VERSION22:
-										
-										handle_node( 	((struct vis_packet22 *)receive_buff)->sender_ip, 
+
+										handle_node( 	((struct vis_packet22 *)receive_buff)->sender_ip,
 												receive_buff + sizeof(struct vis_packet22),
 												buff_len - sizeof(struct vis_packet22),
 												((struct vis_packet22 *)receive_buff)->gw_class,
@@ -358,22 +358,22 @@ void *udp_server() {
 						}
 
 					} else {
-						
+
 						if ( (buff_len >= sizeof(struct vis_packet21)) ) {
-							
+
 							char ip_str[ADDR_STR_LEN];
-							
+
 							addr_to_string( ((struct vis_packet21 *)receive_buff)->sender_ip, ip_str, sizeof (ip_str) );
-							
-							debug_output( "Warning - dropping invalid UDP packet: VIS_COMPAT_VERSION? %d from node? %s\n", 
+
+							debug_output( "Warning - dropping invalid UDP packet: VIS_COMPAT_VERSION? %d from node? %s\n",
 									((struct vis_packet21 *)receive_buff)->version, ip_str );
-							
+
 						} else {
-							 
+
 							debug_output( "Warning - dropping invalid UDP packet !\n" );
 						}
 
-						
+
 					}
 
 				}
