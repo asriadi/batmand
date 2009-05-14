@@ -53,7 +53,7 @@ NUM_CPUS = $(shell NUM_CPUS=`cat /proc/cpuinfo | grep -v 'model name' | grep pro
 
 
 all:
-	@$(MAKE) -j $(NUM_CPUS) $(BINARY_NAME)
+	$(MAKE) -j $(NUM_CPUS) $(BINARY_NAME)
 
 $(BINARY_NAME):	$(SRC_O) $(SRC_H) Makefile
 	$(Q_LD)$(CC) -o $@ $(SRC_O) $(LDFLAGS)
