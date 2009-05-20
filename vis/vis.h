@@ -43,6 +43,7 @@
 
 #define VIS_PORT 4307
 #define DOT_DRAW_PORT 2004
+#define JSON_PORT 2005
 
 #define ADDR_STR_LEN 16
 
@@ -64,11 +65,13 @@ extern struct hashtable_t *secif_hash;
 
 extern uint8_t debug_level;
 
-
+typedef enum { dot_draw = 1, json = 2, last = 4 } formats;
+extern formats selected_formats;
 
 struct thread_data {
 	int socket;
 	char ip[ADDR_STR_LEN];
+	formats format;
 };
 
 struct neighbour {
@@ -107,7 +110,8 @@ struct secif_lst {
 };
 
 typedef struct _buffer {
-	char *buffer;
+	char *dot_buffer;
+	char *json_buffer;
 	int counter;
 	struct _buffer *next;
 	pthread_mutex_t mutex;
@@ -117,9 +121,11 @@ struct vis_if {
 	struct list_head list;
 	char *dev;
 	int32_t udp_sock;
-	int32_t tcp_sock;
+	int32_t dot_tcp_sock;
+	int32_t json_tcp_sock;
 	struct sockaddr_in udp_addr;
-	struct sockaddr_in tcp_addr;
+	struct sockaddr_in dot_tcp_addr;
+	struct sockaddr_in json_tcp_addr;
 };
 
 void clean_secif_hash();
