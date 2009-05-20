@@ -58,6 +58,8 @@ buffer_t *fillme = NULL;
 static int8_t stop;
 uint8_t debug_level = 0;
 
+formats selected_formats = dot_draw;
+
 struct hashtable_t *node_hash;
 struct hashtable_t *secif_hash;
 
@@ -145,7 +147,6 @@ void restore_defaults() {
 	struct vis_if *vis_if;
 	struct list_head *list_pos, *list_pos_tmp;
 
-
 	if ( udp_server_thread != 0 )
 		pthread_join( udp_server_thread, NULL );
 
@@ -159,8 +160,11 @@ void restore_defaults() {
 		if ( vis_if->udp_sock )
 			close( vis_if->udp_sock );
 
-		if ( vis_if->tcp_sock )
-			close( vis_if->tcp_sock );
+    if ( vis_if->dot_tcp_sock )
+      close( vis_if->dot_tcp_sock );
+
+    if ( vis_if->json_tcp_sock )
+      close( vis_if->json_tcp_sock );
 
 		debugFree( vis_if, 2000 );
 
@@ -309,7 +313,8 @@ void clean_buffer() {
 
 		rm = i;
 		i = i->next;
-		debugFree( rm->buffer, 2004 );
+		debugFree( rm->dot_buffer, 2004 );
+		debugFree( rm->json_buffer, 2018 );
 		debugFree( rm, 2005 );
 
 	}
@@ -328,7 +333,7 @@ void write_data_in_buffer() {
 	struct list_head *list_pos, *list_pos_tmp, *prev_list_head;
 	struct hash_it_t *hashit = NULL;
 	char from_str[16], to_str[16], hna_str[16], tmp[100];
-
+  char first_line = 1;
 
 	memset( tmp, 0, sizeof(tmp) );
 
@@ -385,9 +390,14 @@ void write_data_in_buffer() {
 						}
 
 						snprintf( tmp, sizeof( tmp ), "\"%s\" -> \"%s\"[label=\"%.2f\"]\n", from_str, to_str, (float)( orig_node->tq_max / (float)neigh->tq_avg ) );
-						fillme->buffer = (char *)debugRealloc( fillme->buffer, strlen( tmp ) + strlen( fillme->buffer ) + 1, 408 );
+						fillme->dot_buffer = (char *)debugRealloc( fillme->dot_buffer, strlen( tmp ) + strlen( fillme->dot_buffer ) + 1, 408 );
+						strncat( fillme->dot_buffer, tmp, strlen( tmp ) );
 
-						strncat( fillme->buffer, tmp, strlen( tmp ) );
+						snprintf( tmp, sizeof( tmp ), "%s\t{ router : \"%s\", neighbour : \"%s\", label : %.2f }",
+							(first_line ? "" : ",\n"), from_str, to_str, (float)( orig_node->tq_max / (float)neigh->tq_avg ) );
+						first_line = 0;
+						fillme->json_buffer = (char *)debugRealloc( fillme->json_buffer, strlen( tmp ) + strlen( fillme->json_buffer ) + 1, 408 );
+						strncat( fillme->json_buffer, tmp, strlen( tmp ) );
 
 					}
 
@@ -401,9 +411,14 @@ void write_data_in_buffer() {
 					addr_to_string( ( hna->netmask == 32 ? 0xffffffff : htonl( ~ ( 0xffffffff >> hna->netmask ) ) ), hna_str, sizeof( hna_str ) );
 
 					snprintf( tmp, sizeof( tmp ), "\"%s\" -> \"%s/%s\"[label=\"HNA\"]\n", from_str, to_str, hna_str );
-					fillme->buffer = (char *)debugRealloc( fillme->buffer, strlen( tmp ) + strlen( fillme->buffer ) + 1, 409 );
+					fillme->dot_buffer = (char *)debugRealloc( fillme->dot_buffer, strlen( tmp ) + strlen( fillme->dot_buffer ) + 1, 409 );
+					strncat( fillme->dot_buffer, tmp, strlen( tmp ) );
 
-					strncat( fillme->buffer, tmp, strlen( tmp ) );
+					snprintf( tmp, sizeof( tmp ), "%s\t{ router : \"%s\", gateway : \"%s/%s\", label : \"HNA\" }",
+						(first_line ? "" : ",\n"), from_str, to_str, hna_str );
+					first_line = 0;
+					fillme->json_buffer = (char *)debugRealloc( fillme->json_buffer, strlen( tmp ) + strlen( fillme->json_buffer ) + 1, 409 );
+					strncat( fillme->json_buffer, tmp, strlen( tmp ) );
 
 				}
 
@@ -411,8 +426,15 @@ void write_data_in_buffer() {
 				if ( orig_node->gw_class != 0 ) {
 
 					snprintf( tmp, sizeof( tmp ), "\"%s\" -> \"0.0.0.0/0.0.0.0\"[label=\"HNA\"]\n", from_str );
-					fillme->buffer = (char *)debugRealloc( fillme->buffer, strlen( tmp ) + strlen( fillme->buffer ) + 1, 410 );
-					strncat( fillme->buffer, tmp, strlen( tmp ) );
+					fillme->dot_buffer = (char *)debugRealloc( fillme->dot_buffer, strlen( tmp ) + strlen( fillme->dot_buffer ) + 1, 410 );
+					strncat( fillme->dot_buffer, tmp, strlen( tmp ) );
+
+					snprintf( tmp, sizeof( tmp ),
+						"%s\t{ router : \"%s\", gateway : \"%s\", label : \"%s\" }",
+						(first_line ? "" : ",\n"), from_str, "0.0.0.0/0.0.0.0", "HNA" );
+					first_line = 0;
+					fillme->json_buffer = (char *)debugRealloc( fillme->json_buffer, strlen( tmp ) + strlen( fillme->json_buffer ) + 1, 410 );
+					strncat( fillme->json_buffer, tmp, strlen( tmp ) );
 
 				}
 
@@ -541,8 +563,8 @@ void *tcp_server( void *arg ) {
 
 	struct thread_data *thread_data = ((struct thread_data*) arg);
 	buffer_t *last_send = NULL;
-	ssize_t ret;
-
+	size_t ret;
+	char* send_buffer = NULL;
 
 	while ( !is_aborted() ) {
 
@@ -551,10 +573,16 @@ void *tcp_server( void *arg ) {
 			pthread_mutex_lock( &current->mutex );
 			current->counter = current->counter == -1 ? 1 : current->counter + 1;
 			pthread_mutex_unlock( &current->mutex );
-			ret = write( thread_data->socket, current->buffer, strlen( current->buffer ) );
-			if( ret != strlen( current->buffer ) )
-			{
 
+			if (thread_data->format == dot_draw) {
+				send_buffer = current->dot_buffer;
+			} else {
+				send_buffer = current->json_buffer;
+			}
+
+			ret = write( thread_data->socket, send_buffer, strlen( send_buffer ) );
+			if( ret != strlen( send_buffer ) || (thread_data->format == json) )
+			{
 				pthread_mutex_lock( &current->mutex );
 				current->counter--;
 				pthread_mutex_unlock( &current->mutex );
@@ -583,11 +611,43 @@ void *tcp_server( void *arg ) {
 
 
 
+void create_tcp_server ( int32_t socket, formats format ) {
+
+	struct thread_data *thread_data;
+	pthread_t tcp_server_thread;
+	struct sockaddr_in addr_client;
+	int32_t unix_opts;
+	socklen_t len_inet;
+
+	thread_data = debugMalloc( sizeof(struct thread_data), 1003 );
+
+	thread_data->format = format;
+
+	len_inet = sizeof(addr_client);
+	thread_data->socket = accept( socket, (struct sockaddr*)&addr_client, &len_inet );
+
+	addr_to_string( addr_client.sin_addr.s_addr, thread_data->ip, sizeof(thread_data->ip) );
+
+	if ( debug_level > 0 )
+		debug_output( "New TCP client connected: %s \n", thread_data->ip );
+
+	/* make tcp socket non blocking */
+	unix_opts = fcntl( thread_data->socket, F_GETFL, 0 );
+	fcntl( thread_data->socket, F_SETFL, unix_opts | O_NONBLOCK );
+
+	pthread_create( &tcp_server_thread, NULL, &tcp_server, thread_data );
+	pthread_detach( tcp_server_thread );
+}
+
+
+
 void *master() {
 
 	buffer_t *new, *tmp;
-	char begin[] = "digraph topology\n{\n";
-	char end[] = "}\n";
+	char dot_begin [] = "digraph topology\n{\n";
+	char dot_end   [] = "}\n";
+	char json_begin[] = "HTTP/1.0 200 OK\nContent-type: application/json\n\n[\n";
+	char json_end  [] = "\n]\n";
 
 	while ( !is_aborted() ) {
 
@@ -599,7 +659,8 @@ void *master() {
 				break;
 
 			first = tmp->next;
-			debugFree( tmp->buffer, 2012 );
+			debugFree( tmp->dot_buffer, 2012 );
+			debugFree( tmp->json_buffer, 2019 );
 			debugFree( tmp, 2013 );
 			tmp = first;
 
@@ -610,17 +671,25 @@ void *master() {
 		new->next = NULL;
 		pthread_mutex_init( &new->mutex, NULL );
 
-		new->buffer = (char *)debugMalloc( strlen( begin ) + 1, 1001 );
-		memset( new->buffer, 0, strlen( begin ) );
-		strncpy( new->buffer, begin, strlen( begin ) + 1);
+		new->dot_buffer = (char *)debugMalloc( strlen( dot_begin ) + 1, 1001 );
+		memset( new->dot_buffer, 0, strlen( dot_begin ) );
+		strncpy( new->dot_buffer, dot_begin, strlen( dot_begin ) + 1);
 
-		/* printf( "vis.c buffer: %s\n-----Ende-----\n", new->buffer ); */
+		new->json_buffer = (char *)debugMalloc( strlen( json_begin ) + 1, 1101 );
+		memset( new->json_buffer, 0, strlen( json_begin ) );
+		strncpy( new->json_buffer, json_begin, strlen( json_begin ) + 1);
+
+		/* printf( "vis.c dot  buffer: %s\n-----Ende-----\n", new->dot_buffer ); */
+		/* printf( "vis.c json buffer: %s\n-----Ende-----\n", new->json_buffer ); */
 		fillme = new;
 
 		write_data_in_buffer();
 
-		new->buffer = (char *)debugRealloc( new->buffer, strlen( new->buffer ) + strlen( end ) + 1, 407 );
-		strncat( new->buffer, end, strlen( end ) );
+		new->dot_buffer = (char *)debugRealloc( new->dot_buffer, strlen( new->dot_buffer ) + strlen( dot_end ) + 1, 407 );
+		strncat( new->dot_buffer, dot_end, strlen( dot_end ) );
+
+		new->json_buffer = (char *)debugRealloc( new->json_buffer, strlen( new->json_buffer ) + strlen( json_end ) + 1, 507 );
+		strncat( new->json_buffer, json_end, strlen( json_end ) );
 
 		if ( first == NULL )
 			first = new;
@@ -643,6 +712,7 @@ void print_usage() {
 
 	printf( "B.A.T.M.A.N. visualisation server %s\n", SOURCE_VERSION );
 	printf( "Usage: vis <interface(s)> \n" );
+	printf( "\t-j output mesh topology as json on port %d\n", JSON_PORT );
 	printf( "\t-d debug level\n" );
 	printf( "\t-h help\n" );
 	printf( "\t-v Version\n\n" );
@@ -657,19 +727,14 @@ int main( int argc, char **argv ) {
 	char ip_str[ADDR_STR_LEN];
 	int max_sock = 0, optchar, on = 1, debug_level_max = 1;
 	uint8_t found_args = 1;
-	int32_t unix_opts;
-	struct sockaddr_in addr_client;
 	struct ifreq int_req;
 	struct vis_if *vis_if;
 	struct list_head *list_pos;
-	struct thread_data *thread_data;
 	struct timeval tv;
 	fd_set wait_sockets, tmp_wait_sockets;
-	socklen_t len_inet;
-	pthread_t tcp_server_thread;
 
 
-	while ( ( optchar = getopt ( argc, argv, "d:hv" ) ) != -1 ) {
+	while ( ( optchar = getopt ( argc, argv, "jd:hv" ) ) != -1 ) {
 
 		switch( optchar ) {
 
@@ -700,6 +765,11 @@ int main( int argc, char **argv ) {
 				exit(EXIT_SUCCESS);
 				break;
 
+			case 'j':
+				selected_formats |= json;
+				found_args++;
+				break;
+
 			default:
 				print_usage();
 				exit(EXIT_SUCCESS);
@@ -708,7 +778,6 @@ int main( int argc, char **argv ) {
 		}
 
 	}
-
 
 	stop = 0;
 
@@ -746,7 +815,7 @@ int main( int argc, char **argv ) {
 		if ( ( vis_if->udp_sock = socket( PF_INET, SOCK_DGRAM, 0 ) ) < 0 )
 			exit_error( "Error - could not create udp socket for interface %s: %s\n", vis_if->dev, strerror( errno ) );
 
-		if ( ( vis_if->tcp_sock = socket( AF_INET, SOCK_STREAM, 0 ) ) < 0 )
+		if ( ( vis_if->dot_tcp_sock = socket( AF_INET, SOCK_STREAM, 0 ) ) < 0 )
 			exit_error( "Error - could not create tcp socket for interface %s: %s\n", vis_if->dev, strerror( errno ) );
 
 		memset( &int_req, 0, sizeof ( struct ifreq ) );
@@ -759,31 +828,56 @@ int main( int argc, char **argv ) {
 		vis_if->udp_addr.sin_port = htons(VIS_PORT);
 		vis_if->udp_addr.sin_addr.s_addr = ((struct sockaddr_in *)&int_req.ifr_addr)->sin_addr.s_addr;
 
-		vis_if->tcp_addr.sin_family = AF_INET;
-		vis_if->tcp_addr.sin_port = htons(DOT_DRAW_PORT);
-		vis_if->tcp_addr.sin_addr.s_addr = ((struct sockaddr_in *)&int_req.ifr_addr)->sin_addr.s_addr;
+		vis_if->dot_tcp_addr.sin_family = AF_INET;
+		vis_if->dot_tcp_addr.sin_port = htons(DOT_DRAW_PORT);
+		vis_if->dot_tcp_addr.sin_addr.s_addr = ((struct sockaddr_in *)&int_req.ifr_addr)->sin_addr.s_addr;
 
 		addr_to_string( vis_if->udp_addr.sin_addr.s_addr, ip_str, sizeof (ip_str) );
 
 		if ( vis_if->udp_addr.sin_addr.s_addr == INADDR_NONE )
 			exit_error( "Error - interface %s has invalid address: %s\n", vis_if->dev, ip_str );
 
-		if ( setsockopt( vis_if->tcp_sock, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(int) ) < 0 )
+		if ( setsockopt( vis_if->dot_tcp_sock, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(int) ) < 0 )
 			exit_error( "Error - ioctl SO_REUSEADDR on interface %s failed: %s\n", vis_if->dev, strerror( errno ) );
 
 		if ( bind( vis_if->udp_sock, (struct sockaddr*)&vis_if->udp_addr, sizeof(struct sockaddr_in) ) < 0 )
 			exit_error( "Error - could not bind to interface (udp) %s: %s\n", vis_if->dev, strerror( errno ) );
 
-		if ( bind( vis_if->tcp_sock, (struct sockaddr*)&vis_if->tcp_addr, sizeof(struct sockaddr_in) ) < 0 )
+		if ( bind( vis_if->dot_tcp_sock, (struct sockaddr*)&vis_if->dot_tcp_addr, sizeof(struct sockaddr_in) ) < 0 )
 			exit_error( "Error - could not bind to interface (tcp) %s: %s\n", vis_if->dev, strerror( errno ) );
 
-		if ( listen( vis_if->tcp_sock, 32 ) < 0 )
+		if ( listen( vis_if->dot_tcp_sock, 32 ) < 0 )
 			exit_error( "Error - could not start listening on interface %s: %s\n", vis_if->dev, strerror( errno ) );
 
-		if ( vis_if->tcp_sock > max_sock )
-			max_sock = vis_if->tcp_sock;
+		if ( vis_if->dot_tcp_sock > max_sock )
+			max_sock = vis_if->dot_tcp_sock;
 
-		FD_SET(vis_if->tcp_sock, &wait_sockets);
+		FD_SET(vis_if->dot_tcp_sock, &wait_sockets);
+
+		/* enable any other vis output formats specified on the command line */
+		if ( selected_formats & json ) {
+
+			if ( ( vis_if->json_tcp_sock = socket( AF_INET, SOCK_STREAM, 0 ) ) < 0 )
+				exit_error( "Error - could not create tcp socket for interface %s: %s\n", vis_if->dev, strerror( errno ) );
+
+			vis_if->json_tcp_addr.sin_family = AF_INET;
+			vis_if->json_tcp_addr.sin_port = htons(JSON_PORT);
+			vis_if->json_tcp_addr.sin_addr.s_addr = ((struct sockaddr_in *)&int_req.ifr_addr)->sin_addr.s_addr;
+
+			if ( setsockopt( vis_if->json_tcp_sock, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(int) ) < 0 )
+				exit_error( "Error - ioctl SO_REUSEADDR on interface %s failed: %s\n", vis_if->dev, strerror( errno ) );
+
+			if ( bind( vis_if->json_tcp_sock, (struct sockaddr*)&vis_if->json_tcp_addr, sizeof(struct sockaddr_in) ) < 0 )
+				exit_error( "Error - could not bind to interface (tcp) %s: %s\n", vis_if->dev, strerror( errno ) );
+
+			if ( listen( vis_if->json_tcp_sock, 32 ) < 0 )
+				exit_error( "Error - could not start listening on interface %s: %s\n", vis_if->dev, strerror( errno ) );
+
+			if ( vis_if->json_tcp_sock > max_sock && vis_if->json_tcp_sock > vis_if->dot_tcp_sock )
+				max_sock = vis_if->json_tcp_sock;
+
+			FD_SET(vis_if->json_tcp_sock, &wait_sockets);
+		}
 
 		list_add_tail( &vis_if->list, &vis_if_list );
 
@@ -817,8 +911,6 @@ int main( int argc, char **argv ) {
 		tv.tv_sec = 1;
 		tv.tv_usec = 0;
 
-		len_inet = sizeof(addr_client);
-
  		/*checkIntegrity();*/
 
 		if ( select( max_sock + 1, &tmp_wait_sockets, NULL, NULL, &tv ) > 0 ) {
@@ -827,23 +919,13 @@ int main( int argc, char **argv ) {
 
 				vis_if = list_entry( list_pos, struct vis_if, list );
 
-				if ( FD_ISSET( vis_if->tcp_sock, &tmp_wait_sockets ) ) {
+				if ( FD_ISSET( vis_if->dot_tcp_sock, &tmp_wait_sockets ) ) {
 
-					thread_data = debugMalloc( sizeof(struct thread_data), 1003 );
+					create_tcp_server( vis_if->dot_tcp_sock, dot_draw );
 
-					thread_data->socket = accept( vis_if->tcp_sock, (struct sockaddr*)&addr_client, &len_inet );
+				} else if ( FD_ISSET( vis_if->json_tcp_sock, &tmp_wait_sockets )  ) {
 
-					addr_to_string( addr_client.sin_addr.s_addr, thread_data->ip, sizeof(thread_data->ip) );
-
-					if ( debug_level > 0 )
-						debug_output( "New TCP client connected: %s \n", thread_data->ip );
-
-					/* make tcp socket non blocking */
-					unix_opts = fcntl( thread_data->socket, F_GETFL, 0 );
-					fcntl( thread_data->socket, F_SETFL, unix_opts | O_NONBLOCK );
-
-					pthread_create( &tcp_server_thread, NULL, &tcp_server, thread_data );
-					pthread_detach( tcp_server_thread );
+					create_tcp_server( vis_if->json_tcp_sock, json );
 
 				}
 
