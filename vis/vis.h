@@ -1,7 +1,9 @@
 /*
  * vis.h
  *
- * Copyright (C) 2006 Andreas Langer <a.langer@q-dsl.de>, Marek Lindner:
+ * Copyright (C) 2006-2009 B.A.T.M.A.N. contributors:
+ *
+ * Andreas Langer <a.langer@q-dsl.de>, Marek Lindner
  *
  *
  * This program is free software; you can redistribute it and/or
@@ -36,7 +38,7 @@
 #include "allocate.h"
 #include "list-batman.h"
 
-#define SOURCE_VERSION "0.3.2-beta" //put exactly one distinct word inside the string like "0.3-pre-alpha" or "0.3-rc1" or "0.3"
+#define SOURCE_VERSION "0.3.2" //put exactly one distinct word inside the string like "0.3-pre-alpha" or "0.3-rc1" or "0.3"
 
 
 #define MAXCHAR 4096
