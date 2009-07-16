@@ -119,8 +119,9 @@ int8_t is_aborted() {
 	return stop != 0;
 }
 
-int32_t orig_comp(void *data1, void *data2) {
-	return(memcmp(data1, data2, 4));
+int32_t orig_comp(void *data1, void *data2)
+{
+	return (memcmp(data1, data2, 4) == 0 ? 1 : 0);
 }
 
 /* hashfunction to choose an entry in a hash table of given size */
