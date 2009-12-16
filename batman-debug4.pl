@@ -100,7 +100,7 @@ while ( <BATMANLOG> ) {
 
 				$receive_hash{ $last_orig }{ $last_neigh }{ "uni_flag" }++;
 
-			} elsif ( m/OGM\ via\ unkown\ neighbor/ ) {
+			} elsif ( m/OGM\ via\ unknown\ neighbor/ ) {
 
 				$receive_hash{ $last_orig }{ $last_neigh }{ "unknown" }++;
 
