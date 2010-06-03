@@ -31,6 +31,10 @@
 #include "allocate.h"
 
 
+#ifndef REVISION_VERSION
+#define REVISION_VERSION 0
+#endif
+
 /*
  *  from other headers:
  */

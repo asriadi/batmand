@@ -742,7 +742,7 @@ void schedule_tx_task(struct dev_node *dev_out, struct link_dev_node *lndev_out,
 
                 if ((ttn = dev_out->my_tx_tasks[frame_type])) {
 
-                        dbgf(DBGL_SYS, DBGT_WARN, "my_tx_task for %s %s myIID4x %d neighIID4x %d dst %s NOT NULL",
+                        dbgf(DBGL_CHANGES, DBGT_WARN, "my_tx_task for %s %s myIID4x %d neighIID4x %d dst %s NOT NULL",
                                 frame_handler[frame_type].name, dev_out->name, myIID4x, neighIID4x, ipStr(dest_ip4));
 
                         assertion(-500442, (ttn->myIID4x == IID_RSVD_4YOU));
@@ -1323,7 +1323,7 @@ int rx_frame_ogm0_advs(struct packet_buff *pb, struct frame_header *frame)
 
 
                 } else {
-                        dbgf(!dhn ? DBGL_CHANGES : DBGL_SYS, DBGT_WARN,
+                        dbgf((dhn && on) ? DBGL_SYS : DBGL_CHANGES, DBGT_WARN,
                                 "    %s orig_sqn %d or neighIID4x %d via %s orig %s sqn_min %d sqn_range %d",
                                 !dhn ? "UNKNOWN" : on ? "EXCEEDED OGM_SQN RANGE" : "INVALIDATED",
                                 orig_sqn, neighIID4x, pb->neigh_str, on ? on->id.name:"---",
@@ -1691,7 +1691,7 @@ int rx_frame_hello40_replies(struct packet_buff *pb, struct frame_header *frame)
         }
 
         if (found > 1) {
-                dbgf(DBGL_SYS, DBGT_WARN,
+                dbgf(DBGL_CHANGES, DBGT_WARN,
                         "rcvd %d %s messages in %d-bytes frame",
                         found, frame_handler[FRAME_TYPE_HI40_REPS].name, frame->length);
         }
@@ -1794,7 +1794,7 @@ int rx_frames(struct packet_buff *pb, uint8_t* fdata, uint16_t fsize)
 
                 } else if (fhdl->min_rtq && (!pb->lndev || pb->lndev->mr[SQR_RTQ].val < fhdl->min_rtq)) {
 
-                        dbg_mute(60, DBGL_SYS, DBGT_WARN,
+                        dbg_mute(60, DBGL_CHANGES, DBGT_WARN,
                                 "non-sufficient bidirectional link %s - %s (rtq %d), skipping frame type %s",
                                 pb->iif->ip4_str, pb->neigh_str,
                                 pb->lndev ? pb->lndev->mr[SQR_RTQ].val : 0, fhdl->name);
