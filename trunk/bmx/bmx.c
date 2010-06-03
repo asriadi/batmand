@@ -443,7 +443,7 @@ IDM_T update_neigh_node(struct link_node *ln, struct dhash_node *dhn, IID_T neig
 {
         struct neigh_node *neigh = NULL;
 
-        dbgf( DBGL_SYS, DBGT_INFO, "neigh %s  neighIID4neigh %d  dhn->orig %s",
+        dbgf( DBGL_CHANGES, DBGT_INFO, "neigh %s  neighIID4neigh %d  dhn->orig %s",
                 ln->llip4_str, neighIID4neigh, dhn->on->desc0->id.name);
 
         assertion(-500389, (ln && neighIID4neigh > IID_RSVD_MAX));

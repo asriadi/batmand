@@ -13,8 +13,7 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 # 02110-1301, USA
 
-REVISION_VERSION =	0$(shell if [ -d .svn ]; then which svn > /dev/null && which sed > /dev/null && which awk > /dev/null && { svn info | grep "Rev:" | sed -e '1p' -n | awk '{print $$4}';} fi )
-
+REVISION_VERSION =	$(shell if [ -d .svn ]; then which svn > /dev/null && which sed > /dev/null && which awk > /dev/null && { svn info | grep "Rev:" | sed -e '1p' -n | awk '{print $$4}';};else echo 0; fi )
 
 ##CFLAGS ?= -I./lua-5.1.4/src -I./cyassl-1.4.0/include -O0 -ggdb3
 ##LDFLAGS ?= -L./lua-5.1.4/src -L./cyassl-1.4.0/src/.libs
