@@ -836,7 +836,7 @@ enum {
 /*
  * PARANOIA ERROR CODES:
  * Negative numbers are used as SIGSEV error codes !
- * Currently used numbers are: -500000 ... -500501
+ * Currently used numbers are: -500000 ... -500520
  */
 
 #ifdef NO_PARANOIA
@@ -878,7 +878,8 @@ IDM_T blacklisted_neighbor(struct packet_buff *pb, struct description_hash *dhas
 
 IDM_T validate_metric_algo(struct metric_algo *ma, struct ctrl_node *cn);
 
-uint32_t update_metric(struct metric_record *mr, struct metric_algo *ma, SQN_T sqn_in, SQN_T sqn_max, uint32_t probe);
+uint32_t update_metric(struct link_node *ln, struct orig_node *on,
+	struct metric_record *mr, struct metric_algo *ma, SQN_T sqn_in, SQN_T sqn_max, uint32_t probe);
 
 void update_link_node(struct link_node *ln, struct dev_node *iif, SQN_T sqn, SQN_T sqn_max, uint8_t sqr, uint32_t probe);
 

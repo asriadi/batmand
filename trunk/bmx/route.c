@@ -1298,7 +1298,7 @@ error:
 	
 }
 
-static int8_t track_route_and_proceed( uint32_t dest, int16_t mask, uint32_t metric, uint32_t gw, uint32_t src, int32_t ifi, char *dev,
+static int8_t track_route_and_proceed( uint32_t dest, int16_t mask, uint32_t metric, uint32_t gw, uint32_t src, char *dev,
                               int16_t rt_table, int16_t rta_type, int8_t del, int8_t track_t )
 {
 
@@ -1418,7 +1418,7 @@ void configure_route( uint32_t dest, int16_t mask, uint32_t metric, uint32_t gw,
 
 
 
-        if ( track_route_and_proceed(dest, mask, metric, gw, src, ifi, dev, rt_table, rta_type, del, track_t) == NO )
+        if ( track_route_and_proceed(dest, mask, metric, gw, src, dev, rt_table, rta_type, del, track_t) == NO )
                 return;
 
 	if ( track_t != TRACK_OTHER_HOST )
