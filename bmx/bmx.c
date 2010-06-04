@@ -193,7 +193,8 @@ IDM_T validate_metric_algo(struct metric_algo *ma, struct ctrl_node *cn)
 }
 
 
-uint32_t update_metric(struct metric_record *mr, struct metric_algo *ma, SQN_T sqn_in, SQN_T sqn_max, uint32_t probe)
+uint32_t update_metric(struct link_node *ln, struct orig_node *on,
+        struct metric_record *mr, struct metric_algo *ma, SQN_T sqn_in, SQN_T sqn_max, uint32_t probe)
 {
 
         dbgf_all( DBGT_INFO,
@@ -243,6 +244,13 @@ uint32_t update_metric(struct metric_record *mr, struct metric_algo *ma, SQN_T s
 
                 // mr->clr out of any range:
                 if ( mr->clr ) {
+
+                        dbgf(DBGL_SYS, DBGT_ERR, "ln %s  on %s sqn_min %d updated %u ",
+                                ln ? ln->llip4_str : "---",
+                                on ? on->id.name : "---",
+                                on ? on->ogm_sqn_min : 0,
+                                on ? on->updated_timestamp : 0);
+
                         dbgf(DBGL_SYS, DBGT_ERR,
                                 "sqn_in %d sqn_max %d probe %u "
                                 "metric_algo: mask 0x%X steps %d window %d lounge %d metric_record: clr %d, set %d val %u",
@@ -371,6 +379,8 @@ void free_neigh_node(struct neigh_node *nn)
  * purging ln->neigh->dhn and dhn->neigh
  */
 //BMX3 (done)
+/*
+
 STATIC_FUNC
 struct neigh_node *merge_neigh_nodes(struct link_node *ln, struct dhash_node * dhn)
 {
@@ -411,6 +421,7 @@ struct neigh_node *merge_neigh_nodes(struct link_node *ln, struct dhash_node * d
 
         return neigh;
 }
+*/
 
 
 //BMX3 (done)
@@ -462,11 +473,25 @@ IDM_T update_neigh_node(struct link_node *ln, struct dhash_node *dhn, IID_T neig
 //always if new dhash:                        assertion(-500450, 0); //this never happen! or ?
 
                         neigh = ln->neigh;
+                        assertion(-500518, (neigh->dhn != my_orig_node.dhn));
 
 
                 } else {
 
-                        neigh = merge_neigh_nodes( ln, dhn);
+                        //neigh = merge_neigh_nodes( ln, dhn); //they are the same!
+                        dbgf(DBGL_SYS, DBGT_ERR, "Neigh restarted ?!! purging ln %s %jX and dhn %s %jX",
+                                ln->neigh->dhn->on->desc0->id.name,
+                                ln->neigh->dhn->on->desc0->id.rand.u64[0],
+                                dhn->on->desc0->id.name, dhn->on->desc0->id.rand.u64[0]);
+
+
+                        invalidate_dhash_node( dhn );
+                        invalidate_dhash_node( ln->neigh->dhn );
+
+                        return FAILURE;
+
+
+                        assertion(-500519, (neigh->dhn != my_orig_node.dhn));
 
                 }
 
@@ -481,15 +506,19 @@ IDM_T update_neigh_node(struct link_node *ln, struct dhash_node *dhn, IID_T neig
                         neigh = ln->neigh = dhn->neigh;
                         avl_insert(&neigh->link_tree, ln, -300173);
 
+                        assertion(-500516, (neigh->dhn != my_orig_node.dhn));
+
+
                 } else {
 
                         neigh = create_neigh_node( ln, dhn );
-
+                        assertion(-500517, (neigh->dhn != my_orig_node.dhn));
                 }
-
         }
 
         assign_best_rtq_link(neigh);
+
+        assertion(-500510, (neigh->dhn != my_orig_node.dhn));
 
         return update_neighIID4x_repository(neigh, neighIID4neigh, neigh->dhn);
 }
@@ -576,7 +605,7 @@ void update_link_node(struct link_node *ln, struct dev_node *iif, SQN_T sqn, SQN
 
 //                        update_lounged_metric(0, lounge_size, sqn, sqn_max, &lndev->sqr[sqr], local_lws);
 
-                        update_metric(&lndev->mr[sqr], &link_metric_algo[sqr], sqn, sqn_max, 0);
+                        update_metric(ln, NULL, &lndev->mr[sqr], &link_metric_algo[sqr], sqn, sqn_max, 0);
 
                 }
 
@@ -585,8 +614,8 @@ void update_link_node(struct link_node *ln, struct dev_node *iif, SQN_T sqn, SQN
         if (this_lndev) {
 
 //                update_lounged_metric(probe, lounge_size, sqn, sqn_max, &this_lndev->sqr[sqr], local_lws);
-                
-                update_metric(&this_lndev->mr[sqr], &link_metric_algo[sqr], sqn, sqn_max, probe);
+
+                update_metric(ln, NULL, &this_lndev->mr[sqr], &link_metric_algo[sqr], sqn, sqn_max, probe);
 
                 if (probe && sqr == SQR_RTQ) {
 
@@ -852,8 +881,8 @@ void purge_router_tree( struct orig_node *on, IDM_T purge_all )
                 memcpy(&key, &rn->key, sizeof (struct link_key));
 
                 if (purge_all || !avl_find(&link_dev_tree, &rn->key)) {
-                        debugFree(rn, -300225);
                         avl_remove(&on->router_tree, &rn->key, -300226);
+                        debugFree(rn, -300225);
                 }
         }
 }
@@ -898,7 +927,7 @@ IDM_T update_orig_metrics(struct packet_buff *pb, struct orig_node *on, IID_T or
 
                                 } else {
 
-                                        metric_temp = update_metric(&rn->mr, &on->path_metric_algo, 0, ogm_sqn_max_rcvd, 0);
+                                        metric_temp = update_metric(pb->ln, on, &rn->mr, &on->path_metric_algo, 0, ogm_sqn_max_rcvd, 0);
 
                                         if (metric_best < metric_temp) {
 
@@ -928,10 +957,13 @@ IDM_T update_orig_metrics(struct packet_buff *pb, struct orig_node *on, IID_T or
                 rn_in = debugMalloc(sizeof (struct router_node), -300222);
                 memset( rn_in, 0, sizeof(struct router_node));
                 memcpy( &rn_in->key, &pb->lndev->key, sizeof(struct link_key));
+
+                rn_in->mr.clr = on->ogm_sqn_max_rcvd & mask;
+
                 avl_insert(&on->router_tree, rn_in, -300223);
         }
 
-        metric_in = update_metric(&rn_in->mr, &on->path_metric_algo, orig_sqn, ogm_sqn_max_rcvd, pb->lndev->mr[SQR_RTQ].val);
+        metric_in = update_metric(pb->ln, on, &rn_in->mr, &on->path_metric_algo, orig_sqn, ogm_sqn_max_rcvd, pb->lndev->mr[SQR_RTQ].val);
 
 
         if (metric_in > metric_best && GREAT_SQN(rn_in->mr.set & mask, on->ogm_sqn_to_be_send & mask)) {
@@ -952,12 +984,11 @@ IDM_T update_orig_metrics(struct packet_buff *pb, struct orig_node *on, IID_T or
                                 ipStr(rn_in ? rn_in->key.llip4 : 0), rn_in ? rn_in->key.dev->name : "---", metric_in,
                                 ipStr(on->router_key.llip4), lndev_old ? on->router_key.dev->name : "---");
 
-                        assertion(-500504, (!on->router_key.llip4 || lndev_old));
+                        //assertion(-500504, (!on->router_key.llip4 || lndev_old)); lndev_old not needed anymore beyond this point
 
                         if (on->router_key.llip4) {
                                 configure_route(on->primary_ip4, 32, 0, on->router_key.llip4, 0,
-                                        on->router_key.dev->index, on->router_key.dev->name,
-                                        RT_TABLE_HOSTS, RTN_UNICAST, DEL, TRACK_OTHER_HOST);
+                                        0, NULL, RT_TABLE_HOSTS, RTN_UNICAST, DEL, TRACK_OTHER_HOST);
                         }
 
                         configure_route(on->primary_ip4, 32, 0, rn_in->key.llip4, my_orig_node.primary_ip4,
@@ -987,8 +1018,7 @@ void free_orig_node(struct orig_node *on)
 
         if (on->router_key.llip4) {
                 configure_route(on->primary_ip4, 32, 0, on->router_key.llip4, 0,
-                        on->router_key.dev->index, on->router_key.dev->name,
-                        RT_TABLE_HOSTS, RTN_UNICAST, DEL, TRACK_OTHER_HOST);
+                        0, NULL, RT_TABLE_HOSTS, RTN_UNICAST, DEL, TRACK_OTHER_HOST);
         }
 
 

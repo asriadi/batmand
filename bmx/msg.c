@@ -1104,7 +1104,7 @@ int tx_msg_helloX0_adv(struct tx_task_node *ttn, uint8_t *flags, uint8_t *tx_buf
 
 //              update_lounged_metric(0, local_rtq_lounge, ttn->dev->ogm_sqn, ttn->dev->ogm_sqn, &lndev->sqr[SQR_RTQ], local_lws);
 
-                update_metric(&lndev->mr[SQR_RTQ], &link_metric_algo[SQR_RTQ], ttn->dev->ogm_sqn, ttn->dev->ogm_sqn, 0);
+                update_metric(NULL, NULL, &lndev->mr[SQR_RTQ], &link_metric_algo[SQR_RTQ], ttn->dev->ogm_sqn, ttn->dev->ogm_sqn, 0);
         }
 
         dbgf_all( DBGT_INFO, "%s %s SQN %d", ttn->dev->name, ttn->dev->ip4_str, ttn->dev->ogm_sqn);
@@ -1395,6 +1395,8 @@ process_dhash_description_neighIID4x
         IDM_T invalid = NO;
         struct description *cache = NULL;
 
+        assertion(-500511, (!ln || !ln->neigh || (ln->neigh->dhn != my_orig_node.dhn)));
+
         if (avl_find(&dhash_invalid_tree, dhash)) {
 
                 invalid = YES;
@@ -1434,17 +1436,27 @@ process_dhash_description_neighIID4x
                                 }
                         }
 
-                        if (is_sender)
-                                update_neigh_node(ln, orig_dhn, neighIID4x);
+                        if (is_sender) {
 
-                        else if (update_neighIID4x_repository(ln->neigh, neighIID4x, orig_dhn) == FAILURE)
+                                if (update_neigh_node(ln, orig_dhn, neighIID4x) == FAILURE )
+                                        return FAILURE_POINTER;
+
+                                assertion(-500512, (!ln->neigh || (ln->neigh->dhn != my_orig_node.dhn)));
+
+                        } else if (update_neighIID4x_repository(ln->neigh, neighIID4x, orig_dhn) == FAILURE) {
+
                                 return FAILURE_POINTER;
+                        }
 
 
                 } else {
 
                         if (is_sender) {
-                                update_neigh_node(ln, orig_dhn, neighIID4x);
+                                if (update_neigh_node(ln, orig_dhn, neighIID4x) == FAILURE)
+                                        return FAILURE_POINTER;
+
+                                assertion(-500513, (!ln->neigh || (ln->neigh->dhn != my_orig_node.dhn)));
+
                         } else {
                                 //update_neigh_node(ln, dhn, IID_RSVD_UNUSED);
                                 //update_neigh_iid_repos(ln->neigh, neighIID4x, dhn);
@@ -1461,7 +1473,11 @@ process_dhash_description_neighIID4x
 
                         if ((orig_dhn = process_description(pb, cache, dhash))) {
 
-                                update_neigh_node(ln, orig_dhn, neighIID4x);
+                                if (update_neigh_node(ln, orig_dhn, neighIID4x) == FAILURE)
+                                        return FAILURE_POINTER;
+
+                                assertion(-500514, (!ln->neigh || (ln->neigh->dhn != my_orig_node.dhn)));
+
                         }
 
                 } else if (ln->neigh && (cache = rem_cached_description(dhash))) {
@@ -1562,7 +1578,8 @@ int rx_frame_description0_advs(struct packet_buff *pb, struct frame_header *fram
                 dhn = process_dhash_description_neighIID4x(pb, &dhash0, desc0, neighIID4x, is_sender);
 
                 dbgf_all( DBGT_INFO, "rcvd %s desc0: %jX via %s NB %s",
-                        dhn ? "accepted" : "denied", desc0->id.rand.u64[0], pb->iif->name, pb->neigh_str);
+                        (dhn && dhn != FAILURE_POINTER) ? "accepted" : "denied",
+                        desc0->id.rand.u64[0], pb->iif->name, pb->neigh_str);
 
 
                 if (dhn == FAILURE_POINTER) {
