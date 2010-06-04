@@ -198,7 +198,7 @@ struct description_cache_node *purge_cached_descriptions( IDM_T purge_all ) {
         struct description_hash tmp_dhash;
         memset( &tmp_dhash, 0, sizeof(struct description_hash));
 
-        dbgf(DBGL_CHANGES, DBGT_INFO, "%s", purge_all ? "purge_all" : "only_expired");
+        dbgf_all( DBGT_INFO, "%s", purge_all ? "purge_all" : "only_expired");
 
         paranoia( -500349, (!is_zero((char*)&tmp_dhash, BMX_HASH0_LEN)));
 
@@ -234,7 +234,7 @@ void cache_description(struct description *desc, struct description_hash *dhash)
                 return;
         }
 
-        dbgf(DBGL_CHANGES, DBGT_INFO, "%8X..", dhash->h.u32[0]);
+        dbgf_all( DBGT_INFO, "%8X..", dhash->h.u32[0]);
 
 
         paranoia(-500261, (description_cache_tree.items > DEF_DESC0_CACHE_SIZE));
@@ -273,7 +273,7 @@ void purge_tx_timestamp_tree(struct dev_node *dev, IDM_T purge_all)
 
         memset(&key, 0, sizeof (struct tx_timestamp_key));
 
-        dbgf(DBGL_CHANGES, DBGT_INFO, "%s %s", dev->name, purge_all ? "purge_all" : "only_expired");
+        dbgf_all( DBGT_INFO, "%s %s", dev->name, purge_all ? "purge_all" : "only_expired");
 
         while ((an = avl_next(&dev->tx_timestamp_tree, (ttn ? &ttn->key : &key)))) {
 
@@ -410,7 +410,7 @@ IDM_T process_description_tlvs(struct orig_node *on, struct description *desc_ne
                         continue;
 
 
-                dbgf(DBGL_CHANGES, DBGT_INFO, "%s %s dsc_sqn %d size %d ",
+                dbgf_all( DBGT_INFO, "%s %s dsc_sqn %d size %d ",
                         tlv_op_str[op], desc->id.name, ntohs(desc->dsc_sqn), ntohs(desc->dsc_tlvs_len));
 
 
@@ -524,7 +524,7 @@ struct dhash_node * process_description(struct packet_buff *pb, struct descripti
         int id_name_len;
 
 
-        dbgf( DBGL_CHANGES, DBGT_INFO, "via dev: %s NB %s:dhash %8X.. id.rand %jX",
+        dbgf_all(  DBGT_INFO, "via dev: %s NB %s:dhash %8X.. id.rand %jX",
                 pb->iif->name, pb->neigh_str, dhash->h.u32[0], desc->id.rand.u64[0]);
 
         if (
@@ -592,7 +592,7 @@ struct dhash_node * process_description(struct packet_buff *pb, struct descripti
                 avl_insert(&orig_tree, on, -300148);
         }
 
-        dbgf(DBGL_CHANGES, DBGT_INFO, "rcvd new desc SQN %d (old %d) from %s via %s NB %s",
+        dbgf_all( DBGT_INFO, "rcvd new desc SQN %d (old %d) from %s via %s NB %s",
                 ntohs(desc->dsc_sqn), on->desc0_sqn, desc->id.name, pb->iif->name, pb->neigh_str);
 
         if (process_description_tlvs(on, desc, TLV_DEL_TEST_ADD, NULL) == TLVS_FAILURE)
@@ -690,7 +690,7 @@ IDM_T freed_tx_task_node(struct tx_task_node *ttn, int tx_creator_result, struct
 
         if (tx_creator_result != ((int) ((ttn)->frame_data_length_target))) {
 
-                dbgf(DBGL_CHANGES, DBGT_WARN, "msg %s to %s via %s   mid4o %d  send_data %d != target_data %d ",
+                dbgf_all( DBGT_WARN, "msg %s to %s via %s   mid4o %d  send_data %d != target_data %d ",
                         frame_handler[(ttn)->frame_type].name,
                         ipStr((ttn)->dst_ip4),
                         (ttn)->dev->name,
@@ -727,7 +727,7 @@ void schedule_tx_task(struct dev_node *dev_out, struct link_dev_node *lndev_out,
 
 //        struct link_node *ln_out = lndev_out ? lndev_out->link : NULL;
 
-        dbgf(DBGL_CHANGES, DBGT_INFO, "%s %s %s  sqn %d myIID4x %d neighIID4x %d",
+        dbgf_all( DBGT_INFO, "%s %s %s  sqn %d myIID4x %d neighIID4x %d",
                 frame_handler[frame_type].name, ipStr(dest_ip4), dev_out->name, sqn, myIID4x, neighIID4x);
 
         if (frame_handler[ frame_type ].min_rtq > (lndev_out ? lndev_out->mr[SQR_RTQ].val : 0)) {
@@ -824,7 +824,7 @@ STATIC_FUNC
 void create_ogm_aggregation(void)
 {
 
-        dbgf(DBGL_CHANGES, DBGT_INFO, " ");
+        dbgf_all( DBGT_INFO, " ");
 
         uint32_t n = 0;
 
@@ -840,7 +840,7 @@ void create_ogm_aggregation(void)
 
         IID_T start_iid = curr_iid;
 
-        dbgf(DBGL_CHANGES, DBGT_INFO, "pending %d target %d start %d",
+        dbgf_all( DBGT_INFO, "pending %d target %d start %d",
                 ogm_aggreg_pending, target_aggregations, start_iid);
 
         do {
@@ -855,9 +855,14 @@ void create_ogm_aggregation(void)
                                 on->ogm_sqn_aggregated + on->path_metric_algo.sqn_steps))
                                 warn++;
 
-                        dbgf(warn ? DBGL_CHANGES : DBGL_ALL, warn ? DBGT_WARN : DBGT_INFO, "%s %s %d < %d",
-                                on->id.name, warn ? "delayed!" : "in-time",
-                                on->ogm_sqn_aggregated, on->ogm_sqn_to_be_send);
+                        if ( warn ) {
+                                dbgf(DBGL_CHANGES, DBGT_WARN, "%s delayed %d < %d",
+                                        on->id.name, on->ogm_sqn_aggregated, on->ogm_sqn_to_be_send);
+                        } else {
+                                dbgf_all(DBGT_INFO, "%s in-time %d < %d",
+                                        on->id.name, on->ogm_sqn_aggregated, on->ogm_sqn_to_be_send);
+                        }
+
 
                         on->ogm_sqn_aggregated = on->ogm_sqn_to_be_send & on->path_metric_algo.sqn_mask;
 
@@ -896,7 +901,7 @@ create_ogm_aggregation_done:
         oan->tx_timestamp = (bmx_time - DEF_OGM_RESEND_INTERVAL);
         oan->sqn = ++ogm_aggreg_sqn_max;
 
-        dbgf(DBGL_CHANGES, DBGT_INFO, "aggregation_sqn %d aggregated_ogms %d", oan->sqn, n);
+        dbgf_all( DBGT_INFO, "aggregation_sqn %d aggregated_ogms %d", oan->sqn, n);
 
         list_add_tail(&ogm_aggreg_list, &oan->list);
 
@@ -935,9 +940,9 @@ struct link_dev_node **get_best_lndevs_by_criteria(struct ogm_aggreg_node *oan_c
         if ( oan_criteria || dhn_criteria ) {
 
                 if (oan_criteria) {
-                        dbgf(DBGL_CHANGES, DBGT_INFO, "aggreg_sqn %d ", oan_criteria->sqn);
+                        dbgf_all(DBGT_INFO, "aggreg_sqn %d ", oan_criteria->sqn);
                 } else if (dhn_criteria) {
-                        dbgf(DBGL_CHANGES, DBGT_INFO, "NOT %s ", dhn_criteria->on->id.name);
+                        dbgf_all(DBGT_INFO, "NOT %s ", dhn_criteria->on->id.name);
                 }
 
                 for (an = NULL; (dev = avl_iterate_item(&dev_ip4_tree, &an));)
@@ -958,7 +963,7 @@ struct link_dev_node **get_best_lndevs_by_criteria(struct ogm_aggreg_node *oan_c
                         assertion(-500446, (nn->best_rtq->key.dev));
                         assertion(-500447, (nn->best_rtq->key.dev->active));
 
-                        dbgf(DBGL_CHANGES, DBGT_INFO, "  via %s to %s (redundant %d)",
+                        dbgf_all( DBGT_INFO, "  via %s to %s (redundant %d)",
                                 nn->best_rtq->key.dev->name, nn->best_rtq->link->llip4_str,
                                 nn->best_rtq->key.dev->misc_flag);
 
@@ -986,7 +991,7 @@ void schedule_and_purge_ogm_aggregations(struct dev_node *dev)
 
         if (dev) {
 
-                dbgf(DBGL_CHANGES, DBGT_INFO, "%s max %d   active aggregations %d   pending ogms %d  expiery in %d ms",
+                dbgf_all( DBGT_INFO, "%s max %d   active aggregations %d   pending ogms %d  expiery in %d ms",
                         dev->name, ogm_aggreg_sqn_max, ogm_aggreg_list.items, ogm_aggreg_pending,
                         (DEF_OGM_AGGREG_INTERVAL - ((uint32_t) (bmx_time - timestamp))));
 
@@ -1072,7 +1077,7 @@ int tx_msg_hello40_reply(struct tx_task_node *ttn, uint8_t *flags, uint8_t *tx_b
         hey0_rep->receiver_ip4 = ttn->dst_ip4;
         hey0_rep->hello_dev_sqn = htons(ttn->sqn);
 
-        dbgf(DBGL_CHANGES, DBGT_INFO, "dev %s %s to %s SQN %d",//  dest_sid: %d",
+        dbgf_all( DBGT_INFO, "dev %s %s to %s SQN %d",//  dest_sid: %d",
                 ttn->dev->name, ttn->dev->ip4_str, ipStr(ttn->dst_ip4), ttn->sqn/*, dtn->my_id_for_neigh*/);
 
         return sizeof (struct msg_hello_reply);
@@ -1102,7 +1107,7 @@ int tx_msg_helloX0_adv(struct tx_task_node *ttn, uint8_t *flags, uint8_t *tx_buf
                 update_metric(&lndev->mr[SQR_RTQ], &link_metric_algo[SQR_RTQ], ttn->dev->ogm_sqn, ttn->dev->ogm_sqn, 0);
         }
 
-        dbgf(DBGL_CHANGES, DBGT_INFO, "%s %s SQN %d", ttn->dev->name, ttn->dev->ip4_str, ttn->dev->ogm_sqn);
+        dbgf_all( DBGT_INFO, "%s %s SQN %d", ttn->dev->name, ttn->dev->ip4_str, ttn->dev->ogm_sqn);
 
         return sizeof (struct msg_hello_adv);
 }
@@ -1117,7 +1122,7 @@ int tx_msg_dhash0_or_description0_request(struct tx_task_node *ttn, uint8_t *fla
         req->receiver_ip4 = ttn->dst_ip4;
         req->receiverIID4x = htons(ttn->neighIID4x);
 
-        dbgf(DBGL_CHANGES, DBGT_INFO, "%s oif %s to %s requesting orig_did %d",
+        dbgf_all( DBGT_INFO, "%s oif %s to %s requesting orig_did %d",
                 frame_handler[ttn->frame_type].name, ttn->dev->name, ipStr(ttn->dst_ip4), ttn->neighIID4x);
 
         return sizeof ( struct msg_description_request);
@@ -1204,7 +1209,7 @@ int tx_frame_ogm0_advs(struct tx_task_node *ttn, uint8_t *flags, uint8_t *tx_buf
 
         assertion(-500428, (ttn->frame_data_length_target <= buff_size));
 
-        dbgf(DBGL_CHANGES, DBGT_INFO, " aggregation_sqn %d", ttn->sqn );
+        dbgf_all( DBGT_INFO, " aggregation_sqn %d", ttn->sqn );
 
         list_for_each( list_pos, &ogm_aggreg_list )
         {
@@ -1237,7 +1242,7 @@ int tx_msg_ogm_ack(struct tx_task_node *ttn, uint8_t *flags, uint8_t *tx_buff, u
         ack->receiver_ip4 = ttn->dst_ip4;
         ack->aggregation_sqn = htons(ttn->sqn);
 
-        dbgf(DBGL_CHANGES, DBGT_INFO, " aggreg_sqn %d to %s", ttn->sqn, ipStr(ttn->dst_ip4));
+        dbgf_all( DBGT_INFO, " aggreg_sqn %d to %s", ttn->sqn, ipStr(ttn->dst_ip4));
 
         return sizeof (struct msg_ogm_ack);
 }
@@ -1255,10 +1260,10 @@ int rx_frame_ogm0_advs(struct packet_buff *pb, struct frame_header *frame)
         uint16_t msgs = (frame->length - (sizeof (struct frame_header) + sizeof (struct hdr_ogm_adv))) /
                 sizeof (struct msg_ogm_adv);
 
-        dbgf(DBGL_CHANGES, DBGT_INFO, " ");
+        dbgf_all( DBGT_INFO, " ");
 
         if (!nn) {
-                dbgf(DBGL_CHANGES, DBGT_INFO, "via unknown neigh %s", pb->neigh_str );
+                dbgf_all( DBGT_INFO, "via unknown neigh %s", pb->neigh_str );
                 schedule_tx_task(pb->iif, pb->lndev, FRAME_TYPE_DHS0_REQS, 0, 0, 0, IID_RSVD_4YOU);
                 return frame->length;
         }
@@ -1269,7 +1274,7 @@ int rx_frame_ogm0_advs(struct packet_buff *pb, struct frame_header *frame)
 
                 if (bit_get(nn->ogm_aggregations_rcvd, OGM_AGGREG_SQN_CACHE_RANGE, aggregation_sqn)) {
 
-                        dbgf(DBGL_CHANGES, DBGT_INFO, "already known ogm_aggregation_sqn %d from neigh %s",
+                        dbgf_all( DBGT_INFO, "already known ogm_aggregation_sqn %d from neigh %s",
                                 aggregation_sqn, nn->dhn->on->id.name);
 
                         return frame->length;
@@ -1277,7 +1282,7 @@ int rx_frame_ogm0_advs(struct packet_buff *pb, struct frame_header *frame)
 
                 if (((uint16_t) (nn->ogm_aggregation_rcvd_max - aggregation_sqn)) > OGM_AGGREG_SQN_CACHE_WARN) {
 
-                        dbgf( DBGL_SYS, DBGT_WARN, "neigh %s with unknown %s aggregation_sqn %d  max %d  ogms %d",
+                        dbgf(DBGL_CHANGES, DBGT_WARN, "neigh %s with unknown %s aggregation_sqn %d  max %d  ogms %d",
                                 pb->neigh_str, "OLD", aggregation_sqn, nn->ogm_aggregation_rcvd_max, msgs);
                 }
 
@@ -1298,7 +1303,7 @@ int rx_frame_ogm0_advs(struct packet_buff *pb, struct frame_header *frame)
 
         }
 
-        dbgf(DBGL_CHANGES, DBGT_INFO, "neigh %s with unknown %s aggregation_sqn %d  max %d  ogms %d",
+        dbgf_all(DBGT_INFO, "neigh %s with unknown %s aggregation_sqn %d  max %d  ogms %d",
                 pb->neigh_str, "NEW", aggregation_sqn, nn->ogm_aggregation_rcvd_max, msgs);
 
         uint16_t m;
@@ -1316,7 +1321,7 @@ int rx_frame_ogm0_advs(struct packet_buff *pb, struct frame_header *frame)
 
                 if (dhn && (on = dhn->on) && ((SQN_T) (orig_sqn - on->ogm_sqn_min)) < on->ogm_sqn_range) {
 
-                        dbgf(DBGL_CHANGES, DBGT_INFO, "    new orig_sqn %d / %d from %s neighIID4x %d via %s ",
+                        dbgf_all(DBGT_INFO, "    new orig_sqn %d / %d from %s neighIID4x %d via %s ",
                                 orig_sqn, on->ogm_sqn_to_be_send, on->id.name, neighIID4x, pb->neigh_str);
 
                         update_orig_metrics(pb, on, orig_sqn);
@@ -1365,7 +1370,7 @@ int rx_frame_ogm40_acks(struct packet_buff *pb, struct frame_header *frame)
 
                         bit_set(pb->ln->neigh->ogm_aggregations_acked, OGM_AGGREG_SQN_CACHE_RANGE, aggregation_sqn, 1);
 
-                        dbgf(DBGL_CHANGES, DBGT_INFO, "neigh %s  sqn %d <= sqn_max %d",
+                        dbgf_all(DBGT_INFO, "neigh %s  sqn %d <= sqn_max %d",
                                 pb->neigh_str, aggregation_sqn, ogm_aggreg_sqn_max);
 
 
@@ -1402,7 +1407,7 @@ process_dhash_description_neighIID4x
 
                         if (orig_dhn == my_orig_node.dhn) {
 
-                                dbgf(DBGL_CHANGES, DBGT_INFO,
+                                dbgf_all( DBGT_INFO,
                                         "msg refers myself via %s neighIID4neigh %d neighIID4me %d",
                                         pb->neigh_str, ln->neigh->neighIID4neigh, neighIID4x);
 
@@ -1470,7 +1475,7 @@ process_dhash_description_neighIID4x
         }
 
 
-        dbgf(DBGL_CHANGES, DBGT_INFO, "via dev: %s NB %s:dhash %8X.. %s neighIID4x %d  is_sender %d %s",
+        dbgf_all( DBGT_INFO, "via dev: %s NB %s:dhash %8X.. %s neighIID4x %d  is_sender %d %s",
                 pb->iif->name, pb->neigh_str, dhash->h.u32[0],
                 (dsc ? "DESCRIPTION" : (cache ? "CACHED_DESCRIPTION" : (orig_dhn?"KNOWN":"UNDESCRIBED"))),
                 neighIID4x, is_sender,
@@ -1556,7 +1561,7 @@ int rx_frame_description0_advs(struct packet_buff *pb, struct frame_header *fram
 
                 dhn = process_dhash_description_neighIID4x(pb, &dhash0, desc0, neighIID4x, is_sender);
 
-                dbgf(DBGL_CHANGES, DBGT_INFO, "rcvd %s desc0: %jX via %s NB %s",
+                dbgf_all( DBGT_INFO, "rcvd %s desc0: %jX via %s NB %s",
                         dhn ? "accepted" : "denied", desc0->id.rand.u64[0], pb->iif->name, pb->neigh_str);
 
 
@@ -1606,7 +1611,7 @@ int rx_frame_dhash0_or_description0_requests(struct packet_buff *pb, struct fram
                 IID_T myIID4x = ntohs(req->receiverIID4x);
                 uint16_t desc0_len = 0;
 
-                dbg(DBGL_CHANGES, DBGT_INFO, "%s dest_llip4 %s myIID4x %d",
+                dbgf_all( DBGT_INFO, "%s dest_llip4 %s myIID4x %d",
                         frame_handler[frame_type].name, ipStr(req->receiver_ip4), myIID4x);
 
                 if ( req->receiver_ip4 != pb->iif->ip4_addr ) // if I am not asked
@@ -1666,7 +1671,7 @@ int rx_frame_hello40_replies(struct packet_buff *pb, struct frame_header *frame)
 
                 SQN_T sqn = ntohs(msg->hello_dev_sqn);
 
-                dbgf(DBGL_CHANGES, DBGT_INFO, "via NB %s dev %s %s to %s SQN %d",
+                dbgf_all( DBGT_INFO, "via NB %s dev %s %s to %s SQN %d",
                         pb->neigh_str, pb->iif->name, pb->iif->ip4_str, ipStr(msg->receiver_ip4), sqn);
 
                 if ( msg->receiver_ip4 != pb->iif->ip4_addr )
@@ -1675,7 +1680,7 @@ int rx_frame_hello40_replies(struct packet_buff *pb, struct frame_header *frame)
 
                 if ((SQN_T) (pb->iif->ogm_sqn - sqn) > (SQN_T) local_rtq_lounge) {
 
-                        dbgf(DBGL_SYS, DBGT_INFO, "DAD-Alert invalid Link-Local SQN %d!=%d from %s via %s",
+                        dbgf(DBGL_SYS, DBGT_ERR, "DAD-Alert invalid Link-Local SQN %d!=%d from %s via %s",
                                 sqn, pb->iif->ogm_sqn, pb->neigh_str, pb->iif->name);
 
                         return FAILURE;
@@ -1722,7 +1727,7 @@ int rx_frame_helloX0_advs( struct packet_buff *pb, struct frame_header *frame )
 
                 SQN_T sqn = ntohs(msg->hello_dev_sqn);
 
-                dbgf(DBGL_CHANGES, DBGT_INFO, "NB %s via %s  SQN %d ", pb->neigh_str, pb->iif->name, sqn);
+                dbgf_all( DBGT_INFO, "NB %s via %s  SQN %d ", pb->neigh_str, pb->iif->name, sqn);
 
                 // skip updateing link_node if this SQN is known but not new
                 if ((ln->rq_sqn_max || ln->rq_time_max) &&
@@ -1768,7 +1773,7 @@ int rx_frames(struct packet_buff *pb, uint8_t* fdata, uint16_t fsize)
 
                 struct pkt_frame_handler *fhdl = &frame_handler[t];
 
-                dbgf(DBGL_CHANGES, DBGT_INFO, "type %s  size %d  flags 0x%X",
+                dbgf_all( DBGT_INFO, "type %s  size %d  flags 0x%X",
                         fhdl->name, flength, fhdr->flags);
 
 
@@ -1913,7 +1918,7 @@ void tx_packet( void *dev_node )
                         assertion(-500424, (fhdl->tx_msg_creator));
                         assertion(-500441, (ttn->myIID4x == IID_RSVD_4YOU));
 
-                        dbgf(DBGL_CHANGES, DBGT_INFO, "%s type %d=%s %s",
+                        dbgf_all( DBGT_INFO, "%s type %d=%s %s",
                                 dev->name, type, fhdl->name, "from dev->my_tx_tasks");
 
                         if (tx_task_obsolete(dev, type, ttn)) {
@@ -1962,7 +1967,7 @@ void tx_packet( void *dev_node )
 
                         assertion(-500440, (ttn->frame_type == type));
 
-                        dbgf(DBGL_CHANGES, DBGT_INFO, "%s type %d=%s %s",
+                        dbgf_all( DBGT_INFO, "%s type %d=%s %s",
                                 dev->name, type, fhdl->name, "from dev->tx_tasks_list");
 
                         if (ttn->tx_timestamp == bmx_time) {
@@ -2037,7 +2042,7 @@ void tx_packet( void *dev_node )
                         frame_hdr->length = htons(length);
                         frame_hdr->flags |= flags;
 
-                        dbgf(DBGL_ALL, DBGT_INFO, "send frame type %s  size %d", fhdl->name, length);
+                        dbgf_all( DBGT_INFO, "send frame type %s  size %d", fhdl->name, length);
                 }
 
 
@@ -2053,7 +2058,7 @@ void tx_packet( void *dev_node )
 
                         send_udp_packet(tx_buff, packet_size, &dev->ip4_netwbrc_addr, dev->unicast_sock);
 
-                        dbgf(DBGL_ALL, DBGT_INFO, "send packet  size %d  via dev %s", packet_size, dev->name);
+                        dbgf_all( DBGT_INFO, "send packet  size %d  via dev %s", packet_size, dev->name);
 
                         packet_size = sizeof ( struct packet_header);
                         packet_full = NO;
@@ -2081,7 +2086,7 @@ void schedule_my_hello_message( void* dev_node ) {
 
 	register_task( my_hello_interval, schedule_my_hello_message, dev );
 
-        dbgf(DBGL_CHANGES, DBGT_INFO, "%s", dev->name);
+        dbgf_all( DBGT_INFO, "%s", dev->name);
 
         if (!LIST_EMPTY(&(dev->tx_tasks_list[FRAME_TYPE_HI40_ADVS]))) {
                 dbgf( DBGL_SYS, DBGT_ERR, " ");
@@ -2101,7 +2106,7 @@ void schedule_my_originator_message( void* unused )
         if (((uint32_t) (my_orig_node.ogm_sqn_to_be_send + 1 - my_orig_node.ogm_sqn_min)) < my_orig_node.ogm_sqn_range) {
 
                 ogm_aggreg_pending++;
-                dbgf(DBGL_CHANGES, DBGT_INFO, "ogm_sqn %d", my_orig_node.ogm_sqn_to_be_send);
+                dbgf_all(DBGT_INFO, "ogm_sqn %d", my_orig_node.ogm_sqn_to_be_send);
 
         } else {
 
@@ -2194,7 +2199,7 @@ void update_my_description_adv(void)
 
                                 my_desc0_tlv_len += sizeof (struct frame_header) + msgs_size;
 
-                                dbgf(DBGL_CHANGES, DBGT_INFO, "added %s size %d",
+                                dbgf_all(DBGT_INFO, "added %s size %d",
                                         description0_tlv_handler[tlvt].name, msgs_size);
 
                         }
@@ -2206,7 +2211,7 @@ void update_my_description_adv(void)
 
         dsc->dsc_tlvs_len = htons(my_desc0_tlv_len);
 
-        dbgf(DBGL_CHANGES, DBGT_INFO, "added tlv total of %d ", my_desc0_tlv_len);
+        dbgf_all(DBGT_INFO, "added tlv total of %d ", my_desc0_tlv_len);
 
         // calculate hash: like shown in CTaoCrypt Usage Reference:
         ShaUpdate(&bmx_sha, (byte*)dsc, (sizeof (struct description) + my_desc0_tlv_len));
