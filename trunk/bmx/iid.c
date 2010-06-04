@@ -26,7 +26,7 @@ struct iid_repos my_iid_repos = { 0,0,0,0,{NULL} };
 
 int8_t iid_extend_repos(struct iid_repos *rep)
 {
-        dbgf( DBGL_CHANGES, DBGT_INFO, "sizeof iid: %lu,  tot_used %d  arr_size %d ",
+        dbgf_all(DBGT_INFO, "sizeof iid: %lu,  tot_used %d  arr_size %d ",
                 (rep == &my_iid_repos) ? sizeof (IID_NODE_T*) : sizeof (IID_T), rep->tot_used, rep->arr_size);
 
         paranoia(-500217, (rep == &my_iid_repos && rep->tot_used != rep->arr_size));
@@ -103,7 +103,7 @@ void iid_free(struct iid_repos *rep, IID_T iid)
 
         rep->tot_used--;
 
-        dbgf(DBGL_CHANGES, DBGT_INFO, "mine %d, iid %d tot_used %d, min_free %d max_free %d",
+        dbgf_all( DBGT_INFO, "mine %d, iid %d tot_used %d, min_free %d max_free %d",
                 m, iid, rep->tot_used, rep->min_free, rep->max_free);
 
         if (rep->tot_used > 0 && rep->tot_used <= IID_MIN_USED) {
@@ -130,7 +130,7 @@ IID_NODE_T* iid_get_node_by_myIID4x( IID_T myIID4x ) {
         if (dhn) {
 
                 if (!dhn->on) {
-                        dbgf(DBGL_CHANGES, DBGT_INFO, "myIID4x %d INVALIDATED %d sec ago",
+                        dbgf_all( DBGT_INFO, "myIID4x %d INVALIDATED %d sec ago",
                                 myIID4x, (bmx_time - dhn->referred_timestamp) / 1000);
                 }
 
@@ -246,7 +246,7 @@ void iid_free_neighIID4x_by_myIID4x( struct iid_repos *rep, IID_T myIID4x)
 
         if (p < rep->max_free && rep->arr.ref[p].myIID4x == myIID4x) {
 
-                dbgf(DBGL_CHANGES, DBGT_INFO, "removed stale rep->arr.sid[%d] = %d", p, myIID4x);
+                dbgf_all(DBGT_INFO, "removed stale rep->arr.sid[%d] = %d", p, myIID4x);
 
                 iid_free(rep, p);
         }
@@ -272,7 +272,7 @@ IID_T iid_new_myIID4x(IID_NODE_T *dhn)
         my_iid_repos.min_free = pos;
         my_iid_repos.max_free = MAX(pos, my_iid_repos.max_free);
 
-        dbgf(DBGL_CHANGES, DBGT_INFO, "mine %d, iid %d tot_used %d, min_free %d max_free %d",
+        dbgf_all(DBGT_INFO, "mine %d, iid %d tot_used %d, min_free %d max_free %d",
                 1, mid, my_iid_repos.tot_used, my_iid_repos.min_free, my_iid_repos.max_free);
 
         dhn->referred_timestamp = bmx_time;

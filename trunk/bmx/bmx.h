@@ -714,6 +714,7 @@ struct orig_node   {
 	struct link_key router_key;   // the neighbor which is the currently best_next_hop
 	struct avl_tree router_tree;
 	uint32_t router_path_metric;
+	uint32_t router_best_metric;
 
 
 /*

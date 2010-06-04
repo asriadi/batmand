@@ -157,7 +157,7 @@ void blacklist_neighbor(struct packet_buff *pb)
 IDM_T blacklisted_neighbor(struct packet_buff *pb, struct description_hash *dhash)
 {
 
-        dbgf(DBGL_ALL, DBGT_INFO, "%s via %s", pb->neigh_str, pb->iif->name);
+        dbgf_all(DBGT_INFO, "%s via %s", pb->neigh_str, pb->iif->name);
         return NO;
 }
 
@@ -196,7 +196,7 @@ IDM_T validate_metric_algo(struct metric_algo *ma, struct ctrl_node *cn)
 uint32_t update_metric(struct metric_record *mr, struct metric_algo *ma, SQN_T sqn_in, SQN_T sqn_max, uint32_t probe)
 {
 
-        dbgf(DBGL_ALL, DBGT_INFO,
+        dbgf_all( DBGT_INFO,
                 "sqn_in %d sqn_max %d probe %u "
                 "metric_algo: mask 0x%X steps %d window %d lounge %d metric_record: clr %d, set %d val %u",
                 sqn_in, sqn_max, probe,
@@ -326,7 +326,7 @@ void assign_best_rtq_link(struct neigh_node *nn)
 
         assertion( -500451, (nn));
 
-        dbgf(DBGL_CHANGES, DBGT_INFO, "%s", nn->dhn->on->id.name);
+        dbgf_all( DBGT_INFO, "%s", nn->dhn->on->id.name);
 
         while ((ln = avl_iterate_item(&nn->link_tree, &an))) {
 
@@ -443,7 +443,7 @@ IDM_T update_neigh_node(struct link_node *ln, struct dhash_node *dhn, IID_T neig
 {
         struct neigh_node *neigh = NULL;
 
-        dbgf( DBGL_CHANGES, DBGT_INFO, "neigh %s  neighIID4neigh %d  dhn->orig %s",
+        dbgf_all( DBGT_INFO, "neigh %s  neighIID4neigh %d  dhn->orig %s",
                 ln->llip4_str, neighIID4neigh, dhn->on->desc0->id.name);
 
         assertion(-500389, (ln && neighIID4neigh > IID_RSVD_MAX));
@@ -516,7 +516,7 @@ struct link_dev_node *get_link_dev_node(struct link_node *ln, struct dev_node *d
 	lndev->key.dev = dev;
         lndev->key.llip4 = ln->llip4;
 
-	dbgf( DBGL_CHANGES, DBGT_INFO, "creating new lndev %16s %10s %s",
+	dbgf_all( DBGT_INFO, "creating new lndev %16s %10s %s",
 	      ipStr(ln->llip4), dev->name, dev->ip4_str );
 
         list_add_tail(&ln->lndev_list, &lndev->list);
@@ -607,7 +607,7 @@ void update_link_node(struct link_node *ln, struct dev_node *iif, SQN_T sqn, SQN
                 ln->rq_sqn_max = sqn;
         }
 
-        dbgf(DBGL_CHANGES, DBGT_INFO, "%s dev %s",
+        dbgf_all(DBGT_INFO, "%s dev %s",
                 ipStr(ln->llip4), this_lndev ? this_lndev->key.dev->name : "???");
 
 }
@@ -621,7 +621,7 @@ void purge_link_node(uint32_t only_llip4, struct dev_node *only_dev, IDM_T only_
         struct link_node *ln;
         uint32_t itip4 = 0;
 
-        dbgf(DBGL_CHANGES, DBGT_INFO, "%s %s %s only_expired",
+        dbgf_all( DBGT_INFO, "%s %s %s only_expired",
                 ipStr(only_llip4), only_dev ? only_dev->name : "---", only_expired ? " " : "not");
 
         while ((an = (only_llip4 ? (avl_find(&link_tree, &only_llip4)) : (avl_next(&link_tree, &itip4)))) && (ln = an->item)) {
@@ -639,7 +639,7 @@ void purge_link_node(uint32_t only_llip4, struct dev_node *only_dev, IDM_T only_
                         if ((!only_dev || only_dev == lndev->key.dev) &&
                                 (!only_expired || (((uint32_t) (bmx_time - lndev->pkt_time_max)) > (uint32_t) purge_to))) {
 
-                                dbgf(DBGL_SYS, DBGT_INFO, "purging lndev %16s %10s %s",
+                                dbgf(DBGL_CHANGES, DBGT_INFO, "purging lndev %16s %10s %s",
                                         ipStr(ln->llip4), lndev->key.dev->name, lndev->key.dev->ip4_str);
 
                                 list_del_next(&ln->lndev_list, prev);
@@ -662,14 +662,9 @@ void purge_link_node(uint32_t only_llip4, struct dev_node *only_dev, IDM_T only_
 
                                 avl_remove(&nn->link_tree, &ln->llip4, -300198);
 
-                                dbgf(DBGL_SYS, DBGT_INFO, "ln->neigh %s (%d more link_tree.items)",
-                                        ln->llip4_str, nn->link_tree.items);
-
                                 if (!nn->link_tree.items) {
 
                                         if (nn->dhn) {
-                                                dbgf(DBGL_SYS, DBGT_INFO, "setting ln->neigh->dhn (%s) = NULL",
-                                                        nn->dhn->on->id.name);
                                                 nn->dhn->neigh = NULL;
                                         }
 
@@ -705,7 +700,7 @@ struct dhash_node* create_dhash_node(struct description_hash *dhash, struct orig
         dhn->on = on;
         on->dhn = dhn;
 
-        dbgf(DBGL_CHANGES, DBGT_INFO, "dhash %8X.. myIID4orig %d", dhn->dhash.h.u32[0], dhn->myIID4orig);
+        dbgf_all(DBGT_INFO, "dhash %8X.. myIID4orig %d", dhn->dhash.h.u32[0], dhn->myIID4orig);
 
         return dhn;
 }
@@ -734,13 +729,13 @@ STATIC_FUNC
 
         struct dhash_node *dhn;
 
-        dbgf(DBGL_CHANGES, DBGT_INFO, "%s", purge_all ? "purge_all" : "only_expired");
+        dbgf_all( DBGT_INFO, "%s", purge_all ? "purge_all" : "only_expired");
 
         while ((dhn = plist_get_first(&dhash_invalid_plist)) ) {
 
                 if (purge_all || ((uint32_t) (bmx_time - dhn->referred_timestamp) > MIN_DHASH_TO)) {
 
-                        dbgf(DBGL_CHANGES, DBGT_INFO, "dhash %8X myIID4orig %d", dhn->dhash.h.u32[0], dhn->myIID4orig);
+                        dbgf_all( DBGT_INFO, "dhash %8X myIID4orig %d", dhn->dhash.h.u32[0], dhn->myIID4orig);
 
                         plist_rem_head(&dhash_invalid_plist);
                         avl_remove(&dhash_invalid_tree, &dhn->dhash, -300194);
@@ -756,7 +751,7 @@ STATIC_FUNC
 STATIC_FUNC
 void unlink_dhash_node(struct dhash_node *dhn)
 {
-        dbgf(DBGL_CHANGES, DBGT_INFO, "dhash %8X myIID4orig %d", dhn->dhash.h.u32[0], dhn->myIID4orig);
+        dbgf_all(DBGT_INFO, "dhash %8X myIID4orig %d", dhn->dhash.h.u32[0], dhn->myIID4orig);
 
         if (dhn->neigh) {
 
@@ -765,7 +760,7 @@ void unlink_dhash_node(struct dhash_node *dhn)
 
                 while ((an = dhn->neigh->link_tree.root) && (ln = an->item)) {
 
-                        dbgf(DBGL_SYS, DBGT_INFO, "dhn->neigh->link_tree item %s", ln->llip4_str);
+                        dbgf_all(DBGT_INFO, "dhn->neigh->link_tree item %s", ln->llip4_str);
 
                         assertion(-500284, (ln->neigh == dhn->neigh));
 
@@ -808,7 +803,7 @@ void free_dhash_node( struct dhash_node *dhn )
 void invalidate_dhash_node( struct dhash_node *dhn )
 {
 
-        dbgf(DBGL_CHANGES, DBGT_INFO,
+        dbgf_all( DBGT_INFO,
                 "dhash %8X myIID4orig %d, my_iid_repository: used %d, inactive %d  min_free %d  max_free %d ",
                 dhn->dhash.h.u32[0], dhn->myIID4orig,
                 my_iid_repos.tot_used, dhash_invalid_tree.items+1, my_iid_repos.min_free, my_iid_repos.max_free);
@@ -865,45 +860,51 @@ void purge_router_tree( struct orig_node *on, IDM_T purge_all )
 
 IDM_T update_orig_metrics(struct packet_buff *pb, struct orig_node *on, IID_T orig_sqn)
 {
-        dbgf(DBGL_ALL, DBGT_INFO, "%s orig_sqn %d via neigh %s", on->id.name, orig_sqn,pb->neigh_str);
+        dbgf_all( DBGT_INFO, "%s orig_sqn %d via neigh %s", on->id.name, orig_sqn,pb->neigh_str);
 
         struct router_node *rn_in = NULL;
         uint32_t metric_in, metric_best = 0;
         SQN_T mask = on->path_metric_algo.sqn_mask;
-//        SQN_T range = on->ogm_sqn_range;
-
-//        return SUCCESS;
+        struct link_key *key_in = &pb->lndev->key;
 
         if (on->blocked || (((SQN_T) (orig_sqn - on->ogm_sqn_min)) >= on->ogm_sqn_range))
                 return FAILURE;
 
-/*
+        SQN_T ogm_sqn_max_rcvd = MAX_SQ(on->ogm_sqn_max_rcvd, orig_sqn);
 
-        if (((SQN_T) (((orig_sqn & mask) - (on->ogm_sqn_max_rcvd & mask)) - 1)) < on->ogm_sqn_range) {
+        if (((SQN_T) ((ogm_sqn_max_rcvd & mask) - (orig_sqn & mask))) > on->path_metric_algo.sqn_lounge ) {
 
+                dbgf(DBGL_CHANGES, DBGT_WARN, "%s orig_sqn %d to old max_sqn %d via neigh %s",
+                        on->id.name, orig_sqn, on->ogm_sqn_max_rcvd, pb->neigh_str);
+
+
+                return FAILURE;
+        }
+
+        if (LESS_SQN((on->ogm_sqn_max_rcvd & mask), (orig_sqn & mask))) {
 
                 for (;;) {
                         struct router_node *rn;
                         struct avl_node *an;
-//                        SQN_T min_sqn_level = ((orig_sqn & mask) - on->ogm_sqn_steps);
                         struct router_node *rn_best = NULL;
                         uint32_t metric_temp;
                         metric_best = 0;
 
                         for (an = NULL; (rn = avl_iterate_item(&on->router_tree, &an));) {
 
-                                if (memcmp(&rn->key, &pb->lndev->key, sizeof (struct link_key))) {
+                                if (rn->key.dev == key_in->dev && rn->key.llip4 == key_in->llip4) {
 
-                                        metric_temp = update_metric(&rn->mr, &on->path_metric_algo, 0, orig_sqn, 0);
+                                        rn_in = rn;
+
+                                } else {
+
+                                        metric_temp = update_metric(&rn->mr, &on->path_metric_algo, 0, ogm_sqn_max_rcvd, 0);
 
                                         if (metric_best < metric_temp) {
 
                                                 metric_best = metric_temp;
                                                 rn_best = rn;
                                         }
-
-                                } else {
-                                        rn_in = rn;
                                 }
                         }
 
@@ -916,69 +917,27 @@ IDM_T update_orig_metrics(struct packet_buff *pb, struct orig_node *on, IID_T or
                 }
 
         } else {
-                rn_in = avl_find_item(&on->router_tree, &pb->lndev->key);
+                // already cleaned up, simple use last best_metric:
+
+                metric_best = on->router_best_metric;
+
+                rn_in = avl_find_item( &on->router_tree, key_in );
         }
-
-        on->ogm_sqn_max_rcvd = MAX_SQ(on->ogm_sqn_max_rcvd, orig_sqn);
-
- */
-        on->ogm_sqn_max_rcvd = MAX_SQ(on->ogm_sqn_max_rcvd, orig_sqn);
-
-        if (((SQN_T) ((on->ogm_sqn_max_rcvd & mask) - (orig_sqn & mask))) > on->path_metric_algo.sqn_lounge ) {
-
-                dbgf(DBGL_CHANGES, DBGT_WARN, "%s orig_sqn %d to old max_sqn %d via neigh %s",
-                        on->id.name, orig_sqn, on->ogm_sqn_max_rcvd, pb->neigh_str);
-
-                return FAILURE;
-        }
-
-        for (;;) {
-                struct router_node *rn;
-                struct avl_node *an;
-                struct router_node *rn_best = NULL;
-                uint32_t metric_temp;
-                metric_best = 0;
-
-                for (an = NULL; (rn = avl_iterate_item(&on->router_tree, &an));) {
-
-                        if (memcmp(&rn->key, &pb->lndev->key, sizeof (struct link_key))) {
-
-                                metric_temp = update_metric(&rn->mr, &on->path_metric_algo, 0, on->ogm_sqn_max_rcvd, 0);
-
-                                if (metric_best < metric_temp) {
-
-                                        metric_best = metric_temp;
-                                        rn_best = rn;
-                                }
-
-                        } else {
-                                rn_in = rn;
-                        }
-                }
-
-                if (rn_best && !avl_find(&link_dev_tree, &rn_best->key)) {
-                        purge_router_tree(on, NO);
-                        continue;
-                } else {
-                        break;
-                }
-        }
-
 
         if (!rn_in) {
                 rn_in = debugMalloc(sizeof (struct router_node), -300222);
                 memset( rn_in, 0, sizeof(struct router_node));
                 memcpy( &rn_in->key, &pb->lndev->key, sizeof(struct link_key));
-//                rn_in->ogm_sqn_to_be_send = ((on->ogm_sqn_max_rcvd & mask) - on->ogm_sqn_steps);
                 avl_insert(&on->router_tree, rn_in, -300223);
         }
 
-        metric_in = update_metric(&rn_in->mr, &on->path_metric_algo, orig_sqn, on->ogm_sqn_max_rcvd, pb->lndev->mr[SQR_RTQ].val);
+        metric_in = update_metric(&rn_in->mr, &on->path_metric_algo, orig_sqn, ogm_sqn_max_rcvd, pb->lndev->mr[SQR_RTQ].val);
 
 
         if (metric_in > metric_best && GREAT_SQN(rn_in->mr.set & mask, on->ogm_sqn_to_be_send & mask)) {
 
                 on->router_path_metric = metric_in;
+                on->router_best_metric = metric_in;
                 on->ogm_sqn_to_be_send = rn_in->mr.set;
                 ogm_aggreg_pending++;
 
@@ -1007,7 +966,13 @@ IDM_T update_orig_metrics(struct packet_buff *pb, struct orig_node *on, IID_T or
 
                         memcpy(&on->router_key, &rn_in->key, sizeof (struct link_key));
                 }
+
+        } else {
+                on->router_best_metric = metric_best;
         }
+
+        on->ogm_sqn_max_rcvd = ogm_sqn_max_rcvd;
+
         return SUCCESS;
 }
 
@@ -1050,7 +1015,7 @@ void free_orig_node(struct orig_node *on)
 void purge_orig(struct dev_node *only_dev, IDM_T only_expired)
 {
 
-        dbgf(DBGL_CHANGES, DBGT_INFO, "%s %s only expired",
+        dbgf_all( DBGT_INFO, "%s %s only expired",
                 only_dev ? only_dev->name : "---", only_expired ? " " : "NOT");
 
         purge_link_node( 0, only_dev, only_expired );
@@ -1165,7 +1130,7 @@ void rx_packet( struct packet_buff *pb )
         pb->lndev->pkt_time_max = bmx_time;
 
 
-        dbgf(DBGL_ALL, DBGT_INFO, "rcvd packet from %s size %d via dev %s",
+        dbgf_all( DBGT_INFO, "rcvd packet from %s size %d via dev %s",
                 pb->neigh_str, hdr->pkt_length, iif->name);
 
         if (blacklisted_neighbor(pb, NULL))
@@ -2197,13 +2162,13 @@ void bmx(void)
 
                                 memcpy( &id, &on->id, sizeof(struct description_id));
 
-                                dbgf(DBGL_CHANGES, DBGT_INFO, "trying to unblock %s...", on->desc0->id.name);
+                                dbgf_all( DBGT_INFO, "trying to unblock %s...", on->desc0->id.name);
 
                                 IDM_T tlvs_res = process_description_tlvs(on, on->desc0, TLV_DEL_TEST_ADD, NULL);
 
                                 assertion(-500364, (tlvs_res == TLVS_BLOCKED || tlvs_res == TLVS_SUCCESS));
 
-                                dbgf(DBGL_CHANGES, DBGT_INFO, "...unblocking %s %s !",
+                                dbgf(DBGL_CHANGES, DBGT_INFO, "unblocking %s %s !",
                                         on->desc0->id.name, tlvs_res == TLVS_SUCCESS ? "success" : "failed");
 
                         }

@@ -27,7 +27,7 @@ extern IID_NEIGH_T *unused1; // ensure knowledge of this type
 #define IID_NODE_T struct dhash_node
 extern IID_NODE_T *unused2; // ensure knowledge of this type 
 
-#define IID_REPOS_SIZE_BLOCK 2
+#define IID_REPOS_SIZE_BLOCK 128
 
 #define IID_REPOS_SIZE_MAX  ((IID_T)(-1))
 #define IID_REPOS_SIZE_WARN 1024

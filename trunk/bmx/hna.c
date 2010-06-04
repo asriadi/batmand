@@ -146,7 +146,7 @@ int process_description_tlv_hna4(struct orig_node *on, struct frame_header *tlv,
                         set_uhna4_key(&key, uhna4[m].prefix_len, uhna4[m].ip4, ntohl(uhna4[m].metric));
                 }
 
-                dbgf(DBGL_CHANGES, DBGT_INFO, "%s %s %s/%d metric %d",
+                dbgf_all( DBGT_INFO, "%s %s %s/%d metric %d",
                         tlv_op_str[op], glip4 ? "glip4:" : "uhna4:",
                         ipStr(key.glip4), key.prefix_len, ntohl(key.metric_be));
 
