@@ -30,6 +30,7 @@
 
 #include "../../bmx.h"
 #include "../../plugin.h"
+#include "../../tools.h"
 #include "uci_config.h"
 
 static char conf_path[MAX_PATH_SIZE] = "";
@@ -62,8 +63,8 @@ static void signal_hup_handler( int32_t sig ) {
 	close_ctrl_node( CTRL_CLOSE_STRAIGHT, cn );	
 	
 	respect_opt_order( OPT_APPLY, 0, 99, NULL, NO/*load_cofig*/, OPT_POST, 0/*probably closed*/ );
-	
-	cb_plugin_hooks( NULL, PLUGIN_CB_CONF );
+
+        cb_plugin_hooks(PLUGIN_CB_CONF, NULL);
 	
 }
 
@@ -416,7 +417,7 @@ int bmx_save_config ( uint8_t del, struct opt_type *opt, char *p_val, char *c_va
 		
 	} else if ( opt->opt_t == A_CS1  &&  p_val ) {
 	
-		// all A_CS1-child options  like /ttl=20, /hide=1 from --dev eth0
+		// all A_CS1-child options  like \ttl=20  from --dev eth0
 		
 		if ( uci_get_sect_name( NO/*create*/, cn, bmx_ctx, 
 		                        bmx_conf_name, sect_name, opt->d.parent_opt->long_name, 
@@ -480,7 +481,7 @@ int bmx_load_config ( uint8_t cmd, struct opt_type *opt, struct ctrl_node *cn ) 
 		
 		if ( !( uci_lookup( bmx_ctx, &optr, name ) ) ) {
 			
-			if ( on_the_fly  &&  //no need to reset a configuration during init
+			if ( !initializing  &&  //no need to reset a configuration during init
 			     check_apply_parent_option( DEL, cmd, NO/*save*/, opt, 0, cn ) == FAILURE ) 
 			{
 				dbgf_cn( cn, DBGL_SYS, DBGT_ERR, 
@@ -588,7 +589,7 @@ int bmx_load_config ( uint8_t cmd, struct opt_type *opt, struct ctrl_node *cn ) 
 					
 				} else {
 					
-					if ( !on_the_fly )
+					if ( initializing )
 						continue; //no need to reset a configuration during init
 					
 					config_sect_opt_val[0] = 0;
@@ -640,10 +641,10 @@ int bmx_load_config ( uint8_t cmd, struct opt_type *opt, struct ctrl_node *cn ) 
 			
 			p_tmp = list_entry( pos, struct opt_parent, list );
 			
-			if ( wordsEqual( p_tmp->p_val, BMX_LIB_UCI_CONFIG ) ) {
+			if ( wordsEqual( p_tmp->p_val, BMX_LIB_CONFIG ) ) {
 				
 				dbg_mute( 40, DBGL_SYS, DBGT_WARN, "missing section %s with option %s %s in %s",
-				          ARG_PLUGIN, ARG_PLUGIN, BMX_LIB_UCI_CONFIG, bmx_conf_name );
+				          ARG_PLUGIN, ARG_PLUGIN, BMX_LIB_CONFIG, bmx_conf_name );
 				
 			} else if ( check_apply_parent_option( DEL, cmd, NO, opt, p_tmp->p_val, cn ) == FAILURE ) {
 				
@@ -654,8 +655,8 @@ int bmx_load_config ( uint8_t cmd, struct opt_type *opt, struct ctrl_node *cn ) 
 		}
 		
 	} else {
-		
-		dbgf_cn( cn, DBGL_SYS, DBGT_ERR, "opt: %s illegal implementation! %s", opt->long_name, ILLEGAL_STATE );
+
+                dbgf_cn(cn, DBGL_SYS, DBGT_ERR, "opt: %s illegal implementation!", opt->long_name);
 		
 		cleanup_all( -500137 );
 		
@@ -690,7 +691,7 @@ int32_t opt_conf_file ( uint8_t cmd, uint8_t _save, struct opt_type *opt, struct
 
 	char tmp_path[MAX_PATH_SIZE] = "";
 	
-	if ( on_the_fly )
+	if ( !initializing )
 		return SUCCESS;
 	
 	
@@ -763,7 +764,7 @@ int32_t opt_conf_file ( uint8_t cmd, uint8_t _save, struct opt_type *opt, struct
 		uci_set_confdir( bmx_ctx, conf_path );
 		
 		dbg( DBGL_CHANGES, DBGT_INFO, 
-		     "loading uci bmxd backend: file://%s/%s succeeded", conf_path, bmx_conf_name );
+		     "loading uci bmx6 backend: file://%s/%s succeeded", conf_path, bmx_conf_name );
 		
 		//initially lookup the bmx package so that we can save future changes
 		memset(&bmx_pptr, 0, sizeof(bmx_pptr));
@@ -904,17 +905,14 @@ int32_t init_conf( void ) {
 
 
 
-struct plugin_v2* get_plugin_v2( void ) {
+struct plugin* get_plugin( void ) {
 	
-	static struct plugin_v2 conf_plugin;
+	static struct plugin conf_plugin;
+        memset( &conf_plugin, 0, sizeof( conf_plugin));
 	
-	memset( &conf_plugin, 0, sizeof ( struct plugin_v2 ) );
-	
-	conf_plugin.plugin_version = PLUGIN_VERSION_02;
-	conf_plugin.plugin_name = "bmx_uci_config_plugin";
-	conf_plugin.plugin_size = sizeof ( struct plugin_v2 );
-        conf_plugin.plugin_bmx_revision = REVISION_VERSION;
-        conf_plugin.plugin_bmx_version = SOURCE_VERSION;
+	conf_plugin.plugin_name = "bmx6_uci_config_plugin";
+	conf_plugin.plugin_size = sizeof ( struct plugin );
+        conf_plugin.plugin_code_version = CODE_VERSION;
 	conf_plugin.cb_init = init_conf;
 	conf_plugin.cb_cleanup = cleanup_conf;
 

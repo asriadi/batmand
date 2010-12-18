@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2010 BMX contributors:
- * Axel Neumann
+ * Copyright (c) 2010  Axel Neumann
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of version 2 of the GNU General Public
  * License as published by the Free Software Foundation.
@@ -22,8 +21,8 @@
 void init_schedule( void );
 void change_selects( void );
 void cleanup_schedule( void );
-void register_task( uint32_t timeout, void (* task) (void *), void *data );
+void register_task( TIME_T timeout, void (* task) (void *), void *data );
 IDM_T remove_task(void (* task) (void *), void *data);
-uint32_t whats_next( void );
-void wait4Event( uint32_t timeout );
+TIME_T whats_next( void );
+void wait4Event( TIME_T timeout );
 

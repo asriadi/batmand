@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2010 BMX contributors:
- * Axel Neumann
+ * Copyright (c) 2010  Axel Neumann
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of version 2 of the GNU General Public
  * License as published by the Free Software Foundation.
@@ -17,12 +16,8 @@
  */
 
 /*
- * avl code inspired by:
+ * avl code inspired by templates from Julienne Walker at
  * http://eternallyconfuzzled.com/tuts/datastructures/jsw_tut_avl.aspx
- * where Julienne Walker said (web page from 28. 2. 2010 12:55):
- * ...Once again, all of the code in this tutorial is in the public domain.
- * You can do whatever you want with it, but I assume no responsibility
- * for any damages from improper use. ;-)
  */
 
 
@@ -30,9 +25,7 @@
 #include <string.h>
 #include <stdlib.h>
 
-
 #include "bmx.h"
-
 #include "avl.h"
 
 
@@ -42,7 +35,6 @@ struct avl_node *avl_find( struct avl_tree *tree, void *key )
         int cmp;
 
         // Search for a dead path or a matching entry
-//      while ( an  &&  ( cmp = memcmp( an->key, key, tree->key_size) ) )
         while ( an  &&  ( cmp = memcmp( AVL_NODE_KEY( tree, an ), key, tree->key_size) ) )
                 an = an->link[ cmp < 0 ];
 
@@ -85,6 +77,16 @@ void * avl_next_item( struct avl_tree *tree, void *key)
         return an ? an->item : NULL;
 }
 
+void *avl_first_item(struct avl_tree *tree)
+{
+        struct avl_node * an = tree->root;
+
+        while (an && an->link[0])
+                an = an->link[0];
+
+        return an ? an->item : NULL;
+}
+
 
 struct avl_node *avl_iterate(struct avl_tree *tree, struct avl_node *an )
 {
@@ -111,6 +113,8 @@ struct avl_node *avl_iterate(struct avl_tree *tree, struct avl_node *an )
 
         return NULL;
 }
+
+
 
 void *avl_iterate_item(struct avl_tree *tree, struct avl_node **an )
 {
@@ -139,8 +143,8 @@ void *avl_iterate_item(struct avl_tree *tree, struct avl_node **an )
 }
 
 
-
-static struct avl_node *avl_create_node(void *node, int32_t tag)
+STATIC_FUNC
+struct avl_node *avl_create_node(void *node, int32_t tag)
 {
         struct avl_node *an = debugMalloc(sizeof (struct avl_node), tag);
 
@@ -150,7 +154,8 @@ static struct avl_node *avl_create_node(void *node, int32_t tag)
         return an;
 }
 
-static struct avl_node *avl_rotate_single(struct avl_node *root, int dir)
+STATIC_FUNC
+struct avl_node *avl_rotate_single(struct avl_node *root, int dir)
 {
 	struct avl_node *save;
 	int rlh, rrh, slh;
@@ -179,7 +184,8 @@ static struct avl_node *avl_rotate_single(struct avl_node *root, int dir)
 	return save;
 }
 
-static struct avl_node *avl_rotate_double(struct avl_node *root, int dir)
+STATIC_FUNC
+struct avl_node *avl_rotate_double(struct avl_node *root, int dir)
 {
 	root->link[!dir] = avl_rotate_single(root->link[!dir], !dir);
 
@@ -189,8 +195,8 @@ static struct avl_node *avl_rotate_double(struct avl_node *root, int dir)
 	return avl_rotate_single(root, dir);
 }
 
-
-void avl_insert(struct avl_tree *tree, void *node, int32_t tag) {
+void avl_insert(struct avl_tree *tree, void *node, int32_t tag)
+{
 
         if (tree->root) {
 
@@ -199,10 +205,9 @@ void avl_insert(struct avl_tree *tree, void *node, int32_t tag) {
                 int upd[AVL_MAX_HEIGHT], top = 0;
                 int done = 0;
 
-                /* Search for an empty link, save the path */
+                // Search for an empty link, save the path
                 for (;;) {
-                        /* Push direction and node onto stack */
-//                        upd[top] = memcmp(it->key, key, tree->key_size) <= 0;
+                        // Push direction and node onto stack */
                         upd[top] = memcmp(AVL_NODE_KEY(tree, it), AVL_ITEM_KEY(tree, node), tree->key_size) <= 0;
 
                         up[top++] = it;
@@ -213,13 +218,13 @@ void avl_insert(struct avl_tree *tree, void *node, int32_t tag) {
                         it = it->link[upd[top - 1]];
                 }
 
-                /* Insert a new node at the bottom of the tree */
+                // Insert a new node at the bottom of the tree:
                 it->link[upd[top - 1]] = avl_create_node(node, tag);
                 it->link[upd[top - 1]]->up = it;
 
                 paranoia(-500178, (it->link[upd[top - 1]] == NULL));
 
-                /* Walk back up the search path */
+                // Walk back up the search path
                 while (--top >= 0 && !done) {
 
                         int lh, rh, max;
@@ -227,7 +232,7 @@ void avl_insert(struct avl_tree *tree, void *node, int32_t tag) {
                         lh = avl_height(up[top]->link[upd[top]]);
                         rh = avl_height(up[top]->link[!upd[top]]);
 
-                        /* Terminate or rebalance as necessary */
+                        // Terminate or rebalance as necessary:
                         if (lh - rh == 0)
                                 done = 1;
                         if (lh - rh >= 2) {
@@ -239,7 +244,7 @@ void avl_insert(struct avl_tree *tree, void *node, int32_t tag) {
                                 else
                                         up[top] = avl_rotate_double(up[top], !upd[top]);
 
-                                /* Fix parent */
+                                // Fix parent:
                                 if (top != 0) {
                                         up[top - 1]->link[upd[top - 1]] = up[top];
                                         up[top]->up = up[top - 1];
@@ -252,7 +257,7 @@ void avl_insert(struct avl_tree *tree, void *node, int32_t tag) {
                                 done = 1;
                         }
 
-                        /* Update balance factors */
+                        // Update balance factors:
                         lh = avl_height(up[top]->link[upd[top]]);
                         rh = avl_height(up[top]->link[!upd[top]]);
                         max = avl_max(lh, rh);
@@ -281,7 +286,6 @@ void *avl_remove(struct avl_tree *tree, void *key, int32_t tag)
         if (!it)
                 return NULL;
 
-//        while ((cmp = memcmp(it->key, key, tree->key_size)) ) {
         while ((cmp = memcmp(AVL_NODE_KEY(tree, it), key, tree->key_size)) ||
                 (it->link[0] && !memcmp(AVL_NODE_KEY(tree, it->link[0]), key, tree->key_size))) {
 
@@ -535,8 +539,8 @@ void avl_test( int max ) {
                 t->test_key = i;
                 t->test_key2 = AVL_TEST_MAX-i;
                 t->v = t->w = 0;
-                avl_insert(&test_tree, t);
-                avl_insert(&test_tree2, t);
+                avl_insert(&test_tree, t, -300300);
+                avl_insert(&test_tree2, t, -300301);
                 printf(" inserted %d/%d %d/%d\n", t->test_key, t->v, t->test_key2, t->w );
         }
 
@@ -545,9 +549,9 @@ void avl_test( int max ) {
 
         for (i = AVL_TEST_MAX/2; i >= 0; i--) {
 
-                t = avl_remove(&test_tree, &i);
+                t = avl_remove(&test_tree, &i, -300302);
 
-                if ( t != avl_remove(&test_tree2, &t->test_key2) )
+                if ( t != avl_remove(&test_tree2, &t->test_key2, -300303) )
                         printf("ERROR...\n");
 
                 printf(" removed %d/%d %d/%d\n", t->test_key, t->v, t->test_key2, t->w );

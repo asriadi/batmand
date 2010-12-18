@@ -1,6 +1,4 @@
 /*
- * Copyright (C) 2010 BMX contributors:
- * Axel Neumann
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of version 2 of the GNU General Public
  * License as published by the Free Software Foundation.
@@ -42,6 +40,8 @@ struct list_head {
 	struct list_node *next, *prev;
 	uint16_t items;
 	uint16_t list_node_offset;
+	uint16_t key_node_offset;
+	uint16_t key_length;
 };
 
 struct plist_node {
@@ -50,15 +50,21 @@ struct plist_node {
 };
 
 
-#define LIST_SIMPEL(lst, element_type, list_node_field) struct list_head lst = { \
-          (struct list_node *)&lst, (struct list_node *)&lst, \
-          0, \
-          ((unsigned long)(&((element_type *)0)->list_node_field)) }
 
-#define LIST_INIT_HEAD(ptr, element_type, list_node_field) do { \
+#define LIST_SIMPEL(lst, element_type, list_field, key_field ) struct list_head lst = { \
+          .next = (struct list_node *)&lst, \
+          .prev = (struct list_node *) & lst,    \
+          .items = 0, \
+          .list_node_offset = ((unsigned long)(&((element_type *)0)->list_field)), \
+          .key_node_offset = ((unsigned long)(&((element_type *)0)->key_field)), \
+          .key_length = sizeof(((element_type *)0)->key_field) }
+
+#define LIST_INIT_HEAD(ptr, element_type, list_field) do { \
 	ptr.next = ptr.prev =(struct list_node *)&ptr; \
         ptr.items = 0; \
-        ptr.list_node_offset = ((unsigned long)(&((element_type *)0)->list_node_field)); \
+        ptr.list_node_offset = ((unsigned long)(&((element_type *)0)->list_field)); \
+        ptr.key_node_offset = 0; \
+        ptr.key_length = 0; \
 } while (0)
 
 #define LIST_EMPTY(lst)  ((lst)->next == (struct list_node *)(lst))
@@ -67,7 +73,8 @@ struct plist_node {
 #define list_get_first(head) ((void*)((LIST_EMPTY(head)) ? NULL : (((char*) (head)->next) - (head)->list_node_offset) ))
 #define list_get_last(head) ((void*)((LIST_EMPTY(head)) ? NULL : (((char*) (head)->prev) - (head)->list_node_offset) ))
 
-void * list_iterate( struct list_head *head, void *node );
+void *list_iterate( struct list_head *head, void *node );
+void *list_find(struct list_head *head, void* key);
 
 void list_add_head(struct list_head *head, struct list_node *new);
 void list_add_tail(struct list_head *head, struct list_node *new );

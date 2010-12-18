@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2010 BMX contributors:
- * Axel Neumann
+ * Copyright (c) 2010  Axel Neumann
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of version 2 of the GNU General Public
  * License as published by the Free Software Foundation.
@@ -27,14 +26,16 @@
 #include <sys/un.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <paths.h>
 
 #include "bmx.h"
+#include "ip.h"
 #include "plugin.h"
 #include "schedule.h"
-
+#include "tools.h"
 
 
 #define MAX_DBG_STR_SIZE 1500
@@ -51,15 +52,11 @@ static int32_t loop_interval = DEF_LOOP_INTERVAL;
 
 static int32_t loop_mode;
 
-#define MIN_PEDANT_CHK NO
-#define MAX_PEDANT_CHK YES
-#define DEF_PEDANT_CHK NO
-static int32_t pedantic_check = DEF_PEDANT_CHK;
 
 
 int unix_sock = 0;
 
-LIST_SIMPEL( ctrl_list, struct ctrl_node, list );
+LIST_SIMPEL( ctrl_list, struct ctrl_node, list, list );
 
 struct list_head dbgl_clients[DBGL_MAX+1];
 static struct dbg_histogram dbgl_history[2][DBG_HIST_SIZE];
@@ -76,12 +73,14 @@ char *prog_name;
 
 struct opt_type Patch_opt;
 
-LIST_SIMPEL( opt_list, struct opt_data, list ); // global opt_list
+LIST_SIMPEL( opt_list, struct opt_data, list, list ); // global opt_list
 
 
 int32_t Client_mode = NO; //this one must be initialized manually!
 
-static void remove_dbgl_node( struct ctrl_node *cn ) {	
+STATIC_FUNC
+void remove_dbgl_node(struct ctrl_node *cn)
+{
 	
 	int8_t i;
 	struct dbgl_node *dn;
@@ -107,8 +106,9 @@ static void remove_dbgl_node( struct ctrl_node *cn ) {
 	cn->dbgl = -1;
 }
 
-
-static void add_dbgl_node( struct ctrl_node *cn, int dbgl ) {
+STATIC_FUNC
+void add_dbgl_node(struct ctrl_node *cn, int dbgl)
+{
 	
 	if ( !cn || dbgl < DBGL_MIN || dbgl > DBGL_MAX )
 		return;
@@ -127,8 +127,8 @@ static void add_dbgl_node( struct ctrl_node *cn, int dbgl ) {
 	
 }
 
-
-static int daemonize() {
+static int daemonize()
+{
 
 	int fd;
 
@@ -173,7 +173,9 @@ static int daemonize() {
 
 }
 
-static int update_pid_file( void ) {
+STATIC_FUNC
+int update_pid_file(void)
+{
 	
 	char tmp_path[MAX_PATH_SIZE+20] = "";
 	int tmp_fd = 0;
@@ -194,7 +196,9 @@ static int update_pid_file( void ) {
 	return SUCCESS;
 }
 
-static void activate_debug_system( void ) {
+STATIC_FUNC
+void activate_debug_system(void)
+{
 		
 	if ( !debug_system_active ) {
 
@@ -225,14 +229,15 @@ static void activate_debug_system( void ) {
 		debug_system_active = YES;
 		
 		dbgf_all( DBGT_INFO, "activated level %d", debug_level);
-		
-		dbg( DBGL_CHANGES, DBGT_INFO, "BMX (BatMan-eXp) %s-rv%d (compatibility version %d): %s",
-                        SOURCE_VERSION, REVISION_VERSION, COMPAT_VERSION, init_string);
+
+                dbg(DBGL_CHANGES, DBGT_INFO, "%s-%s (compatibility=%d code=cv%d): %s",
+                        BMX_BRANCH, BRANCH_VERSION, COMPATIBILITY_VERSION, CODE_VERSION, init_string);
 		
 	}
 }
 
-struct ctrl_node *create_ctrl_node( int fd, void (*cn_fd_handler) (struct ctrl_node *), uint8_t authorized ) {
+struct ctrl_node *create_ctrl_node(int fd, void (*cn_fd_handler) (struct ctrl_node *), uint8_t authorized)
+{
 	
 	struct ctrl_node *cn = debugMalloc( sizeof(struct ctrl_node), -300010 );
 	memset( cn, 0, sizeof(struct ctrl_node) );
@@ -247,11 +252,11 @@ struct ctrl_node *create_ctrl_node( int fd, void (*cn_fd_handler) (struct ctrl_n
 	return cn;
 }
 
-
-void close_ctrl_node( uint8_t cmd, struct ctrl_node *ctrl_node ) {
+void close_ctrl_node(uint8_t cmd, struct ctrl_node *ctrl_node)
+{
 
 	struct list_node* list_pos, *list_prev, *list_tmp;
-	int trash;
+	ssize_t trash;
 
 	list_prev = (struct list_node *)&ctrl_list;
 	
@@ -286,7 +291,7 @@ void close_ctrl_node( uint8_t cmd, struct ctrl_node *ctrl_node ) {
 		} else if ( ( cmd == CTRL_CLOSE_STRAIGHT  &&  cn == ctrl_node )  ||  
 		            ( cmd == CTRL_PURGE_ALL )  ||  
 		            ( cmd == CTRL_CLEANUP  &&  cn->closing_stamp  &&/* cn->fd <= 0  && */
-		              GREAT_U32( bmx_time, cn->closing_stamp + CTRL_CLOSING_TIMEOUT ) ) )
+		              U32_GT( bmx_time, cn->closing_stamp + CTRL_CLOSING_TIMEOUT ) ) )
 		{
 			
 			if ( cn->fd > 0  &&  cn->fd != STDOUT_FILENO ) {
@@ -310,8 +315,8 @@ void close_ctrl_node( uint8_t cmd, struct ctrl_node *ctrl_node ) {
 	}
 }
 
-
-void accept_ctrl_node( void ) {
+void accept_ctrl_node(void)
+{
 	
 	struct sockaddr addr;
 	socklen_t addr_size = sizeof(struct sockaddr);
@@ -336,9 +341,8 @@ void accept_ctrl_node( void ) {
 	
 }
 
-
-
-void handle_ctrl_node( struct ctrl_node *cn ) {
+void handle_ctrl_node(struct ctrl_node *cn)
+{
 	char buff[MAX_UNIX_MSG_SIZE+1];
 	
 	if ( cn->cn_fd_handler ) {
@@ -368,8 +372,8 @@ void handle_ctrl_node( struct ctrl_node *cn ) {
 		}
 		
 		respect_opt_order( OPT_APPLY, 0, 99, NULL, NO/*load_cofig*/, OPT_POST, 0/*probably closed*/ );
-		
-		cb_plugin_hooks( NULL, PLUGIN_CB_CONF );
+
+                cb_plugin_hooks(PLUGIN_CB_CONF, NULL);
 	
 	} else {
 		
@@ -385,10 +389,12 @@ void handle_ctrl_node( struct ctrl_node *cn ) {
 }
 
 
-#ifndef TESTDEBUG
+#ifndef TEST_DEBUG
 
 // returns DBG_HIST_NEW, DBG_HIST_MUTING, or  DBG_HIST_MUTED
-static uint8_t check_dbg_history ( int8_t dbgl, char *s, uint16_t check_len )	{
+STATIC_FUNC
+uint8_t check_dbg_history(int8_t dbgl, char *s, uint16_t check_len)
+{
 	
 	static int r=0;
 	int i, unused_i, h;	
@@ -417,8 +423,8 @@ static uint8_t check_dbg_history ( int8_t dbgl, char *s, uint16_t check_len )	{
 		     dbgl_history[h][i].expire == dbg_mute_to  &&
 		     !memcmp( s, dbgl_history[h][i].text, MIN(check_len, strlen(s)) ) ) {
 			
-			     if ( LESS_U32(  bmx_time, dbgl_history[h][i].print_stamp + dbg_mute_to ) &&
-			          GRTEQ_U32( bmx_time, dbgl_history[h][i].print_stamp ) ) 
+			     if ( U32_LT(  bmx_time, dbgl_history[h][i].print_stamp + dbg_mute_to ) &&
+			          U32_GE( bmx_time, dbgl_history[h][i].print_stamp ) )
 			{
 				
 				dbgl_history[h][i].catched++;
@@ -439,8 +445,8 @@ static uint8_t check_dbg_history ( int8_t dbgl, char *s, uint16_t check_len )	{
 		
 		if ( unused_i == -1  &&  
 		     ( dbgl_history[h][i].catched == 0  || 
-		       !( LESS_U32(  bmx_time, dbgl_history[h][i].print_stamp + dbg_mute_to )  &&
-		          GRTEQ_U32( bmx_time, dbgl_history[h][i].print_stamp ) ) ) )
+		       !( U32_LT(  bmx_time, dbgl_history[h][i].print_stamp + dbg_mute_to )  &&
+		          U32_GE( bmx_time, dbgl_history[h][i].print_stamp ) ) ) )
 		{
 			
 			unused_i = i;
@@ -461,13 +467,14 @@ static uint8_t check_dbg_history ( int8_t dbgl, char *s, uint16_t check_len )	{
 	memcpy( dbgl_history[h][unused_i].text, s, MIN( check_len, strlen(s) ) );
 	
 	return DBG_HIST_NEW;
-	
 }
 
 
 
+
+void dbg_printf(struct ctrl_node *cn, char *last, ...)
+{
 #define MAX_DBG_WRITES 4
-void dbg_printf( struct ctrl_node *cn, char *last, ...  ) {
 	
 	if ( !cn  ||  cn->fd <= 0 )
 		return;
@@ -508,8 +515,9 @@ void dbg_printf( struct ctrl_node *cn, char *last, ...  ) {
 	}
 }
 
-
-static void debug_output ( uint32_t check_len, struct ctrl_node *cn, int8_t dbgl, int8_t dbgt, char const *f, char *s ) {
+STATIC_FUNC
+void debug_output(uint32_t check_len, struct ctrl_node *cn, int8_t dbgl, int8_t dbgt, const char *f, char *s)
+{
 	
 	static uint16_t dbgl_all_msg_num = 0;
 	static char *dbgt2str[] = {"", "INFO  ", "WARN  ", "ERROR "};
@@ -523,16 +531,16 @@ static void debug_output ( uint32_t check_len, struct ctrl_node *cn, int8_t dbgl
 	
 	
 	if ( cn  &&  cn->fd != STDOUT_FILENO )
-		dbg_printf( cn, "%s%s%s%s\n", dbgt2str[dbgt], f?f:"", f?"(): ":"", s );
+		dbg_printf( cn, "%s%s: %s\n", dbgt2str[dbgt], f?f:"", s );
 	
 	
 	if ( !debug_system_active ) {
 		
-		if ( dbgl == DBGL_SYS  ||  debug_level == DBGL_ALL  ||  debug_level == dbgl )
-			printf( "[%d %8u] %s%s%s%s\n", My_pid, bmx_time, dbgt2str[dbgt], f?f:"", f?"(): ":"", s );
+		if ( dbgl == DBGL_SYS  ||  debug_level == DBGL_ALL  ||  debug_level == dbgl)
+                        printf("[%d %8u] %s%s: %s\n", My_pid, bmx_time, dbgt2str[dbgt], f ? f : "", s);
 		
 		if ( dbgl == DBGL_SYS )
-			syslog( LOG_ERR, "%s%s%s%s\n", dbgt2str[dbgt], f?f:"", f?"(): ":"", s );
+			syslog( LOG_ERR, "%s%s: %s\n", dbgt2str[dbgt], f?f:"", s );
 		
 		return;
 	}
@@ -550,6 +558,11 @@ static void debug_output ( uint32_t check_len, struct ctrl_node *cn, int8_t dbgl
 	} else if ( dbgl == DBGL_TEST ) {
 	
 		if ( !LIST_EMPTY( &dbgl_clients[DBGL_TEST       ] ) ) dbgl_out[i++] = DBGL_TEST;
+		if ( !LIST_EMPTY( &dbgl_clients[DBGL_ALL        ] ) ) dbgl_out[i++] = DBGL_ALL;
+
+        } else if ( dbgl == DBGL_DUMP ) {
+
+		if ( !LIST_EMPTY( &dbgl_clients[DBGL_DUMP    ] ) ) dbgl_out[i++] = DBGL_DUMP;
 		if ( !LIST_EMPTY( &dbgl_clients[DBGL_ALL        ] ) ) dbgl_out[i++] = DBGL_ALL;
 
 	} else if ( dbgl == DBGL_PROFILE ) {
@@ -596,18 +609,19 @@ static void debug_output ( uint32_t check_len, struct ctrl_node *cn, int8_t dbgl
 			if ( !dn->cn  ||  dn->cn->fd <= 0 )
 				continue;
 			
-			if ( level == DBGL_CHANGES  ||
-			     level == DBGL_TEST  ||
-			     level == DBGL_PROFILE  ||  
+			if ( level == DBGL_CHANGES ||
+			     level == DBGL_TEST ||
+			     level == DBGL_DUMP ||
+			     level == DBGL_PROFILE ||  
 			     level == DBGL_SYS )
 				dbg_printf( dn->cn, "[%d %8u] ", My_pid, bmx_time );
 			
 			
 			if ( level == DBGL_ALL )
 				dbg_printf( dn->cn, "[%d %8u %5u] ", My_pid, bmx_time, dbgl_all_msg_num );
-			
-			
-			dbg_printf( dn->cn, "%s%s%s%s\n", dbgt2str[dbgt], f?f:"", f?"(): ":"", s );
+
+
+                        dbg_printf(dn->cn, "%s%s: %s\n", dbgt2str[dbgt], f ? f : "", s);
 			
 			if ( ( level == DBGL_SYS      &&  mute_dbgl_sys == DBG_HIST_MUTING ) ||
 			     ( level == DBGL_CHANGES  &&  mute_dbgl_changes == DBG_HIST_MUTING ) )
@@ -632,7 +646,7 @@ void dbg ( int8_t dbgl, int8_t dbgt, char *last, ... ) {
 	debug_output ( 0, 0, dbgl, dbgt, 0, dbg_string_out );
 }
 
-void _dbgf ( int8_t dbgl, int8_t dbgt, char const *f, char *last, ... ) {
+void _dbgf ( int8_t dbgl, int8_t dbgt, const char *f, char *last, ... ) {
 	va_list ap;
 	va_start( ap, last );
 	vsnprintf( dbg_string_out, MAX_DBG_STR_SIZE, last, ap );
@@ -648,7 +662,7 @@ void dbg_cn ( struct ctrl_node *cn, int8_t dbgl, int8_t dbgt, char *last, ... ) 
 	debug_output ( 0, cn, dbgl, dbgt, 0, dbg_string_out );
 }
 
-void _dbgf_cn ( struct ctrl_node *cn, int8_t dbgl, int8_t dbgt, char const *f, char *last, ... ) {
+void _dbgf_cn ( struct ctrl_node *cn, int8_t dbgl, int8_t dbgt, const char *f, char *last, ... ) {
 	va_list ap;
 	va_start( ap, last );
 	vsnprintf( dbg_string_out, MAX_DBG_STR_SIZE, last, ap );
@@ -664,7 +678,16 @@ void dbg_mute ( uint32_t check_len, int8_t dbgl, int8_t dbgt, char *last, ... ) 
 	debug_output ( check_len, 0, dbgl, dbgt, 0, dbg_string_out );
 }
 
-void _dbgf_all ( int8_t dbgt, char const *f, char *last, ... ) {
+void _dbgf_mute(uint32_t check_len, int8_t dbgl, int8_t dbgt, const char *f, char *last, ...)
+{
+	va_list ap;
+	va_start( ap, last );
+	vsnprintf( dbg_string_out, MAX_DBG_STR_SIZE, last, ap );
+	va_end( ap );
+	debug_output ( check_len, 0, dbgl, dbgt, f, dbg_string_out );
+}
+
+void _dbgf_all ( int8_t dbgt,  const char *f, char *last, ... ) {
 	va_list ap;
 	va_start( ap, last );
 	vsnprintf( dbg_string_out, MAX_DBG_STR_SIZE, last, ap );
@@ -693,8 +716,8 @@ int (*save_config_cb) ( uint8_t del, struct opt_type *opt, char *parent, char *v
 
 int (*derive_config) ( char *reference, char *derivation, struct ctrl_node *cn ) = NULL;
 
-
-void get_init_string( int g_argc, char **g_argv ) {
+void get_init_string(int g_argc, char **g_argv)
+{
 	
 	uint32_t size = 1, dbg_init_out = 0;
 	int i;
@@ -711,8 +734,9 @@ void get_init_string( int g_argc, char **g_argv ) {
 	init_string = dbg_init_str;
 }
 
-
-static void free_init_string ( void ) {
+STATIC_FUNC
+void free_init_string(void)
+{
 	
 	if ( init_string )
 		debugFree( init_string, -300052 );
@@ -720,8 +744,9 @@ static void free_init_string ( void ) {
 	init_string = NULL;
 }
 
-#ifndef NODEPRECATED
-static int32_t opt_deprecated ( uint8_t cmd, uint8_t _save, struct opt_type *opt, struct opt_parent *patch, struct ctrl_node *cn ) {
+#ifndef NO_DEPRECATED
+int32_t opt_deprecated(uint8_t cmd, uint8_t _save, struct opt_type *opt, struct opt_parent *patch, struct ctrl_node *cn)
+{
 	
 	char c = opt->short_name;
 	
@@ -736,16 +761,16 @@ static int32_t opt_deprecated ( uint8_t cmd, uint8_t _save, struct opt_type *opt
 
 
 
-
+#ifdef ADJ_PATCHED_NETW
 int32_t get_tracked_network( struct opt_type *opt, struct opt_parent *patch, char *out, uint32_t *ip, int32_t *mask, struct ctrl_node *cn ) {
 	
 	struct opt_child *nc, *mc;
 	struct opt_parent *p = get_opt_parent_val( opt, patch->p_val );
 	
-	if ( !p  ||  !(nc = get_opt_child(get_option(opt,0,ARG_NETW), p) )  ||  !nc->c_val )
+	if ( !p  ||  !(nc = get_opt_child(get_option(opt,0,ARG_UHNA_NETWORK), p) )  ||  !nc->c_val )
 		return FAILURE;
 	
-	if ( !p  ||  !(mc = get_opt_child(get_option(opt,0,ARG_MASK), p) )  ||  !mc->c_val )
+	if ( !p  ||  !(mc = get_opt_child(get_option(opt,0,ARG_UHNA_PREFIXLEN), p) )  ||  !mc->c_val )
 		return FAILURE;
 	
 	sprintf( out, "%s/%s", nc->c_val, mc->c_val );
@@ -755,8 +780,9 @@ int32_t get_tracked_network( struct opt_type *opt, struct opt_parent *patch, cha
 	
 	return SUCCESS;
 }
+#endif
 
-
+#ifdef ADJ_PATCHED_NETW
 int32_t adj_patched_network( struct opt_type *opt, struct opt_parent *patch, char *out, uint32_t *ip, int32_t *mask, struct ctrl_node *cn ) {
 	
 	struct opt_child *nc, *mc;
@@ -765,8 +791,8 @@ int32_t adj_patched_network( struct opt_type *opt, struct opt_parent *patch, cha
 	if ( strpbrk( patch->p_val, "*'\"#\\/~?^°,;|<>()[]{}$%&=`´" ) ) {
 		
 		dbg_cn( cn, DBGL_SYS, DBGT_ERR, 
-		        "%s %s with /%s and /%s MUST NOT be named with special characters or a leading number",
-		        opt->long_name, patch->p_val, ARG_MASK, ARG_NETW );
+		        "%s %s with %s%s and %s%s MUST NOT be named with special characters or a leading number",
+                        opt->long_name, patch->p_val, LONG_OPT_ARG_DELIMITER_STR, ARG_UHNA_PREFIXLEN, LONG_OPT_ARG_DELIMITER_STR, ARG_UHNA_NETWORK);
 		return FAILURE;
 	}
 
@@ -774,7 +800,7 @@ int32_t adj_patched_network( struct opt_type *opt, struct opt_parent *patch, cha
 
 	p = get_opt_parent_val( opt, patch->p_val );
 	
-	if ( (mc = get_opt_child( get_option(opt,0,ARG_MASK), patch ) )  &&  mc->c_val ) {
+	if ( (mc = get_opt_child( get_option(opt,0,ARG_UHNA_PREFIXLEN), patch ) )  &&  mc->c_val ) {
 
                 // obtain the just-given netmask:
 
@@ -786,8 +812,8 @@ int32_t adj_patched_network( struct opt_type *opt, struct opt_parent *patch, cha
 				sprintf( out, "%d", *mask );
 				set_opt_child_val( mc, out );
 			} else {
-				dbg_cn( cn, DBGL_SYS, DBGT_ERR, "invalid %s %s /%s %s",
-				        opt->long_name, patch->p_val, ARG_MASK, mc->c_val );
+				dbg_cn( cn, DBGL_SYS, DBGT_ERR, "invalid %s %s %s%s %s",
+                                        opt->long_name, patch->p_val, LONG_OPT_ARG_DELIMITER_STR, ARG_UHNA_PREFIXLEN, mc->c_val);
 				return FAILURE;
 			}
 			
@@ -796,60 +822,65 @@ int32_t adj_patched_network( struct opt_type *opt, struct opt_parent *patch, cha
                         // the prefix_len /24 notation:
 			
 			if ( *mask < MIN_MASK  ||  *mask > MAX_MASK ) {
-				dbg_cn( cn, DBGL_SYS, DBGT_ERR, "invalid prefix-length %s %s /%s %s",
-				        opt->long_name, patch->p_val, ARG_MASK, mc->c_val );
+				dbg_cn( cn, DBGL_SYS, DBGT_ERR, "invalid prefix-length %s %s %s%s %s",
+				        opt->long_name, patch->p_val, LONG_OPT_ARG_DELIMITER_STR, ARG_UHNA_PREFIXLEN, mc->c_val );
 				return FAILURE;
 			}
 			
 		} else {
 			
-			dbg_cn( cn, DBGL_SYS, DBGT_ERR, "missing prefix-length %s %s /%s %s",
-			        opt->long_name, patch->p_val, ARG_MASK, mc->c_val );
+			dbg_cn( cn, DBGL_SYS, DBGT_ERR, "missing prefix-length %s %s %s%s %s",
+			        opt->long_name, patch->p_val, LONG_OPT_ARG_DELIMITER_STR, ARG_UHNA_PREFIXLEN, mc->c_val );
 			return FAILURE;
 		}
 		
-	} else if ( p  &&  (mc = get_opt_child(get_option(opt,0,ARG_MASK), p) )  &&  mc->c_val ) {
+	} else if ( p  &&  (mc = get_opt_child(get_option(opt,0,ARG_UHNA_PREFIXLEN), p) )  &&  mc->c_val ) {
 		
                 // obtain the already-configured netmask:
 		*mask = strtol( mc->c_val , NULL , 10 );
 		
 	} else {
 
-		dbg_cn( cn, DBGL_SYS, DBGT_ERR, "missing %s %s /%s",
-		        opt->long_name, patch->p_val, ARG_MASK );
+		dbg_cn( cn, DBGL_SYS, DBGT_ERR, "missing %s %s %s%s",
+		        opt->long_name, patch->p_val, LONG_OPT_ARG_DELIMITER_STR, ARG_UHNA_PREFIXLEN );
 		return FAILURE;
         }
 
 
         // obtain the network:
 
-        if ((nc = get_opt_child(get_option(opt, 0, ARG_NETW), patch)) && nc->c_val) {
+        if ((nc = get_opt_child(get_option(opt, 0, ARG_UHNA_NETWORK), patch)) && nc->c_val) {
 
                 // obtain the just-given network:
 
 		sprintf( out, "%s/%d", nc->c_val, *mask );
 		if ( str2netw( out, ip, '/', cn, mask, 32 ) == FAILURE ) {
-			dbg_cn( cn, DBGL_SYS, DBGT_ERR, "invalid patch %s %s /%s %s",
-			        opt->long_name, patch->p_val, ARG_NETW, mc->c_val  );
+			dbg_cn( cn, DBGL_SYS, DBGT_ERR, "invalid patch %s %s %s%s %s",
+			        opt->long_name, patch->p_val, LONG_OPT_ARG_DELIMITER_STR, ARG_UHNA_NETWORK, mc->c_val  );
 			return FAILURE;
-		}
+                }
+
+                if (ip_netmask_validate(ipX, mask, family) == FAILURE) {
+                        dbg_cn(cn, DBGL_SYS, DBGT_ERR, "invalid prefix");
+                        return FAILURE;
+                }
+
+                set_opt_child_val(nc, ipXAsStr(family, ipX));
 		
-		set_opt_child_val( nc, ipStr( validate_net_mask( *ip, *mask, 0 ) ) );
-		
-	} else if ( p && (nc=get_opt_child( get_option(opt,0,ARG_NETW), p ))  &&  nc->c_val ) {
+	} else if ( p && (nc=get_opt_child( get_option(opt,0,ARG_UHNA_NETWORK), p ))  &&  nc->c_val ) {
 
                 // obtain the already-configured network:
 
 		sprintf( out, "%s/%d", nc->c_val, *mask );
 		if ( str2netw( out, ip, '/', cn, mask, 32 ) == FAILURE ) {
-			dbg_cn( cn, DBGL_SYS, DBGT_ERR, "invalid trac %s %s /%s %s",
-			        opt->long_name, patch->p_val, ARG_NETW, mc->c_val  );
+			dbg_cn( cn, DBGL_SYS, DBGT_ERR, "invalid trac %s %s %s%s %s",
+			        opt->long_name, patch->p_val, LONG_OPT_ARG_DELIMITER_STR, ARG_UHNA_NETWORK, mc->c_val  );
 			return FAILURE;
 		}
 		
 	} else {
-		dbg_cn( cn, DBGL_SYS, DBGT_ERR, "missing %s %s /%s",
-		        opt->long_name, patch->p_val, ARG_NETW  );
+		dbg_cn( cn, DBGL_SYS, DBGT_ERR, "missing %s %s %s%s",
+		        opt->long_name, patch->p_val, LONG_OPT_ARG_DELIMITER_STR, ARG_UHNA_NETWORK  );
 		
 		return FAILURE;
 	}
@@ -857,8 +888,11 @@ int32_t adj_patched_network( struct opt_type *opt, struct opt_parent *patch, cha
 	sprintf( out, "%s/%d", nc->c_val, *mask );
 	return SUCCESS;
 }
+#endif
 
-static char* nextword( char *s ) {
+STATIC_FUNC
+char* nextword(char *s)
+{
 	
 	uint32_t i = 0;
 	uint8_t found_gap = NO;
@@ -883,7 +917,9 @@ static char* nextword( char *s ) {
 	
 }
 
-static char *debugWordDup( char* word, int32_t tag ) {
+STATIC_FUNC
+char *debugWordDup(char* word, int32_t tag)
+{
 	
 	if ( !word )
 		return NULL;
@@ -895,8 +931,9 @@ static char *debugWordDup( char* word, int32_t tag ) {
 
 
 
-
-static void strchange( char *s, char i, char o ) {
+STATIC_FUNC
+void strchange(char *s, char i, char o)
+{
 	
 	char *p;
 	while ( s && (p=strchr( s, i )) )
@@ -904,8 +941,9 @@ static void strchange( char *s, char i, char o ) {
 	
 }
 
-
-static int32_t end_of_cmd_stream( struct opt_type *opt, char *s ) {
+STATIC_FUNC
+int32_t is_end_of_cmd_stream(struct opt_type *opt, char *s)
+{
 	
 	char test[MAX_ARG_SIZE]="";
 	snprintf( test, wordlen(s)+1, "%s", s );
@@ -927,8 +965,9 @@ static int32_t end_of_cmd_stream( struct opt_type *opt, char *s ) {
 	
 }
 
-
-static int8_t is_valid_opt_ival( struct opt_type *opt, char *s, struct ctrl_node *cn ) {
+STATIC_FUNC
+int8_t is_valid_opt_ival(struct opt_type *opt, char *s, struct ctrl_node *cn)
+{
 	
 	if ( opt->imin == opt->imax )
 		return SUCCESS;
@@ -958,8 +997,8 @@ static int8_t is_valid_opt_ival( struct opt_type *opt, char *s, struct ctrl_node
  * call given function for each applied option
  * thus: if several hna are active func() is called once for each
  */
-int8_t func_for_each_opt( struct ctrl_node *cn, void *data, char* func_name, 
-                          int8_t (*func) ( struct ctrl_node *cn, void *data, struct opt_type *opt, struct opt_parent *p, struct opt_child *c ) ) 
+int8_t func_for_each_opt(struct ctrl_node *cn, void *data, char* func_name,
+        int8_t(*func) (struct ctrl_node *cn, void *data, struct opt_type *opt, struct opt_parent *p, struct opt_child *c))
 {
 	
 	struct list_node *list_pos;
@@ -1008,20 +1047,20 @@ int8_t func_for_each_opt( struct ctrl_node *cn, void *data, char* func_name,
 }
 
 
-static void show_opts_help( uint8_t all_opts, uint8_t verbose, struct ctrl_node *cn ) {
+STATIC_FUNC
+void show_opts_help(uint8_t all_opts, uint8_t verbose, struct ctrl_node *cn)
+{
 	
 	if ( !cn )
 		return;
 	
 	dbg_printf(cn, "\n");
-	dbg_printf(cn, "Usage: %s [LONGOPT [%c]VAL] | [-SHORTOPT[SHORTOPT...] [%c]VAL] ...\n", 
+	dbg_printf(cn, "Usage: %s [LONGOPT=[%c]VAL] | -[SHORTOPT[SHORTOPT...] [%c]VAL] ...\n",
 	           prog_name, ARG_RESET_CHAR , ARG_RESET_CHAR);
-	dbg_printf(cn, "  e.g. %s -cid8\n", prog_name);
-	dbg_printf(cn, "  e.g. %s -c a 192.200.200.1/24\n", prog_name);
-	dbg_printf(cn, "  e.g. %s -c %s  my-vpn /n=192.168.115.0 /m=24\n", prog_name, ARG_THROW);
-	dbg_printf(cn, "  e.g. %s -c %s -my-vpn \n", prog_name, ARG_THROW);
+	dbg_printf(cn, "  e.g. %s %s=eth1 %s=wlan0 %s=wlan0 d=3\n", prog_name, ARG_DEV, ARG_DEV, ARG_DEV);
+	dbg_printf(cn, "  e.g. %s -c %s %s %s %s \n", prog_name, ARG_STATUS, ARG_INTERFACES, ARG_LINKS, ARG_ORIGINATORS);
+        dbg_printf(cn, "  e.g. %s -c %s %s=%cwlan1 %s \n", prog_name, ARG_STATUS, ARG_DEV, ARG_RESET_CHAR, ARG_INTERFACES );
 	dbg_printf(cn, "\n");
-	//dbg_printf(cn, "\nValid options are:\n" );
 	
 	struct list_node *list_pos;
 	
@@ -1034,10 +1073,6 @@ static void show_opts_help( uint8_t all_opts, uint8_t verbose, struct ctrl_node 
 		if ( !( all_opts  ||  opt->short_name ) )
 			continue;
 		
-#ifndef NODEPRECATED
-		if ( opt->call_custom_option == opt_deprecated )
-			continue;
-#endif
 		
 		if ( opt->long_name  &&  opt->help  &&  !opt->parent_name ) {
 			
@@ -1076,17 +1111,14 @@ static void show_opts_help( uint8_t all_opts, uint8_t verbose, struct ctrl_node 
 			if ( !c_opt->parent_name  ||  !c_opt->help )
 				continue;
 			
-#ifndef NODEPRECATED
-			if ( c_opt->call_custom_option == opt_deprecated )
-				continue;
-#endif
 
                         if ( c_opt->short_name )
-				snprintf( sn,5, ", /%c", c_opt->short_name );
+				snprintf( sn,5, ", %s%c", LONG_OPT_ARG_DELIMITER_STR, c_opt->short_name );
 			else
 				*sn = '\0';
 
-			sprintf( st, "  /%s%s %s ", c_opt->long_name, sn, c_opt->syntax ? c_opt->syntax: "" );
+			sprintf( st, "  %s%s%s %s ",
+                                LONG_OPT_ARG_DELIMITER_STR, c_opt->long_name, sn, c_opt->syntax ? c_opt->syntax : "");
 
 			if ( c_opt->opt_t != A_PS0  &&  c_opt->imin != c_opt->imax )
 				sprintf( defaults, "def: %-6d  range: [ %d %s %d ]",
@@ -1105,7 +1137,7 @@ static void show_opts_help( uint8_t all_opts, uint8_t verbose, struct ctrl_node 
 	dbg_printf( cn, "\n");
 	
 	if ( all_opts ) {
-		dbg_printf( cn, "Environment variables (e.g. sudo %s=/usr/src/bmx/lib %s -d3 eth0:bmx ):\n", 
+		dbg_printf( cn, "Environment variables (e.g. sudo %s=/usr/src/bmx6/lib %s -d3 eth0:bmx ):\n",
 		            BMX_ENV_LIB_PATH, prog_name );
 		
 		dbg_printf(cn, "\t%s\n", BMX_ENV_LIB_PATH );
@@ -1116,7 +1148,8 @@ static void show_opts_help( uint8_t all_opts, uint8_t verbose, struct ctrl_node 
 	
 }
 
-void register_option( struct opt_type *opt ) {
+void register_option(struct opt_type *opt)
+{
 	
 	dbgf_all( DBGT_INFO, "%s", (opt&&opt->long_name) ? opt->long_name : "" );
 	
@@ -1218,8 +1251,9 @@ failure:
 	paranoia( -500091, YES );
 }
 
-
-static void remove_option( struct opt_type *opt ) {
+STATIC_FUNC
+void remove_option(struct opt_type *opt)
+{
 	
 	struct list_node *tmp_pos, *list_pos, *prev_pos;
 	
@@ -1253,32 +1287,21 @@ static void remove_option( struct opt_type *opt ) {
 	dbgf( DBGL_SYS, DBGT_ERR, "%s no matching opt found", opt->long_name );
 }
 
-
-void register_options_array ( struct opt_type *fixed_options, int size ) {
+void register_options_array(struct opt_type *fixed_options, int size)
+{
 	
 	int i = 0;
 	int i_max = size / sizeof( struct opt_type );
 	
 	paranoia( -500149, ((size % sizeof( struct opt_type )) != 0 ) );
 	
-	while ( i<i_max  &&  (fixed_options[i].long_name || fixed_options[i].help) )
-		register_option( &(fixed_options[i++]) );
+	while ( i<i_max  &&  (fixed_options[i].long_name || fixed_options[i].help))
+                register_option(&(fixed_options[i++]));
 	
 }
 
-/*
-void remove_options_array ( struct opt_type *fixed_options ) {
-
-	int i = 0;
-
-	while ( fixed_options[i].long_name != NULL || fixed_options[i].help != NULL )
-		remove_option( &(fixed_options[i++]) );
-
-}
-*/
-
-
-struct opt_type *get_option( struct opt_type *parent_opt, uint8_t short_opt, char *sin ) {
+struct opt_type *get_option(struct opt_type *parent_opt, uint8_t short_opt, char *sin)
+{
 	
 	struct list_node *list_pos;
 	int32_t len = 0;
@@ -1321,16 +1344,16 @@ struct opt_type *get_option( struct opt_type *parent_opt, uint8_t short_opt, cha
 		else if ( !short_opt  &&  len == (int)strlen( opt->long_name )  &&  !strncasecmp( s, opt->long_name, len ) )
 			break;
 		
-		else if ( !short_opt  &&  len == 1  &&  s[0] == opt->short_name  &&   on_the_fly  &&  opt->dyn_t != A_INI )
+		else if ( !short_opt  &&  len == 1  &&  s[0] == opt->short_name  &&   !initializing  &&  opt->dyn_t != A_INI )
 			break;
 		
-		else if ( !short_opt  &&  len == 1  &&  s[0] == opt->short_name  &&  !on_the_fly  &&  opt->dyn_t != A_DYN )
+		else if ( !short_opt  &&  len == 1  &&  s[0] == opt->short_name  &&  initializing  &&  opt->dyn_t != A_DYN )
 			break;
 		
-		else if ( short_opt  &&  s[0] == opt->short_name  &&   on_the_fly  &&  opt->dyn_t != A_INI )
+		else if ( short_opt  &&  s[0] == opt->short_name  &&   !initializing  &&  opt->dyn_t != A_INI )
 			break;
 		
-		else if ( short_opt  &&  s[0] == opt->short_name  &&  !on_the_fly  &&  opt->dyn_t != A_DYN )
+		else if ( short_opt  &&  s[0] == opt->short_name  &&  initializing  &&  opt->dyn_t != A_DYN )
 			break;
 		
 		
@@ -1357,9 +1380,8 @@ get_option_failure:
 	
 }
 
-
-
-struct opt_child *get_opt_child ( struct opt_type *opt, struct opt_parent *p ) {
+struct opt_child *get_opt_child(struct opt_type *opt, struct opt_parent *p)
+{
 	
 	struct list_node *pos;
 	
@@ -1380,7 +1402,8 @@ struct opt_child *get_opt_child ( struct opt_type *opt, struct opt_parent *p ) {
 	return NULL;
 }
 
-void set_opt_child_val( struct opt_child *c, char *val ) {
+void set_opt_child_val(struct opt_child *c, char *val)
+{
 	
 	if ( val &&  c->c_val  &&  wordsEqual( c->c_val, val ) )
 		return;
@@ -1394,7 +1417,9 @@ void set_opt_child_val( struct opt_child *c, char *val ) {
                 c->c_val = debugWordDup(val, -300013);
 }
 
-static void set_opt_child_ref( struct opt_child *c, char *ref ) {
+STATIC_FUNC
+void set_opt_child_ref(struct opt_child *c, char *ref)
+{
 	
 	if ( ref &&  c->c_ref  &&  wordsEqual( c->c_ref, ref ) )
 		return;
@@ -1408,8 +1433,9 @@ static void set_opt_child_ref( struct opt_child *c, char *ref ) {
 		c->c_ref = debugWordDup( ref, -300014 );
 }
 
-
-static void del_opt_child_save( struct list_node *prev, struct list_node *pos, struct opt_parent *p ) {
+STATIC_FUNC
+void del_opt_child_save(struct list_node *prev, struct list_node *pos, struct opt_parent *p)
+{
 	
 	struct opt_child *c = list_entry( pos, struct opt_child, list );
 
@@ -1422,7 +1448,9 @@ static void del_opt_child_save( struct list_node *prev, struct list_node *pos, s
 	return;
 }
 
-static void del_opt_child( struct opt_parent *p, struct opt_type *opt ) {
+STATIC_FUNC
+void del_opt_child(struct opt_parent *p, struct opt_type *opt)
+{
 	
 	struct list_node *pos, *tmp, *prev;
 	
@@ -1439,7 +1467,9 @@ static void del_opt_child( struct opt_parent *p, struct opt_type *opt ) {
 	}
 }	
 
-static struct opt_child *add_opt_child( struct opt_type *opt, struct opt_parent *p ) {
+STATIC_FUNC
+struct opt_child *add_opt_child(struct opt_type *opt, struct opt_parent *p)
+{
 	
 	struct opt_child *c = debugMalloc( sizeof( struct opt_child ), -300017 );
 	memset( c, 0, sizeof(struct opt_child) );
@@ -1451,10 +1481,8 @@ static struct opt_child *add_opt_child( struct opt_type *opt, struct opt_parent 
 	return c;
 }
 
-
-
-
-void set_opt_parent_val( struct opt_parent *p, char *val ) {
+void set_opt_parent_val(struct opt_parent *p, char *val)
+{
 	
 	if ( val &&  p->p_val  &&  wordsEqual( p->p_val, val ) )
 		return;
@@ -1468,7 +1496,8 @@ void set_opt_parent_val( struct opt_parent *p, char *val ) {
 		p->p_val = debugWordDup( val, -300015 );
 }
 
-void set_opt_parent_ref( struct opt_parent *p, char *ref ) {
+void set_opt_parent_ref(struct opt_parent *p, char *ref)
+{
 	
 	if ( ref &&  p->p_ref  &&  wordsEqual( p->p_ref, ref ) )
 		return;
@@ -1483,8 +1512,9 @@ void set_opt_parent_ref( struct opt_parent *p, char *ref ) {
 }
 
 
-struct opt_parent *add_opt_parent( struct opt_type *opt ) {
-	
+struct opt_parent *add_opt_parent( struct opt_type *opt )
+{
+
 	struct opt_parent *p = debugMalloc( sizeof( struct opt_parent ), -300018 );
 	memset( p, 0, sizeof(struct opt_parent) );
 
@@ -1495,7 +1525,9 @@ struct opt_parent *add_opt_parent( struct opt_type *opt ) {
 	return p;
 }
 
-static void del_opt_parent_save( struct opt_type *opt, struct list_node *prev, struct list_node *pos ) {
+STATIC_FUNC
+void del_opt_parent_save(struct opt_type *opt, struct list_node *prev, struct list_node *pos)
+{
 	
 	struct opt_parent *p = list_entry( pos, struct opt_parent, list );
 
@@ -1509,7 +1541,8 @@ static void del_opt_parent_save( struct opt_type *opt, struct list_node *prev, s
 	debugFree( p, -300058 );
 }
 
-void del_opt_parent( struct opt_type *opt, struct opt_parent *parent ) {
+void del_opt_parent(struct opt_type *opt, struct opt_parent *parent)
+{
 	
 	struct list_node *pos, *tmp, *prev = (struct list_node*)&(opt->d.parents_instance_list);
 	
@@ -1524,8 +1557,8 @@ void del_opt_parent( struct opt_type *opt, struct opt_parent *parent ) {
 	}
 }
 
-
-struct opt_parent *get_opt_parent_val ( struct opt_type *opt, char *val ) {
+struct opt_parent *get_opt_parent_val(struct opt_type *opt, char *val)
+{
 	
 	struct opt_parent *p = NULL;
 	struct list_node *pos;
@@ -1547,7 +1580,8 @@ struct opt_parent *get_opt_parent_val ( struct opt_type *opt, char *val ) {
 	return NULL;
 }
 
-struct opt_parent *get_opt_parent_ref ( struct opt_type *opt, char *ref ) {
+struct opt_parent *get_opt_parent_ref(struct opt_type *opt, char *ref)
+{
 	
 	struct opt_parent *p = NULL;
 	struct list_node *pos;
@@ -1569,7 +1603,9 @@ struct opt_parent *get_opt_parent_ref ( struct opt_type *opt, char *ref ) {
 	return NULL;
 }
 
-static struct opt_parent *dup_opt_parent (  struct opt_type *opt, struct opt_parent *p ) {
+STATIC_FUNC
+struct opt_parent *dup_opt_parent(struct opt_type *opt, struct opt_parent *p)
+{
 	
 	struct opt_parent *dup_p = add_opt_parent( opt );
 	set_opt_parent_val ( dup_p, p->p_val );
@@ -1604,8 +1640,8 @@ char *opt_cmd2str[] = {
 		"OPT_UNREGISTER"
 };
 
-
-int32_t check_apply_parent_option( uint8_t del, uint8_t cmd, uint8_t _save, struct opt_type *opt, char *in, struct ctrl_node *cn ) {
+int32_t check_apply_parent_option(uint8_t del, uint8_t cmd, uint8_t _save, struct opt_type *opt, char *in, struct ctrl_node *cn)
+{
 	
 	int32_t ret;
 	
@@ -1627,8 +1663,9 @@ int32_t check_apply_parent_option( uint8_t del, uint8_t cmd, uint8_t _save, stru
 }
 
 
-
-static int32_t call_opt_patch( uint8_t ad, struct opt_type *opt, struct opt_parent *patch, char *strm, struct ctrl_node *cn ) {
+STATIC_FUNC
+int32_t call_opt_patch(uint8_t ad, struct opt_type *opt, struct opt_parent *patch, char *strm, struct ctrl_node *cn)
+{
 	
 	dbgf_all( DBGT_INFO, "ad:%d opt:%s val:%s strm:%s",
 	          ad, opt->long_name, patch->p_val, strm );
@@ -1704,8 +1741,9 @@ static int32_t call_opt_patch( uint8_t ad, struct opt_type *opt, struct opt_pare
 	return SUCCESS;
 }
 
-
-static int32_t cleanup_patch( struct opt_type *opt, struct opt_parent *patch, struct ctrl_node *cn ) {
+STATIC_FUNC
+int32_t cleanup_patch(struct opt_type *opt, struct opt_parent *patch, struct ctrl_node *cn)
+{
 	
 	uint8_t del = patch->p_diff;
 	char *val = patch->p_val;
@@ -1717,14 +1755,12 @@ static int32_t cleanup_patch( struct opt_type *opt, struct opt_parent *patch, st
 	
 	if ( opt->opt_t == A_PS0 ) {
 		
-//		if ( (del && !opt->d.found_parents)  ||  (!del && opt->d.found_parents) )
                 if ((del && !opt->d.parents_instance_list.items) || (!del && opt->d.parents_instance_list.items))
 			patch->p_diff = NOP;
 		
 		
 	} else if ( opt->opt_t == A_PS1 ) {
 		
-//		if ( (del && !opt->d.found_parents)  ||  (!del && get_opt_parent_val( opt, val )) )
                 if ((del && !opt->d.parents_instance_list.items) || (!del && get_opt_parent_val(opt, val)))
 			patch->p_diff = NOP;
 		
@@ -1771,8 +1807,9 @@ static int32_t cleanup_patch( struct opt_type *opt, struct opt_parent *patch, st
 }
 
 
-
-static int32_t _opt_connect ( uint8_t cmd, struct opt_type *opt, struct ctrl_node *cn, char *curr_strm_pos ) {
+STATIC_FUNC
+int32_t _opt_connect(uint8_t cmd, struct opt_type *opt, struct ctrl_node *cn, char *curr_strm_pos)
+{
 	
 	char tmp_path[MAX_PATH_SIZE+20] = "";
 	char unix_buff[MAX_UNIX_MSG_SIZE+1] = "";
@@ -1787,8 +1824,8 @@ static int32_t _opt_connect ( uint8_t cmd, struct opt_type *opt, struct ctrl_nod
 			cleanup_all( -500141 );
 		
 		sprintf( tmp_path, "%s/sock", run_dir );
-		
-		struct sockaddr_un unix_addr;
+
+                struct sockaddr_un unix_addr;
 		
 		memset( &unix_addr, 0, sizeof(struct sockaddr_un) );
 		unix_addr.sun_family = AF_LOCAL;
@@ -1843,7 +1880,7 @@ static int32_t _opt_connect ( uint8_t cmd, struct opt_type *opt, struct ctrl_nod
 			if ( connect ( unix_sock, (struct sockaddr *)&unix_addr, sizeof(struct sockaddr_un) ) < 0 ) {
 				
 				dbg( DBGL_SYS, DBGT_ERR, 
-				     "can't connect to unix socket '%s': %s ! Is bmxd running on this host ?", 
+				     "can't connect to unix socket '%s': %s ! Is bmx6 running on this host ?",
 				     tmp_path, strerror(errno) );
 				
 				cleanup_all( CLEANUP_FAILURE );
@@ -1857,14 +1894,12 @@ static int32_t _opt_connect ( uint8_t cmd, struct opt_type *opt, struct ctrl_nod
 				
 			}
 			
-			//printf("::::::::::::::::: from %s begin :::::::::::::::::::\n", tmp_path );
-			
 			if ( loop_mode )
 				trash=system( "clear" );
 			
 			int32_t recv_buff_len = 0;
-			
-			while ( !terminating() ) {
+
+                        while (!terminating) {
 				
 				recv_buff_len = 0;
 				
@@ -1885,18 +1920,20 @@ static int32_t _opt_connect ( uint8_t cmd, struct opt_type *opt, struct ctrl_nod
 					recv_buff_len = read( unix_sock, unix_buff, MAX_UNIX_MSG_SIZE );
 					
 					if ( recv_buff_len > 0 ) {
-						
+						ssize_t trash;
 						char *p;
 						unix_buff[recv_buff_len] = '\0';
 						
 						if ( (p=strchr( unix_buff, CONNECTION_END_CHR )) ) {
 							*p='\0';
-							printf( "%s", unix_buff );
+
+							//printf( "%s", unix_buff );
+                                                        trash = write(STDOUT_FILENO, unix_buff, strlen(unix_buff));
 							break;
 							
-						}
-						
-						printf( "%s", unix_buff );
+                                                }
+						//printf( "%s", unix_buff );
+                                                trash = write(STDOUT_FILENO, unix_buff, strlen(unix_buff));
 					}
 					
 				} while ( recv_buff_len > 0 );
@@ -1917,12 +1954,12 @@ static int32_t _opt_connect ( uint8_t cmd, struct opt_type *opt, struct ctrl_nod
 			
 			close( unix_sock );
 			unix_sock = 0;
-			
-			if ( loop_mode && !terminating() )
+
+                        if (loop_mode && !terminating)
 				wait_sec_msec( loop_interval/1000, loop_interval%1000 );
 			
-			
-		} while ( loop_mode && !terminating() );
+
+                } while (loop_mode && !terminating);
 		
 		cleanup_all( CLEANUP_SUCCESS );
 		
@@ -1932,12 +1969,13 @@ static int32_t _opt_connect ( uint8_t cmd, struct opt_type *opt, struct ctrl_nod
 	return SUCCESS;
 }
 
-
-static int32_t opt_connect ( uint8_t cmd, uint8_t _save, struct opt_type *opt, struct opt_parent *patch, struct ctrl_node *cn ) {
+STATIC_FUNC
+int32_t opt_connect(uint8_t cmd, uint8_t _save, struct opt_type *opt, struct opt_parent *patch, struct ctrl_node *cn)
+{
 	
 	char tmp_path[MAX_PATH_SIZE+20] = "";
 	
-	if ( cmd == OPT_SET_POST  &&  !on_the_fly ) {
+	if ( cmd == OPT_SET_POST  &&  initializing ) {
 		
 		// create unix sock:
 		
@@ -1964,7 +2002,7 @@ static int32_t opt_connect ( uint8_t cmd, uint8_t _save, struct opt_type *opt, s
 		} else {
 			
 			dbg( DBGL_SYS, DBGT_ERR, 
-			     "%s busy! Probably bmxd is already running! Use [--%s %s] -c ... to connect to a running bmxd", 
+			     "%s busy! Probably bmx6 is already running! Use [--%s %s] -c ... to connect to a running bmx6",
 			     tmp_path, ARG_RUN_DIR, run_dir );
 			cleanup_all( CLEANUP_FAILURE );
 			
@@ -1993,9 +2031,11 @@ static int32_t opt_connect ( uint8_t cmd, uint8_t _save, struct opt_type *opt, s
 	return SUCCESS;
 }
 
-static int32_t call_opt_apply( uint8_t cmd, uint8_t save, struct opt_type *opt, struct opt_parent *_patch, char *in, struct ctrl_node *cn ) {
+STATIC_FUNC
+int32_t call_opt_apply(uint8_t cmd, uint8_t save, struct opt_type *opt, struct opt_parent *_patch, char *in, struct ctrl_node *cn)
+{
 	
-	paranoia( -500154, ( cmd != OPT_CHECK  &&  cmd != OPT_APPLY ) );
+	assertion( -500154, ( cmd == OPT_CHECK  ||  cmd == OPT_APPLY ) );
 	
 	//cleanup_patch will change the patch, so we'll work with a duplicate and destroy it afterwards
 	struct opt_parent *patch = dup_opt_parent( &Patch_opt, _patch );
@@ -2014,18 +2054,18 @@ static int32_t call_opt_apply( uint8_t cmd, uint8_t save, struct opt_type *opt, 
 	// keep this check after cleanup_patch  and  p_diff==NOP and list_empty check to let config_reload 
 	// apply all unchanged options
 	
-	if ( (!on_the_fly  &&  opt->dyn_t == A_DYN)  ||  ( on_the_fly  &&  opt->dyn_t == A_INI) ) {
+	if ( (initializing  &&  opt->dyn_t == A_DYN)  ||  ( !initializing  &&  opt->dyn_t == A_INI) ) {
 		
 		dbg_cn( cn, DBGL_SYS, DBGT_ERR, "--%s%s%c can %s be applied at startup",
 		        opt->long_name, opt->short_name ? ", -" : "", opt->short_name ? opt->short_name : ' ',
-		        on_the_fly ? "ONLY" : "NOT"  );
+		        !initializing ? "ONLY" : "NOT"  );
 		
 		goto call_opt_apply_error;
 	}
 	
 	
 	if ( opt->call_custom_option == opt_connect ) {
-		
+		// this is necessary because we dont have the "*in" argument for the opt_something(...) prototype
 		if ( _opt_connect( cmd, opt, cn, in ) == FAILURE )
 			goto call_opt_apply_error;
 		
@@ -2044,7 +2084,7 @@ static int32_t call_opt_apply( uint8_t cmd, uint8_t save, struct opt_type *opt, 
 		
 		if ( opt->auth_t == A_ADM ) {
 
-                        dbg(DBGL_CHANGES, DBGT_INFO, "--%-22s  %-30s", opt->long_name, patch->p_val);
+//                        dbg(DBGL_CHANGES, DBGT_INFO, "--%-22s  %-30s", opt->long_name, patch->p_val);
 
 			dbgf_all( DBGT_INFO, "--%-22s  %-30s  (%s order %d)",
 			          opt->long_name, patch->p_val, opt_cmd2str[ cmd ], opt->order );
@@ -2119,7 +2159,10 @@ This has already been done during call_option( cmd==CHECK || cmd==APPLY )
 (-) impossible to configue in one step for parent-options
 
 */
-static int32_t track_opt_parent(  uint8_t cmd, uint8_t save, struct opt_type *p_opt, struct opt_parent *p_patch, struct ctrl_node *cn ) {
+
+STATIC_FUNC
+int32_t track_opt_parent(uint8_t cmd, uint8_t save, struct opt_type *p_opt, struct opt_parent *p_patch, struct ctrl_node *cn)
+{
 	
 	struct list_node *pos;
 	struct opt_parent *p_reftr = get_opt_parent_ref( p_opt, p_opt->opt_t == A_PMN ? p_patch->p_ref : NULL );
@@ -2212,8 +2255,8 @@ static int32_t track_opt_parent(  uint8_t cmd, uint8_t save, struct opt_type *p_
 				} else if ( !c_patch->c_val  &&  !c_track ) {
 					
 					if ( save ) {
-						dbg_cn( cn, DBGL_SYS, DBGT_ERR, "--%s %s /%s does not exist", 
-						        p_opt->long_name, p_patch->p_val, c_patch->c_opt->long_name );
+						dbg_cn( cn, DBGL_SYS, DBGT_ERR, "--%s %s %s%s does not exist",
+						        p_opt->long_name, p_patch->p_val, LONG_OPT_ARG_DELIMITER_STR, c_patch->c_opt->long_name );
 						return FAILURE;
 					}
 					
@@ -2222,8 +2265,8 @@ static int32_t track_opt_parent(  uint8_t cmd, uint8_t save, struct opt_type *p_
 				                ( !c_patch->c_ref  &&  !c_track->c_ref ) ) ) 
 				{
 					
-					dbgf_all( DBGT_INFO, "--%s %s /%s %s already configured", 
-					          p_opt->long_name, p_patch->p_val, c_patch->c_opt->long_name, c_patch->c_val );
+					dbgf_all( DBGT_INFO, "--%s %s %s%s %s already configured",
+					          p_opt->long_name, p_patch->p_val, LONG_OPT_ARG_DELIMITER_STR, c_patch->c_opt->long_name, c_patch->c_val );
 					
 				} else if (  c_patch->c_val ) {
 					
@@ -2246,15 +2289,15 @@ static int32_t track_opt_parent(  uint8_t cmd, uint8_t save, struct opt_type *p_
 				}
 				
 				if ( cmd == OPT_APPLY  &&  changed_child  &&  c_patch->c_opt->auth_t == A_ADM )
-					dbg_cn( cn, DBGL_CHANGES, DBGT_INFO, "--%-22s  %-30s  /%-22s %c%-30s",
-					        p_opt->long_name, p_patch->p_val, 
+					dbg_cn( cn, DBGL_CHANGES, DBGT_INFO, "--%-22s  %-30s  %s%-22s %c%-30s",
+					        p_opt->long_name, p_patch->p_val, LONG_OPT_ARG_DELIMITER_STR,
 					        c_patch->c_opt->long_name, c_patch->c_val?' ':'-', c_patch->c_val );
 				
 			}
 		}
-		
+/*
 		// be pedantic only after startup (!on_the_fly) and not reload-config (!save)
-		if ( !changed  &&  on_the_fly  &&  save  &&  pedantic_check ) {
+                if (!changed && !initializing && save) {
 			
 			dbg_cn( cn, DBGL_SYS, DBGT_ERR, "--%s %s already configured", 
 			        p_opt->long_name, p_patch->p_val );
@@ -2263,12 +2306,15 @@ static int32_t track_opt_parent(  uint8_t cmd, uint8_t save, struct opt_type *p_
 			// have already checked for double applied options
 			return FAILURE;
 		}
+*/
 	}
 	
 	return SUCCESS;
-}	
+}
 
-int32_t call_option( uint8_t ad, uint8_t cmd, uint8_t save, struct opt_type *opt, struct opt_parent *patch, char *in, struct ctrl_node *cn ) {
+
+int32_t call_option(uint8_t ad, uint8_t cmd, uint8_t save, struct opt_type *opt, struct opt_parent *patch, char *in, struct ctrl_node *cn)
+{
 	
 	dbgf_all(  DBGT_INFO, "%s (cmd %s  del %d  save %d  parent_name %s order %d) p_val: %s in: %s",
 	           opt->long_name, opt_cmd2str[ cmd ], ad, save, opt->parent_name, opt->order, patch?patch->p_val:"-", in );
@@ -2296,7 +2342,7 @@ int32_t call_option( uint8_t ad, uint8_t cmd, uint8_t save, struct opt_type *opt
 	}
 	
 	
-	if ( (opt->pos_t==A_END || opt->pos_t==A_ETE)  &&  in  &&  !end_of_cmd_stream( opt, in ) ) {
+	if ( (opt->pos_t==A_END || opt->pos_t==A_ETE)  &&  in  &&  !is_end_of_cmd_stream( opt, in ) ) {
 		
 		if ( cn ) {
 			dbg_cn( cn, DBGL_CHANGES, DBGT_ERR, "--%s%s%c MUST be last option before line feed", 
@@ -2375,7 +2421,7 @@ call_option_failure:
 	        opt->long_name ? opt->long_name : "-", in ? in: "-",
 	        patch ? patch->p_diff : -1,
 	        ad, opt->ival ? *(opt->ival) : 0, opt->imin, opt->imax, opt->idef,
-	        opt_cmd2str[cmd], opt->opt_t, on_the_fly, wordlen(in)  );
+	        opt_cmd2str[cmd], opt->opt_t, !initializing, wordlen(in)  );
 	
 	/* This results in too much side effects. And MUST be handled by calling function like apply_stream_opts()
 	if ( !on_the_fly  &&  !pedantic_cmd_check  &&  ( cmd == OPT_PATCH || cmd == OPT_ADJUST || cmd == OPT_CHECK || cmd == OPT_APPLY ) ) {
@@ -2391,9 +2437,8 @@ call_option_failure:
 	return FAILURE;
 }
 
-
-
-int respect_opt_order( uint8_t test, int8_t last, int8_t next, struct opt_type *on, uint8_t load, uint8_t cmd, struct ctrl_node *cn ) {
+int respect_opt_order(uint8_t test, int8_t last, int8_t next, struct opt_type *on, uint8_t load, uint8_t cmd, struct ctrl_node *cn)
+{
 	
 	struct list_node *list_pos;
 	struct opt_type *opt;
@@ -2456,21 +2501,24 @@ int respect_opt_order( uint8_t test, int8_t last, int8_t next, struct opt_type *
 
 // if returns SUCCESS then fd might be closed ( called remove_ctrl_node( fd ) ) or not.
 // if returns FAILURE then fd IS open and must be closed
-int8_t apply_stream_opts( char *s, uint8_t cmd, uint8_t load_cfg, struct ctrl_node *cn ) {
+
+int8_t apply_stream_opts(char *s, uint8_t cmd, uint8_t load_cfg, struct ctrl_node *cn)
+{
 	
 	enum {
-		NEXT_OPT,		// 0
-			NEW_OPT,		// 1
-			SHORT_OPT,		// 2
-			LONG_OPT,		// 3
-			LONG_OPT_VAL,		// 4
-			LONG_OPT_WHAT,		// 5
-			LONG_OPT_ARG,		// 6
-			LONG_OPT_ARG_VAL,	// 7
+                NEXT_OPT, // 0
+                NEW_OPT, // 1
+                SHORT_OPT, // 2
+                LONG_OPT, // 3
+                LONG_OPT_VAL, // 4
+                LONG_OPT_WHAT, // 5
+                LONG_OPT_ARG, // 6
+                LONG_OPT_ARG_VAL, // 7
 	};
-	
+
+#if !defined(NO_DEBUG_ALL) || defined(TEST_DEBUG)
 	char *state2str[] = {"NEXT_OPT","NEW_OPT","SHORT_OPT","LONG_OPT","LONG_OPT_VAL","LONG_OPT_WHAT","LONG_OPT_ARG","LONG_OPT_ARG_VAL"};
-	
+#endif
 	
 	int8_t state = NEW_OPT;
 	struct opt_type *opt = NULL;
@@ -2502,23 +2550,23 @@ int8_t apply_stream_opts( char *s, uint8_t cmd, uint8_t load_cfg, struct ctrl_no
 			return SUCCESS;
 		}
 		
-		
-		if ( state == NEXT_OPT ) {
+
+                if (state == NEXT_OPT) {
 			// assumes s points to last successfully processed word or its following gap
 			s = nextword(s);
 			state = NEW_OPT;
-			
-		} else if ( state == NEW_OPT  &&  wordlen(s) >= 2  &&  s[0]=='-'  &&   s[1]!='-' ) {
+
+                } else if (state == NEW_OPT && wordlen(s) >= 2 && s[0] == '-' && s[1] != '-') {
 			
 			s++;
 			state=SHORT_OPT;
-			
-		} else if ( state == NEW_OPT  &&  wordlen(s) >=3  &&  s[0]=='-'  &&  s[1]=='-' ) {
+
+                } else if (state == NEW_OPT && wordlen(s) >= 3 && s[0] == '-' && s[1] == '-') {
 			
 			s+=2;
 			state=LONG_OPT;
-			
-		} else if ( state == NEW_OPT  &&  wordlen(s) >=1  &&  s[0]!='-'  &&  s[0]!='/' ) {
+
+                } else if (state == NEW_OPT && wordlen(s) >= 1 && s[0] != '-' && s[0] != LONG_OPT_ARG_DELIMITER_CHAR) {
 			
 			state=LONG_OPT;
 			
@@ -2617,8 +2665,8 @@ int8_t apply_stream_opts( char *s, uint8_t cmd, uint8_t load_cfg, struct ctrl_no
 			if ( opt->opt_t == A_PS1 ) {
 				
 				s = s + (del = ((s[0]==ARG_RESET_CHAR) ? 1 : 0) );
-				
-				if ( (pb=check_apply_parent_option( del, cmd, (on_the_fly?YES:NO)/*save*/, opt, s, cn )) == FAILURE )
+
+                                if ((pb = check_apply_parent_option(del, cmd, (initializing ? NO : YES)/*save*/, opt, s, cn)) == FAILURE)
 					goto apply_args_error;
 				
 				s+=pb;
@@ -2646,24 +2694,24 @@ int8_t apply_stream_opts( char *s, uint8_t cmd, uint8_t load_cfg, struct ctrl_no
 			
 			if ( opt->opt_t != A_PMN )
 				goto apply_args_error;
+
+                        char* delmiter_ptr = index(s, LONG_OPT_ARG_DELIMITER_CHAR);
 			
-			char* slashp = index( s, '/' );
-			
-			if ( slashp  &&  slashp == nextword(s)  &&  patch->p_diff == DEL ) {
+			if ( delmiter_ptr  &&  delmiter_ptr == nextword(s)  &&  patch->p_diff == DEL ) {
 				
-				wordCopy( argument, slashp+1 );
+				wordCopy( argument, delmiter_ptr+1 );
 				
 				dbg_cn( cn, DBGL_SYS, DBGT_ERR, 
-				        "--%s %s can not be resetted and refined at the same time. Just omit /%s!",
-				        opt->long_name, patch->p_val, argument );
+				        "--%s %s can not be resetted and refined at the same time. Just omit %s%s!",
+				        opt->long_name, patch->p_val, LONG_OPT_ARG_DELIMITER_STR, argument );
 				
 				goto apply_args_error;
 				
-			} else if ( slashp  &&  slashp == nextword(s) ) {
+			} else if ( delmiter_ptr  &&  delmiter_ptr == nextword(s) ) {
 				
 				//nextword starts with slashp 
 				
-				s = slashp+1;
+				s = delmiter_ptr+1;
 				state = LONG_OPT_ARG;
 				
 			} else {
@@ -2672,7 +2720,7 @@ int8_t apply_stream_opts( char *s, uint8_t cmd, uint8_t load_cfg, struct ctrl_no
 					goto apply_args_error;
 				
 				//indicate end of LONG_OPT_ARGs
-				if ( (call_option( ADD, cmd, (on_the_fly?YES:NO)/*save*/, opt, patch, pmn_s, cn )) == FAILURE )
+				if ( (call_option( ADD, cmd, (initializing?NO:YES)/*save*/, opt, patch, pmn_s, cn )) == FAILURE )
 					goto apply_args_error;
 				
 				del_opt_parent( &Patch_opt, patch );
@@ -2747,11 +2795,10 @@ apply_args_error:
 	
 	return FAILURE;
 	
-}	
+}
 
-
-
-void apply_init_args( int argc, char *argv[] ) {
+void apply_init_args(int argc, char *argv[])
+{
 	
 	prog_name = argv[0];
 	
@@ -2768,249 +2815,38 @@ void apply_init_args( int argc, char *argv[] ) {
 	respect_opt_order( OPT_APPLY, 0, 99, NULL, NO/*load_cofig*/, OPT_POST, 0/*probably closed*/ );
 	
 	close_ctrl_node( CTRL_CLOSE_STRAIGHT, cn );
-	
-	cb_plugin_hooks( NULL, PLUGIN_CB_CONF );
+
+        cb_plugin_hooks(PLUGIN_CB_CONF, NULL);
 	
 	free_init_string();
 }
 
+STATIC_FUNC
+int8_t show_info(struct ctrl_node *cn, void *data, struct opt_type *opt, struct opt_parent *p, struct opt_child *c)
+{
 
-
-
-
-
-
-
-char *ipStr( uint32_t addr ) {
-#define IP2S_ARRAY_LEN 10
-	static uint8_t c=0;
-	static char str[IP2S_ARRAY_LEN][IP4_STR_LEN];
-	
-	c = (c+1) % IP2S_ARRAY_LEN;
-	
-	inet_ntop( AF_INET, &addr, str[c], IP4_STR_LEN );
-	
-	return str[c];
-}
-
-
-
-int8_t str2netw( char* args, uint32_t *ip, char delimiter, struct ctrl_node *cn, int32_t *val, int32_t max ) {
-	
-	struct in_addr tmp_ip_holder;
-	char *slashptr = NULL;
-	
-	char switch_arg[30];
-	
-	if ( wordlen( args ) < 1 || wordlen( args ) > 29 )
-		return FAILURE;
-	
-	wordCopy( switch_arg, args );
-	switch_arg[wordlen( args )] = '\0';
-	
-	if ( val ) {
-		
-		if ( ( slashptr = strchr( switch_arg, delimiter ) ) != NULL ) {
-			char *end = NULL;
-			
-			*slashptr = '\0';
-			
-			errno = 0;
-			*val = strtol( slashptr+1, &end, 10 );
-			
-			if ( ( errno == ERANGE ) || *val > max || *val < 0 ) {
-				
-				dbgf_cn( cn, DBGL_SYS, DBGT_ERR, "invalid argument %s %s", 
-				         args, strerror( errno ) );
-				
-				return FAILURE;
-				
-			} else if ( end==slashptr+1 ||  wordlen(end) ) {
-				
-				dbgf_cn( cn, DBGL_SYS, DBGT_ERR, "invalid argument trailer %s", end );
-				return FAILURE;
-			}
-			
-		} else {
-			
-			dbgf_cn( cn, DBGL_SYS, DBGT_ERR, "invalid argument %s! Fix you parameters!", switch_arg );
-			return FAILURE;
-		}
-	}
-	
-	errno = 0;
-	
-	if ( (inet_pton( AF_INET, switch_arg, &tmp_ip_holder )) < 1  ||  !tmp_ip_holder.s_addr ) {
-		
-		dbgf_all( DBGT_WARN, "invalid argument: %s: %s", args, strerror(errno) );
-		return FAILURE;
-	}
-	
-	*ip = tmp_ip_holder.s_addr;
-	
-	return SUCCESS;
-}
-
-
-void addr_to_str( uint32_t addr, char *str ) {
-	
-	inet_ntop( AF_INET, &addr, str, IP4_STR_LEN );
-	return;
-}
-
-
-
-uint32_t validate_net_mask( uint32_t ip, uint32_t mask, struct ctrl_node *cn ) {
-	
-	uint32_t nip = ip & htonl( 0xFFFFFFFF<<( 32 - mask ) ); 
-	
-	if ( cn  &&  nip != ip )
-		dbg_cn( cn, DBGL_CHANGES, DBGT_WARN, 
-		        "inconsistent network prefix %s/%d - probably you mean: %s/%d",
-		        ipStr(ip), mask, ipStr(nip), mask);
-	
-	return nip;
-}
-
-
-
-int32_t check_file( char *path, uint8_t write, uint8_t exec ) {
-	
-	struct stat fstat;
-	
-	errno = 0;
-	int stat_ret = stat( path, &fstat );
-	
-	if ( stat_ret  < 0 ) {
-		
-		dbgf( DBGL_CHANGES, DBGT_WARN, "%s does not exist! (%s)", 
-		      path, strerror(errno));
-		
-	} else {
-		
-		if ( S_ISREG( fstat.st_mode )  &&  
-		     (S_IRUSR & fstat.st_mode)  &&  
-		     ((S_IWUSR & fstat.st_mode) || !write) &&  
-		     ((S_IXUSR & fstat.st_mode) || !exec) )
-			return SUCCESS;
-		
-		dbgf( DBGL_SYS, DBGT_ERR, 
-		      "%s exists but has inapropriate permissions (%s)", 
-		      path, strerror(errno));
-		
-	}
-	
-	return FAILURE;
-}
-
-int32_t check_dir( char *path, uint8_t create, uint8_t write ) {
-	
-	struct stat fstat;
-	
-	errno = 0;
-	int stat_ret = stat( path, &fstat );
-	
-	if ( stat_ret < 0 ) {
-		
-		if ( create && mkdir( path, S_IRUSR|S_IWUSR|S_IXUSR|S_IRGRP|S_IXGRP|S_IROTH|S_IXOTH ) >= 0 )
-			return SUCCESS;
-		
-		dbgf( DBGL_SYS, DBGT_ERR, 
-		      "directory %s does not exist and can not be created (%s)", path, strerror(errno));
-		
-	} else {
-		
-		if ( S_ISDIR( fstat.st_mode )  &&  
-		     ( S_IRUSR & fstat.st_mode)  &&  
-		     ( S_IXUSR & fstat.st_mode)  &&
-		     ((S_IWUSR & fstat.st_mode) || !write) )
-			return SUCCESS;
-		
-		dbgf( DBGL_SYS, DBGT_ERR, 
-		      "directory %s exists but has inapropriate permissions (%s)", path, strerror(errno));
-		
-	}
-	
-	return FAILURE;
-	
-}
-
-
-
-
-uint32_t wordlen ( char *s ) {
-	
-	uint32_t i = 0;
-	
-	if ( !s )
-		return 0;
-	
-	for( i=0; i<strlen(s); i++ ) {
-		
-		if ( s[i] == '\0' || s[i] == '\n' || s[i]==' ' || s[i]=='\t' )
-			return i;
-	}
-	
-	return i;
-}
-
-
-int8_t wordsEqual ( char *a, char *b ) {
-	
-	if ( wordlen( a ) == wordlen ( b )  &&  !strncmp( a, b, wordlen(a) ) )
-		return YES;
-	
-	return NO;
-}
-
-
-void wordCopy( char *out, char *in ) {
-	
-	if ( out  &&  in  &&  wordlen(in) < MAX_ARG_SIZE ) {
-		
-		snprintf( out, wordlen(in)+1, "%s", in );
-		
-	} else if ( out && !in ) {
-		
-		out[0]=0;
-		
-	} else {
-		
-		dbgf( DBGL_SYS, DBGT_ERR, "called with out: %s  and  in: %s", out, in );
-		cleanup_all( -500017 );
-		
-	}
-}
-
-
-static int8_t show_info ( struct ctrl_node *cn, void *data, struct opt_type *opt, struct opt_parent *p, struct opt_child *c ) {
-	
-	if ( c )
-		dbg_printf( cn, "    /%-18s %-20s %s%s\n",
-		            c->c_opt->long_name, c->c_val, (c->c_ref ? "resolved from " : ""), (c->c_ref ? c->c_ref : "") );
-	else
-		dbg_printf( cn, " %-22s %-20s %s%s\n",
-		            opt->long_name, p->p_val, (p->p_ref ? "resolved from " : ""), (p->p_ref ? p->p_ref : "") );
+        if (c) {
+                dbg_printf(cn, "    %s%-18s %-20s %s%s\n",
+                        LONG_OPT_ARG_DELIMITER_STR, c->c_opt->long_name, c->c_val,
+                        (c->c_ref ? "resolved from " : ""), (c->c_ref ? c->c_ref : ""));
+        } else {
+                dbg_printf(cn, " %-22s %-20s %s%s\n",
+                        opt->long_name, p->p_val, (p->p_ref ? "resolved from " : ""), (p->p_ref ? p->p_ref : ""));
+        }
 	
 	
 	return SUCCESS;
 }
 
-
-static int32_t opt_show_info ( uint8_t cmd, uint8_t _save, struct opt_type *opt, struct opt_parent *patch, struct ctrl_node *cn ) {
+STATIC_FUNC
+int32_t opt_show_parameter(uint8_t cmd, uint8_t _save, struct opt_type *opt, struct opt_parent *patch, struct ctrl_node *cn)
+{
 	
 	if ( cmd == OPT_APPLY ) {
 		
-		/*		
-		//TBD: include all routing tables
-		dbg_printf(cn, " source_version %s\n", SOURCE_VERSION);
-		dbg_printf(cn, " compat_version %i\n", COMPAT_VERSION);
-		dbg_printf(cn, "\n");
-		*/
-		
 		func_for_each_opt( cn, NULL, "opt_show_info()", show_info );
-		
-		if ( !on_the_fly )
+
+                if (initializing)
 			cleanup_all(CLEANUP_SUCCESS);
 		
 		
@@ -3020,8 +2856,9 @@ static int32_t opt_show_info ( uint8_t cmd, uint8_t _save, struct opt_type *opt,
 }
 
 
-
-static int32_t opt_no_fork ( uint8_t cmd, uint8_t _save, struct opt_type *opt, struct opt_parent *patch, struct ctrl_node *cn ) {
+STATIC_FUNC
+int32_t opt_no_fork(uint8_t cmd, uint8_t _save, struct opt_type *opt, struct opt_parent *patch, struct ctrl_node *cn)
+{
 	
 	if ( cmd == OPT_APPLY ) {
 		
@@ -3029,7 +2866,7 @@ static int32_t opt_no_fork ( uint8_t cmd, uint8_t _save, struct opt_type *opt, s
 		
 		activate_debug_system();
 	
-	} else if ( cmd == OPT_POST && !on_the_fly ) {
+	} else if ( cmd == OPT_POST && initializing ) {
 		
 		activate_debug_system();
 		
@@ -3038,8 +2875,9 @@ static int32_t opt_no_fork ( uint8_t cmd, uint8_t _save, struct opt_type *opt, s
 	return SUCCESS;
 }
 
-
-static int32_t opt_debug ( uint8_t cmd, uint8_t _save, struct opt_type *opt, struct opt_parent *patch, struct ctrl_node *cn ) {
+STATIC_FUNC
+int32_t opt_debug(uint8_t cmd, uint8_t _save, struct opt_type *opt, struct opt_parent *patch, struct ctrl_node *cn)
+{
 	
 	if ( cmd == OPT_APPLY ) {
 		
@@ -3049,6 +2887,7 @@ static int32_t opt_debug ( uint8_t cmd, uint8_t _save, struct opt_type *opt, str
 		if (  ival == DBGL_SYS || 
 		      ival == DBGL_CHANGES || 
 		      ival == DBGL_TEST || 
+		      ival == DBGL_DUMP ||
 		      ival == DBGL_ALL ) 
 		{
 			
@@ -3056,6 +2895,7 @@ static int32_t opt_debug ( uint8_t cmd, uint8_t _save, struct opt_type *opt, str
 			add_dbgl_node( cn, ival );
 			return SUCCESS;
 			
+/*
 		} else if ( ival == DBGL_ROUTES ) {
 			
 			check_apply_parent_option( ADD, OPT_APPLY, _save, get_option( 0, 0, ARG_ROUTES ), 0, cn );
@@ -3063,10 +2903,11 @@ static int32_t opt_debug ( uint8_t cmd, uint8_t _save, struct opt_type *opt, str
 		} else if ( ival == DBGL_LINKS ) {
 			
 			check_apply_parent_option( ADD, OPT_APPLY, _save, get_option( 0, 0, ARG_LINKS ), 0, cn );
-			
+*/
 		} else if ( ival == DBGL_DETAILS ) {
 			
 			check_apply_parent_option( ADD, OPT_APPLY, 0, get_option( 0, 0, ARG_STATUS ), 0, cn );
+			check_apply_parent_option( ADD, OPT_APPLY, 0, get_option( 0, 0, ARG_INTERFACES ), 0, cn );
 			check_apply_parent_option( ADD, OPT_APPLY, _save, get_option( 0, 0, ARG_LINKS ), 0, cn );
 			check_apply_parent_option( ADD, OPT_APPLY, _save, get_option( 0, 0, ARG_ORIGINATORS ), 0, cn );
 /*
@@ -3094,8 +2935,9 @@ static int32_t opt_debug ( uint8_t cmd, uint8_t _save, struct opt_type *opt, str
 	return SUCCESS;
 }
 
-
-static int32_t opt_help ( uint8_t cmd, uint8_t _save, struct opt_type *opt, struct opt_parent *patch, struct ctrl_node *cn ) {
+STATIC_FUNC
+int32_t opt_help(uint8_t cmd, uint8_t _save, struct opt_type *opt, struct opt_parent *patch, struct ctrl_node *cn)
+{
 	
 	if ( cmd != OPT_APPLY )
 		return SUCCESS;
@@ -3121,23 +2963,24 @@ static int32_t opt_help ( uint8_t cmd, uint8_t _save, struct opt_type *opt, stru
 		show_opts_help( YES, NO, cn );
 		
 	} else if ( !strcmp(opt->long_name, ARG_VERSION) ) {
-		
-		dbg_printf( cn, "BMX (BatMan-eXp) %s-rv%d (compatibility version %i)\n",
-                        SOURCE_VERSION, REVISION_VERSION, COMPAT_VERSION);
+
+                dbg_printf(cn, "%s-%s (compatibility=%d code=cv%d)\n",
+                        BMX_BRANCH, BRANCH_VERSION, COMPATIBILITY_VERSION, CODE_VERSION);
 		
 	} else {
 		
 		show_opts_help( NO, NO, cn );
 	}
 	
-	if ( !on_the_fly )
+	if ( initializing )
 		cleanup_all(CLEANUP_SUCCESS);
 	
 	return SUCCESS;
 }
 
-
-static int32_t opt_quit ( uint8_t cmd, uint8_t _save, struct opt_type *opt, struct opt_parent *patch, struct ctrl_node *cn ) {
+STATIC_FUNC
+int32_t opt_quit(uint8_t cmd, uint8_t _save, struct opt_type *opt, struct opt_parent *patch, struct ctrl_node *cn)
+{
 	
 	if ( cmd == OPT_APPLY )
 		close_ctrl_node( CTRL_CLOSE_SUCCESS, cn );
@@ -3146,8 +2989,9 @@ static int32_t opt_quit ( uint8_t cmd, uint8_t _save, struct opt_type *opt, stru
 }
 
 
-
-static int32_t opt_run_dir ( uint8_t cmd, uint8_t _save, struct opt_type *opt, struct opt_parent *patch, struct ctrl_node *cn ) {
+STATIC_FUNC
+int32_t opt_run_dir(uint8_t cmd, uint8_t _save, struct opt_type *opt, struct opt_parent *patch, struct ctrl_node *cn)
+{
 	
 	char tmp_dir[MAX_PATH_SIZE] = "";
 	
@@ -3165,7 +3009,7 @@ static int32_t opt_run_dir ( uint8_t cmd, uint8_t _save, struct opt_type *opt, s
 			strcpy( run_dir, tmp_dir );
 		}	
 		
-	} else 	if ( cmd == OPT_SET_POST  &&  !on_the_fly ) {
+	} else 	if ( cmd == OPT_SET_POST  &&  initializing ) {
 		
 		if ( check_dir( run_dir, YES/*create*/, YES/*writable*/ ) == FAILURE )
 			return FAILURE;
@@ -3203,10 +3047,6 @@ static struct opt_type control_options[]=
 		
 	{ODI,0,ARG_VERSION,		'v',0,A_PS0,A_USR,A_DYI,A_ARG,A_ANY,	0,		0, 		0,		0, 		opt_help,
 			0,		"show version"},
-#ifndef NOTRAILER	
-	{ODI,0,ARG_TRAILER,		'V',0,A_PS0,A_USR,A_INI,A_ARG,A_END,	0,		0, 		0,		0, 		opt_help,
-			0,		"show trailer"},
-#endif
 	
 	{ODI,0,ARG_TEST,		0,  0,A_PS0,A_ADM,A_DYI,A_ARG,A_ANY,	&Testing,	0, 		1,		0, 		0,
 			0,		"test remaining args and provide feedback about projected success (without applying them)"},
@@ -3216,15 +3056,15 @@ static struct opt_type control_options[]=
 	{ODI,0,ARG_DEBUG,		'd',0,A_PS1,A_ADM,A_DYN,A_ARG,A_ETE,	0,		DBGL_MIN, 	DBGL_MAX,	-1, 		opt_debug,
 			ARG_VALUE_FORM,	"show debug information:\n"
 			"	 0  : system\n"
-			"	 1  : originators\n"
-			"	 2  : gateways\n"
+//			"	 1  : routes\n"
+//			"	 2  : gateways\n"
 			"	 3  : changes\n"
-			"	 4  : verbose changes\n"
-			"	 5  : profiling (depends on -DDEBUG_MALLOC -DMEMORY_USAGE -DPROFILE_DATA)\n"
-			"	 7  : services\n"
+			"	 4  : verbose changes (depends on -DNO_DEBUG_ALL)\n"
+			"	 5  : profiling (depends on -DNO_DEBUG_MALLOC -DNO_MEMORY_USAGE -DPROFILE_DATA)\n"
+//			"	 7  : services\n"
 			"	 8  : details\n"
-			"	 9  : announced networks and interfaces\n"
-			"	10  : links\n" 
+//			"	 9  : announced networks and interfaces\n"
+//			"	10  : links\n"
 			"	11  : testing" },
 	
 	{ODI,0,ARG_RUN_DIR,		0,  2,A_PS1,A_ADM,A_INI,A_CFA,A_ANY,	0,		0,		0,		0,		opt_run_dir,
@@ -3240,31 +3080,24 @@ static struct opt_type control_options[]=
 			ARG_VALUE_FORM,	"periodicity in ms with which client daemon in loop-mode refreshes debug information"},
 #endif
 		
-#ifndef NODEPRECATED
-	{ODI,0,"batch_mode",		'b',3,A_PS0,A_ADM,A_INI,A_ARG,A_ANY,	0,		0, 		0,		0, 		opt_deprecated,0,0},
-#endif
 		
 	{ODI,0,ARG_CONNECT,		'c',3,A_PS0,A_ADM,A_INI,A_ARG,A_EAT,	0,		0, 		0,		0, 		opt_connect,
 			0,		"set client mode. Connect and forward remaining args to main routing daemon"},
 
 	//order=5: so when used during startup it also shows the config-file options	
-	{ODI,0,ARG_SHOW_CHANGED,	'i',5,A_PS0,A_ADM,A_DYI,A_ARG,A_ANY,	0,		0,		0,		0, 		opt_show_info,
-			0,		"inform about configured options" },
-#ifndef LESS_OPTIONS
-	{ODI,0,ARG_PEDANTIC_CMDCHECK,	0,  5,A_PS1,A_ADM,A_DYI,A_CFA,A_ANY,	&pedantic_check,MIN_PEDANT_CHK, MAX_PEDANT_CHK, DEF_PEDANT_CHK,	0,
-			ARG_VALUE_FORM,	"disable/enable pedantic checking of command-line parameters and context -\n"
-			"	( e.g. fail setting a parameter without changing it)" },
-#endif
-	{ODI,0,"dbg_mute_timeout",	0,  5,A_PS1,A_ADM,A_DYI,A_CFA,A_ANY,	&dbg_mute_to,	0,		10000000,	100000,		0,
+	{ODI,0,ARG_SHOW_PARAMETER,	'p',5,A_PS0,A_ADM,A_DYI,A_ARG,A_ANY,	0,		0,		0,		0, 		opt_show_parameter,
+			0,		"show configured parameters"}
+        ,
+
+        {ODI,0,"dbg_mute_timeout",	0,  5,A_PS1,A_ADM,A_DYI,A_CFA,A_ANY,	&dbg_mute_to,	0,		10000000,	100000,		0,
 			ARG_VALUE_FORM,	"set timeout in ms for muting frequent messages"},
 
 		
 	{ODI,0,ARG_QUIT,EOS_DELIMITER,    5,A_PS0,A_USR,A_DYN,A_ARG,A_END,	0,		0, 		0,		0, 		opt_quit,0,0}
 };
 
-
-
-void init_control( void ) {
+void init_control(void)
+{
 	
 	int i;
 	
@@ -3275,7 +3108,7 @@ void init_control( void ) {
 	for ( i = DBGL_MIN; i <= DBGL_MAX; i++ )
 		LIST_INIT_HEAD( dbgl_clients[i], struct dbgl_node, list );
 	
-	openlog( "bmx", LOG_PID, LOG_DAEMON );
+	openlog( "bmx6", LOG_PID, LOG_DAEMON );
 	
 	memset( &Patch_opt, 0, sizeof( struct opt_type ) );
 
@@ -3286,7 +3119,8 @@ void init_control( void ) {
 	
 }
 
-void cleanup_config( void ) {
+void cleanup_config(void)
+{
 	
 	del_opt_parent( &Patch_opt, NULL );
 	
@@ -3297,9 +3131,8 @@ void cleanup_config( void ) {
 
 }
 
-
-
-void cleanup_control( void ) {
+void cleanup_control(void)
+{
 	
 	int8_t i;
 	
@@ -3319,6 +3152,5 @@ void cleanup_control( void ) {
 			remove_dbgl_node( (list_entry( (&dbgl_clients[i])->next, struct dbgl_node, list ))->cn );
 		
 	}
-	
 }
 

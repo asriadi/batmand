@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2010 BMX contributors:
- * Axel Neumann
+ * Copyright (c) 2010  Axel Neumann
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of version 2 of the GNU General Public
  * License as published by the Free Software Foundation.
@@ -27,22 +26,22 @@
 #define	DBGT_ERR  3
 
 
-//extern int debug_level;
 #define DBGL_MIN	0
 #define DBGL_SYS	0
-#define DBGL_ROUTES	1
-#define DBGL_GATEWAYS	2
+//#define DBGL_ROUTES	1
+//#define DBGL_GATEWAYS	2
 #define DBGL_CHANGES	3
 #define DBGL_ALL	4
 #define DBGL_PROFILE	5
-#define DBGL_UNUSED	6
-#define DBGL_SERVICES	7
+//#define DBGL_UNUSED	6
+//#define DBGL_SERVICES	7
 #define DBGL_DETAILS	8
-#define DBGL_HNAS	9
-#define DBGL_LINKS	10
+//#define DBGL_HNAS	9
+//#define DBGL_LINKS	10
 #define DBGL_TEST	11
-#define DBGL_MAX 	11
-#define DBGL_INVALID	12
+#define DBGL_DUMP	12
+#define DBGL_MAX 	12
+#define DBGL_INVALID	13
 
 
 extern int unix_sock;
@@ -57,6 +56,19 @@ extern int32_t Client_mode;
 
 #define CONNECTION_END_STR "$"
 #define CONNECTION_END_CHR '$'
+
+
+#define LONG_OPT_ARG_DELIMITER_CHAR '/'//'\\'
+#define LONG_OPT_ARG_DELIMITER_STR  "/"//"\\"
+
+#define REFERENCE_KEY_WORD	"ref:"
+
+#define EOS_DELIMITER '#'
+
+
+#define ARG_RESET "-" /* s-string preamble for call_option() to reset opt to default */
+#define ARG_RESET_CHAR '-'
+#define OPT_CHILD_UNDEFINED -1
 
 enum {
 	CTRL_CLOSE_ERROR,
@@ -75,7 +87,7 @@ struct ctrl_node
 	struct list_node list;
 	int fd;
 	void (*cn_fd_handler) (struct ctrl_node *);
-	uint32_t closing_stamp;
+	TIME_T closing_stamp;
 	uint8_t authorized;
 	int8_t dbgl;
 };
@@ -96,7 +108,7 @@ struct dbgl_node
 //#define DBG_HIST_EXPIRE 100000
 
 struct dbg_histogram {
-	uint32_t print_stamp;
+	TIME_T print_stamp;
 	int32_t expire;
 	uint16_t check_len;
 	uint16_t catched;
@@ -104,48 +116,45 @@ struct dbg_histogram {
 };
 
 
-#ifndef TESTDEBUG
+#ifndef TEST_DEBUG
 
 #define DBG_HIST_NEW	0x00
 #define DBG_HIST_MUTING 0x01
 #define DBG_HIST_MUTED	0x02
 
-#ifdef  NODEBUGALL
+#ifdef  NO_DEBUG_ALL
 #define dbgf_all(...) {;}
 #else
 #define dbgf_all( dbgt, ... ); do { if ( __dbgf_all() ) { _dbgf_all( dbgt, __FUNCTION__, __VA_ARGS__ ); } } while (0)
 #endif
 
-#ifdef EXTDEBUG
-#define dbgf_ext( dbgt, ... ); do { if ( __dbgf_all() ) { _dbgf_all( dbgt, __FUNCTION__, __VA_ARGS__ ); } } while (0)
-#else
-#define dbgf_ext(...) {;}
-#endif
-
-#define dbgf( dbgl, dbgt, ...); _dbgf( dbgl, dbgt, __FUNCTION__, __VA_ARGS__ );
-#define dbgf_cn( cn, dbgl, dbgt, ...); _dbgf_cn( cn, dbgl, dbgt, __FUNCTION__, __VA_ARGS__ );
+#define dbgf( dbgl, dbgt, ...)           _dbgf(         dbgl, dbgt, __FUNCTION__, __VA_ARGS__ )
+#define dbgf_cn( cn, dbgl, dbgt, ...)    _dbgf_cn( cn,  dbgl, dbgt, __FUNCTION__, __VA_ARGS__ )
+#define dbgf_mute( len, dbgl, dbgt, ...) _dbgf_mute( len, dbgl, dbgt, __FUNCTION__, __VA_ARGS__ )
 
 void dbg ( int8_t dbgl, int8_t dbgt, char *last, ... );
-void _dbgf ( int8_t dbgl, int8_t dbgt, char const *f, char *last, ... );
-void dbg_cn ( struct ctrl_node *cn, int8_t dbgl, int8_t dbgt, char *last, ... );
-void _dbgf_cn ( struct ctrl_node *cn, int8_t dbgl, int8_t dbgt, char const *f, char *last, ... );
-void dbg_mute ( uint32_t check_len, int8_t dbgl, int8_t dbgt, char *last, ... );
-void _dbgf_all ( int8_t dbgt, char const *f, char *last, ... );
+void _dbgf(int8_t dbgl, int8_t dbgt, const char *f, char *last, ...);
+void dbg_cn(struct ctrl_node *cn, int8_t dbgl, int8_t dbgt, char *last, ...);
+void _dbgf_cn(struct ctrl_node *cn, int8_t dbgl, int8_t dbgt, const char *f, char *last, ...);
+void dbg_mute(uint32_t check_len, int8_t dbgl, int8_t dbgt, char *last, ...);
+void _dbgf_mute(uint32_t check_len, int8_t dbgl, int8_t dbgt, const char *f, char *last, ...);
+void _dbgf_all ( int8_t dbgt, const char *f, char *last, ... );
 uint8_t __dbgf_all( void );
 
 void dbg_printf( struct ctrl_node *cn, char *last, ...  );
 
 #else
 
-#define dbgf( dbgl, dbgt, ...); 		printf( __VA_ARGS__ )
-#define dbgf_cn( cn, dbgl, dbgt, ...); 		printf( __VA_ARGS__ )
+#define dbgf( dbgl, dbgt, ...)  		printf( __VA_ARGS__ )
+#define dbgf_cn( cn, dbgl, dbgt, ...) 		printf( __VA_ARGS__ )
+#define dbgf_cn( cn, dbgl, dbgt, ...)           printf( __VA_ARGS__ )
 #define dbg( dbgl, dbgt, ... )  		printf( __VA_ARGS__ )
 #define dbg_cn( cn, dbgl, dbgt, ... ) 		printf( __VA_ARGS__ )
 #define dbg_mute( check_len, dbgl, dbgt, ... ) 	printf( __VA_ARGS__ )
+#define dbgf_mute( check_len, dbgl, dbgt, ... ) printf( __VA_ARGS__ )
 #define dbgf_all( dbgt, ... ) 			printf( __VA_ARGS__ )
 #define dbgf_ext( dbgt, ... ) 			printf( __VA_ARGS__ )
 #define dbg_printf( cn, ...  ) 			printf( __VA_ARGS__ )
-
 
 #endif
 
@@ -156,10 +165,6 @@ struct ctrl_node *create_ctrl_node( int fd, void (*cn_fd_handler) (struct ctrl_n
 
 
 
-
-#define REFERENCE_KEY_WORD	"ref:"
-
-#define EOS_DELIMITER '#'
 
 #define MAX_UNIX_MSG_SIZE 2000
 
@@ -236,7 +241,7 @@ struct opt_parent {
 	
 };
 
-#define ODI {{0},0,{0,0,0,0},{0,0,0,0}}
+#define ODI {{0},0,{0,0,0,0,0,0},{0,0,0,0,0,0}}
 
 struct opt_data {
 	
@@ -293,9 +298,6 @@ struct opt_type {
 	
 };
 
-
-#define ARG_RESET "-" /* s-string preamble for call_option() to reset opt to default */
-#define ARG_RESET_CHAR '-'
 
 
 enum opt_cmd {
@@ -401,9 +403,10 @@ void register_options_array ( struct opt_type *fixed_options, int size );
 extern int32_t Load_config;
 
 
+#ifdef ADJ_PATCHED_NETW
 int32_t get_tracked_network( struct opt_type *opt, struct opt_parent *patch, char *out, uint32_t *ip, int32_t *mask, struct ctrl_node *cn );
 int32_t adj_patched_network( struct opt_type *opt, struct opt_parent *patch, char *out, uint32_t *ip, int32_t *mask, struct ctrl_node *cn );
-
+#endif
 
 void apply_init_args ( int argc, char *argv[] );
 
@@ -416,19 +419,9 @@ void cleanup_control( void );
 void cleanup_config( void );
 
 
-//char *debugWordDup( char* word, int32_t tag );
-//static void strchange( char *s, char i, char o );
-//char* nextword( char *s );
+#ifdef EXPORT_UNUSED
+char *debugWordDup( char* word, int32_t tag );
+static void strchange( char *s, char i, char o );
+char* nextword( char *s );
+#endif
 
-
-//usefult tools:
-char *ipStr( uint32_t addr );
-int8_t str2netw( char* args, uint32_t *ip, char delimiter, struct ctrl_node *cn, int32_t *val, int32_t max );
-void addr_to_str( uint32_t addr, char *str );
-
-int8_t wordsEqual ( char *a, char *b );
-void wordCopy( char *out, char *in );
-uint32_t wordlen ( char *s );
-int32_t check_file( char *path, uint8_t write, uint8_t exec );
-int32_t check_dir( char *path, uint8_t create, uint8_t write );
-uint32_t validate_net_mask( uint32_t ip, uint32_t mask, struct ctrl_node *cn );
