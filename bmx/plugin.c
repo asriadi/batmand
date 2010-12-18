@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2010 BMX contributors:
- * Axel Neumann
+ * Copyright (c) 2010  Axel Neumann
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of version 2 of the GNU General Public
  * License as published by the Free Software Foundation.
@@ -23,21 +22,26 @@
 
 #include "bmx.h"
 #include "msg.h"
+#include "ip.h"
 #include "plugin.h"
 #include "schedule.h"
-#include "hna.h"
+#include "tools.h"
 
-LIST_SIMPEL(cb_fd_list, struct cb_fd_node, list);
-static LIST_SIMPEL(cb_packet_list, struct cb_packet_node, list);
-static LIST_SIMPEL(cb_ogm_list, struct cb_ogm_node, list);
-static LIST_SIMPEL(plugin_list, struct plugin_node, list);
+
+static LIST_SIMPEL(plugin_list, struct plugin_node, list, list);
+
+
+static LIST_SIMPEL(cb_route_change_list, struct cb_route_change_node, list, list);
+static LIST_SIMPEL(cb_packet_list, struct cb_packet_node, list, list);
+LIST_SIMPEL(cb_fd_list, struct cb_fd_node, list, list);
+
 
 
 int32_t plugin_data_registries[PLUGIN_DATA_SIZE];
 
-
-void cb_plugin_hooks( void* data, int32_t cb_id ) {
-	
+void cb_plugin_hooks(int32_t cb_id, void* data)
+{
+        TRACE_FUNCTION_CALL;
 	struct list_node *list_pos;
 	struct plugin_node *pn, *prev_pn = NULL;
 	
@@ -45,22 +49,21 @@ void cb_plugin_hooks( void* data, int32_t cb_id ) {
 		
 		pn = list_entry( list_pos, struct plugin_node, list );
 		
-		if ( prev_pn  &&  prev_pn->plugin_v2  &&  prev_pn->plugin_v2->cb_plugin_handler[cb_id] )
-			(*(prev_pn->plugin_v2->cb_plugin_handler[cb_id])) ( data );
+		if ( prev_pn  &&  prev_pn->plugin  &&  prev_pn->plugin->cb_plugin_handler[cb_id] )
+			(*(prev_pn->plugin->cb_plugin_handler[cb_id])) ( data );
 		
 		prev_pn = pn;
 	}
 	
-	if ( prev_pn  &&  prev_pn->plugin_v2  &&  prev_pn->plugin_v2->cb_plugin_handler[cb_id] )
-		(*(prev_pn->plugin_v2->cb_plugin_handler[cb_id])) (data);
+	if ( prev_pn  &&  prev_pn->plugin  &&  prev_pn->plugin->cb_plugin_handler[cb_id] )
+		((*(prev_pn->plugin->cb_plugin_handler[cb_id])) (data));
 	
 }
 
 
-
 STATIC_FUNC
-int32_t configure_thread_hook( int32_t cb_type, void (*cb_handler) (void), int8_t del, struct list_node *cb_list ) {
-	
+void _set_thread_hook(int32_t cb_type, void (*cb_handler) (void), int8_t del, struct list_node *cb_list)
+{
 	struct list_node *list_pos, *tmp_pos, *prev_pos = cb_list;
 	struct cb_node *cbn;
 		
@@ -68,7 +71,7 @@ int32_t configure_thread_hook( int32_t cb_type, void (*cb_handler) (void), int8_
 		cleanup_all( -500143 );
 	}
 	
-	list_for_each_safe( list_pos, tmp_pos, cb_list ) {
+	list_for_each_safe( list_pos, tmp_pos, (struct list_head*) cb_list ) {
 			
 		cbn = list_entry( list_pos, struct cb_node, list );
 		
@@ -78,193 +81,123 @@ int32_t configure_thread_hook( int32_t cb_type, void (*cb_handler) (void), int8_
 
                                 list_del_next(((struct list_head*) cb_list), prev_pos);
 				debugFree( cbn, -300069 );
-				return SUCCESS;
+                                return;
 				
 			} else {
 				cleanup_all( -500144 );
 				//dbgf( DBGL_SYS, DBGT_ERR, "cb_hook for cb_type %d and cb_handler already registered", cb_type );
-				//return FAILURE;
 			}
 			
 		} else {
 			
 			prev_pos = &cbn->list;
-			
 		}
-			
 	}
-	
-	if ( del ) {
-		
-		cleanup_all( -500145 );
-		return FAILURE;
-	
-	} else {
-		
-		cbn = debugMalloc( sizeof( struct cb_node), -300027 );
-		memset( cbn, 0, sizeof( struct cb_node) );
-		
-		cbn->cb_type = cb_type;
-		cbn->cb_handler = cb_handler;
-                list_add_tail(((struct list_head*) cb_list), &cbn->list);
-	
-		return SUCCESS;
-	}
+
+        assertion(-500145, (!del));
+
+        cbn = debugMalloc(sizeof ( struct cb_node), -300027);
+        memset(cbn, 0, sizeof ( struct cb_node));
+
+        cbn->cb_type = cb_type;
+        cbn->cb_handler = cb_handler;
+        list_add_tail(((struct list_head*) cb_list), &cbn->list);
+
 }
 
 
-
-int32_t set_fd_hook( int32_t fd, void (*cb_fd_handler) (int32_t fd), int8_t del ) {
-	
-	int32_t ret = configure_thread_hook( fd, (void (*) (void)) cb_fd_handler, del, (struct list_node*)&cb_fd_list );
-	
-	change_selects();
-	return ret;
+void set_route_change_hooks(void (*cb_route_change_handler) (uint8_t del, struct orig_node *dest), uint8_t del)
+{
+        _set_thread_hook(1, (void (*) (void)) cb_route_change_handler, del, (struct list_node*) & cb_route_change_list);
 }
 
 
-
-
-int32_t set_packet_hook( int32_t packet_type, void (*cb_packet_handler) (struct packet_buff *), int8_t del ) {
-	
-	return configure_thread_hook( packet_type, (void (*) (void)) cb_packet_handler, del, (struct list_node*)&cb_packet_list );
-}
-
-
-//notify interested plugins of rcvd packet...
+// notify interested plugins of a changed route...
 // THIS MAY CRASH when one plugin unregisteres two packet_hooks while being called with cb_packet_handler()
-// TODO: find solution to prevent this ???
-uint32_t cb_packet_hooks( int32_t packet_type, struct packet_buff *pb ) {
-	
+void cb_route_change_hooks(uint8_t del, struct orig_node *dest)
+{
+        TRACE_FUNCTION_CALL;
+	struct list_node *list_pos;
+	struct cb_route_change_node *con, *prev_con = NULL;
+
+        assertion(-500674, (dest && dest->desc));
+
+	list_for_each( list_pos, &cb_route_change_list ) {
+
+		con = list_entry( list_pos, struct cb_route_change_node, list );
+
+		if ( prev_con )
+                        (*(prev_con->cb_route_change_handler)) (del, dest);
+
+                prev_con = con;
+
+        }
+
+        if (prev_con)
+                (*(prev_con->cb_route_change_handler)) (del, dest);
+
+}
+
+void set_packet_hook(void (*cb_packet_handler) (struct packet_buff *), int8_t del)
+{
+        _set_thread_hook(1, (void (*) (void)) cb_packet_handler, del, (struct list_node*) &cb_packet_list);
+}
+
+void cb_packet_hooks(struct packet_buff *pb)
+{
+        TRACE_FUNCTION_CALL;
+
 	struct list_node *list_pos;
 	struct cb_packet_node *cpn, *prev_cpn = NULL;
-	int calls = 0;
-	
+
 	list_for_each( list_pos, &cb_packet_list ) {
-		
+
 		cpn = list_entry( list_pos, struct cb_packet_node, list );
-		
-		if ( prev_cpn  &&  prev_cpn->packet_type == packet_type ) {
-			
+
+                if (prev_cpn) {
+
 			(*(prev_cpn->cb_packet_handler)) (pb);
-			
-			calls++;
+
 		}
-		
+
 		prev_cpn = cpn;
-	
-	}
-	
-	if ( prev_cpn  &&  prev_cpn->packet_type == packet_type )
-		(*(prev_cpn->cb_packet_handler)) (pb);
 
-	return calls;	
-}
+        }
 
-
-int32_t set_ogm_hook( int32_t (*cb_ogm_handler) ( struct packet_buff *, uint16_t oCtx, struct router_node *old_router ), int8_t del ) {
-	
-	return configure_thread_hook( 1, (void (*) (void)) cb_ogm_handler, del, (struct list_node*)&cb_ogm_list );
-}
-
-
-int32_t cb_ogm_hooks( struct packet_buff *pb, uint16_t oCtx, struct router_node *old_router ) {
-	
-	
-	struct list_node *list_pos;
-	struct cb_ogm_node *con, *prev_con = NULL;
-	
-	list_for_each( list_pos, &cb_ogm_list ) {
-		
-		con = list_entry( list_pos, struct cb_ogm_node, list );
-		
-		if ( prev_con ) {
-			
-			if ( ((*(prev_con->cb_ogm_handler)) (pb, oCtx, old_router)) == CB_OGM_REJECT ) {
-				
-				return CB_OGM_REJECT;
-			}
-			
-		}
-		
-		prev_con = con;
-	
-	}
-	
-	if ( prev_con ) {
-		
-		if ( ((*(prev_con->cb_ogm_handler)) (pb, oCtx, old_router)) == FAILURE ) {
-			
-			return CB_OGM_REJECT;
-		}
-		
-	}
-
-	return CB_OGM_ACCEPT;	
-}
-
-
-#ifdef BMX2_TODO
-int32_t set_snd_ext_hook( uint16_t ext_type, int32_t (*cb_snd_ext_handler) ( unsigned char* ext_buff ), int8_t del ) {
-	
-	static uint8_t initialized = NO;
-	
-	if ( !initialized ) {
-		memset( &snd_ext_hooks[0], 0, sizeof( snd_ext_hooks ) );
-		initialized = YES;
-	}
-
-	if ( ext_type > EXT_TYPE_MAX )
-		return FAILURE;
-	
-	if ( del && snd_ext_hooks[ext_type].cb_snd_ext_handler == cb_snd_ext_handler ) {
-		
-		snd_ext_hooks[ext_type].cb_snd_ext_handler = NULL;
-		return SUCCESS;
-	
-	} else if ( !del  &&  snd_ext_hooks[ext_type].cb_snd_ext_handler == NULL ) {
-		
-		snd_ext_hooks[ext_type].cb_snd_ext_handler = cb_snd_ext_handler;
-		return SUCCESS;
-	}
-	
-	return FAILURE;
-}
-
-int32_t cb_snd_ext_hook( uint16_t ext_type, unsigned char* ext_buff ) {
-	
-	if ( snd_ext_hooks[ext_type].cb_snd_ext_handler )
-		return ((*(snd_ext_hooks[ext_type].cb_snd_ext_handler))( ext_buff ));
-	
-	else
-		return SUCCESS;
+        if (prev_cpn)
+                (*(prev_cpn->cb_packet_handler)) (pb);
 
 }
 
 
-#endif
+void set_fd_hook( int32_t fd, void (*cb_fd_handler) (int32_t fd), int8_t del ) {
 
+        _set_thread_hook(fd, (void (*) (void)) cb_fd_handler, del, (struct list_node*) & cb_fd_list);
 
-int32_t reg_plugin_data( uint8_t data_type ) {
+	change_selects();
+}
+
+int32_t get_plugin_data_registry(uint8_t data_type)
+{
+        TRACE_FUNCTION_CALL;
 	
-	static int initialized = NO;
+	static int is_plugin_data_initialized = NO;
 	
-	if ( !initialized ) {
+	if ( !is_plugin_data_initialized ) {
 		memset( plugin_data_registries, 0, sizeof( plugin_data_registries ) );
-		initialized=YES;
+		is_plugin_data_initialized=YES;
 	}
 	
-	if ( on_the_fly || data_type >= PLUGIN_DATA_SIZE )
+	if ( !initializing || data_type >= PLUGIN_DATA_SIZE )
 		return FAILURE;
 	
 	// do NOT return the incremented value! 
-	plugin_data_registries[data_type]++;
-	
-	return (plugin_data_registries[data_type] - 1);
+        return (((plugin_data_registries[data_type])++));
 }
 
-#ifdef WITHUNUSED
-void **get_plugin_data( void *data, uint8_t data_type, int32_t registry ) {
+void **get_plugin_data(void *data, uint8_t data_type, int32_t registry)
+{
+        TRACE_FUNCTION_CALL;
 	
 	if ( data_type >= PLUGIN_DATA_SIZE  ||  registry > plugin_data_registries[data_type] ) {
 		cleanup_all( -500145 );
@@ -274,10 +207,17 @@ void **get_plugin_data( void *data, uint8_t data_type, int32_t registry ) {
 		
 	if ( data_type == PLUGIN_DATA_ORIG )
 		return &(((struct orig_node*)data)->plugin_data[registry]);
+
+        if ( data_type == PLUGIN_DATA_DEV )
+                return &(((struct dev_node*)data)->plugin_data[registry]);
 	
 	return NULL;
 }
-#endif
+
+
+
+
+
 
 STATIC_FUNC
 int is_plugin_active( void *plugin ) {
@@ -294,64 +234,49 @@ int is_plugin_active( void *plugin ) {
 	return NO;
 }
 
-STATIC_FUNC
-int activate_plugin( void *p, int32_t version, void *dlhandle, const char *dl_name ) {
-	
-	if ( p == NULL || version != PLUGIN_VERSION_02 )
-		return FAILURE;
+
+int activate_plugin(struct plugin *p, void *dlhandle, const char *dl_name)
+{
+
+        if (p == NULL)
+		return SUCCESS;
 	
 	if ( is_plugin_active( p ) )
 		return FAILURE;
 	
-	
-	if ( version == PLUGIN_VERSION_02 ) {
-		
-		struct plugin_v2 *pv1 = (struct plugin_v2*)p;
 
-                if (pv1->plugin_size != sizeof ( struct plugin_v2) ||
-                        strcmp(pv1->plugin_bmx_version, SOURCE_VERSION) ||
-                        (pv1->plugin_bmx_revision != REVISION_VERSION)) {
+        if (p->plugin_size != sizeof ( struct plugin) || (p->plugin_code_version != CODE_VERSION)) {
 
-			dbgf( DBGL_SYS, DBGT_ERR, 
-                                "plugin with unexpected size %d != %lu, version %s != %s, revision %d != %d",
-                                pv1->plugin_size, sizeof ( struct plugin_v2),
-                                pv1->plugin_bmx_version, SOURCE_VERSION,
-                                pv1->plugin_bmx_revision, REVISION_VERSION
-                                );
+                dbgf(DBGL_SYS, DBGT_ERR,
+                        "plugin with unexpected size %d != %zu, revision %d != %d",
+                        p->plugin_size, sizeof ( struct plugin), p->plugin_code_version, CODE_VERSION);
 
-                        return FAILURE;
-		}
-	
-		
-		if ( pv1->cb_init == NULL  ||  ((*( pv1->cb_init )) ()) == FAILURE ) {
-			 
-			dbg( DBGL_SYS, DBGT_ERR, "could not init plugin");
-			return FAILURE;
-		}
-	
-		struct plugin_node *pn = debugMalloc( sizeof( struct plugin_node), -300028);
-		memset( pn, 0, sizeof( struct plugin_node) );
-		
-		pn->version = PLUGIN_VERSION_02;
-		pn->plugin_v2 = pv1;
-		pn->plugin = p;
-		pn->dlhandle = dlhandle;
+                return FAILURE;
+        }
 
-                list_add_tail(&plugin_list, &pn->list);
-		
-		dbgf_all( DBGT_INFO, "%s SUCCESS", pn->plugin_v2->plugin_name );
 
-		if ( dl_name ) {
-			pn->dlname = debugMalloc( strlen(dl_name)+1, -300029 );
-			strcpy( pn->dlname, dl_name );
-		}
-		
-		return SUCCESS;
-		
-	}
-	
-	return FAILURE;
-	
+        if ( p->cb_init == NULL  ||  ((*( p->cb_init )) ()) == FAILURE ) {
+
+                dbg( DBGL_SYS, DBGT_ERR, "could not init plugin");
+                return FAILURE;
+        }
+
+        struct plugin_node *pn = debugMalloc( sizeof( struct plugin_node), -300028);
+        memset( pn, 0, sizeof( struct plugin_node) );
+
+        pn->plugin = p;
+        pn->dlhandle = dlhandle;
+
+        list_add_tail(&plugin_list, &pn->list);
+
+        dbgf_all( DBGT_INFO, "%s SUCCESS", pn->plugin->plugin_name );
+
+        if ( dl_name ) {
+                pn->dlname = debugMalloc( strlen(dl_name)+1, -300029 );
+                strcpy( pn->dlname, dl_name );
+        }
+
+        return SUCCESS;
 }
 
 STATIC_FUNC
@@ -371,13 +296,10 @@ void deactivate_plugin( void *p ) {
 
                         list_del_next(&plugin_list, prev_pos);
 			
-			if ( pn->version != PLUGIN_VERSION_02 )
-				cleanup_all( -500098 );
+			dbg( DBGL_CHANGES, DBGT_INFO, "deactivating plugin %s", pn->plugin->plugin_name );
 			
-			dbg( DBGL_CHANGES, DBGT_INFO, "deactivating plugin %s", pn->plugin_v2->plugin_name );
-			
-			if ( pn->plugin_v2->cb_cleanup )
-				(*( pn->plugin_v2->cb_cleanup )) ();
+			if ( pn->plugin->cb_cleanup )
+				(*( pn->plugin->cb_cleanup )) ();
 			
 				
 			if ( pn->dlname)
@@ -395,13 +317,14 @@ void deactivate_plugin( void *p ) {
 
 }
 
+#ifndef NO_DYN_PLUGIN
 STATIC_FUNC
 int8_t activate_dyn_plugin( const char* name ) {
 	
-	struct plugin_v2* (*get_plugin_v2) ( void ) = NULL;
+	struct plugin* (*get_plugin) ( void ) = NULL;
 	
 	void *dlhandle;
-	struct plugin_v2 *pv1;
+	struct plugin *pv1;
 	char dl_path[1000];
 	
 	char *My_libs = getenv(BMX_ENV_LIB_PATH);
@@ -443,24 +366,24 @@ int8_t activate_dyn_plugin( const char* name ) {
 	dbgf_all( DBGT_INFO, "survived dlopen()!" );
 
 
-        typedef struct plugin_v2* (*sdl_init_function_type) ( void );
+        typedef struct plugin* (*sdl_init_function_type) ( void );
 
         union {
                 sdl_init_function_type func;
                 void * obj;
         } alias;
 
-        alias.obj = dlsym( dlhandle, "get_plugin_v2");
+        alias.obj = dlsym( dlhandle, "get_plugin");
 
-	if ( !( get_plugin_v2 = alias.func )  ) {
+	if ( !( get_plugin = alias.func )  ) {
 		dbgf( DBGL_SYS, DBGT_ERR, "dlsym( %s ) failed: %s", name, dlerror() );
 		return FAILURE;
 	}
 
 	
-	if ( !(pv1 = get_plugin_v2()) ) {
+	if ( !(pv1 = get_plugin()) ) {
 
-		dbgf( DBGL_SYS, DBGT_ERR, "get_plugin_v2( %s ) failed", name );
+		dbgf( DBGL_SYS, DBGT_ERR, "get_plugin( %s ) failed", name );
 		return FAILURE;
 		
 	}
@@ -468,11 +391,11 @@ int8_t activate_dyn_plugin( const char* name ) {
 	if ( is_plugin_active( pv1 ) )
 		return SUCCESS;
 	
-	
-	if ( activate_plugin( pv1, PLUGIN_VERSION_02, dlhandle, name ) == FAILURE ) {
-		
-		dbgf( DBGL_SYS, DBGT_ERR, "activate_plugin( %s ) failed", dl_path );
-		return FAILURE;
+
+        if (activate_plugin(pv1, dlhandle, name) == FAILURE) {
+
+                dbgf(DBGL_SYS, DBGT_ERR, "activate_plugin( %s ) failed", dl_path);
+                return FAILURE;
 		
 	}
 	
@@ -482,6 +405,7 @@ int8_t activate_dyn_plugin( const char* name ) {
 	
 	return SUCCESS;
 }
+
 
 STATIC_FUNC
 int32_t opt_plugin ( uint8_t cmd, uint8_t _save, struct opt_type *opt, struct opt_parent *patch, struct ctrl_node *cn ) {
@@ -518,48 +442,31 @@ static struct opt_type plugin_options[]=
 	//order> config-file order to be loaded by config file, order < ARG_CONNECT oder to appera first in help text
 	{ODI,0,ARG_PLUGIN,		0,  2,A_PMN,A_ADM,A_INI,A_CFA,A_ANY,	0,		0, 		0,		0, 		opt_plugin,
 			ARG_FILE_FORM,	"load plugin. "ARG_FILE_FORM" must be in LD_LIBRARY_PATH or " BMX_ENV_LIB_PATH 
-			"\n	path (e.g. --plugin bmx_howto_plugin.so )\n"}
+			"\n	path (e.g. --plugin bmx6_howto_plugin.so )\n"}
 };
+#endif
 
-
-void init_plugin( void ) {
+IDM_T init_plugin(void)
+{
 
 	
 //	set_snd_ext_hook( 0, NULL, YES ); //ensure correct initialization of extension hooks
-	reg_plugin_data( PLUGIN_DATA_SIZE );// ensure correct initialization of plugin_data
+//	reg_plugin_data( PLUGIN_DATA_SIZE );// ensure correct initialization of plugin_data
 	
-	struct plugin_v2 *pv1;
+	struct plugin *p;
 	
-	pv1=NULL;
-	
+	p=NULL
+                ;
+#ifndef NO_DYN_PLUGIN
 	// first try loading config plugin, if succesfull, continue loading optinal plugins depending on config
-	activate_dyn_plugin( BMX_LIB_UCI_CONFIG );
-	
+	activate_dyn_plugin( BMX_LIB_CONFIG );
+
 	register_options_array( plugin_options, sizeof( plugin_options ) );
-
-
-	if ( (pv1 = hna_get_plugin_v2()) != NULL )
-		activate_plugin( pv1, PLUGIN_VERSION_02, NULL, NULL );
-
-
-#ifdef BMX2_TODO
-#ifndef	NOVIS
-	if ( (pv1 = vis_get_plugin_v1()) != NULL )
-		activate_plugin( pv1, PLUGIN_VERSION_02, NULL, NULL );
 #endif
 
-#ifndef	NOTUNNEL
-	if ( (pv1 = tun_get_plugin_v1()) != NULL )
-		activate_plugin( pv1, PLUGIN_VERSION_02, NULL, NULL );
-#endif
-
-#ifndef	NOSRV
-	if ( (pv1 = srv_get_plugin_v1()) != NULL )
-		activate_plugin( pv1, PLUGIN_VERSION_02, NULL, NULL );
-#endif
-
-#endif
+        return SUCCESS;
 }
+
 
 void cleanup_plugin( void ) {
 

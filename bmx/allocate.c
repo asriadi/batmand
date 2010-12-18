@@ -28,7 +28,8 @@
 
 #define MAGIC_NUMBER 0x12345678
 
-#if defined DEBUG_MALLOC
+
+#ifndef NO_DEBUG_MALLOC
 
 
 struct chunkHeader *chunkList = NULL;
@@ -48,7 +49,7 @@ struct chunkTrailer
 
 
 
-#if defined MEMORY_USAGE
+#ifdef MEMORY_USAGE
 
 struct memoryUsage *memoryList = NULL;
 
@@ -61,8 +62,8 @@ struct memoryUsage
 	int32_t tag;
 };
 
-
-void addMemory( uint32_t length, int32_t tag ) {
+void addMemory(uint32_t length, int32_t tag)
+{
 
 	struct memoryUsage *walker;
 
@@ -89,8 +90,8 @@ void addMemory( uint32_t length, int32_t tag ) {
 
 }
 
-
-void removeMemory( int32_t tag, int32_t freetag ) {
+void removeMemory(int32_t tag, int32_t freetag)
+{
 
 	struct memoryUsage *walker;
 
@@ -123,11 +124,8 @@ void removeMemory( int32_t tag, int32_t freetag ) {
 	}
 }
 
-#endif
-
-#if defined MEMORY_USAGE
-
-void debugMemory( struct ctrl_node *cn ) {
+void debugMemory(struct ctrl_node *cn)
+{
 	
 	struct memoryUsage *memoryWalker;
 
@@ -184,13 +182,12 @@ void checkIntegrity(void)
 void checkLeak(void)
 {
 	struct chunkHeader *walker;
-	
-	if ( chunkList != NULL ) {
+
+        if (chunkList != NULL) {
 		
-		openlog( "bmx", LOG_PID, LOG_DAEMON );
-		
-		
-		for (walker = chunkList; walker != NULL; walker = walker->next) {
+                openlog( "bmx6", LOG_PID, LOG_DAEMON );
+
+                for (walker = chunkList; walker != NULL; walker = walker->next) {
 			syslog( LOG_ERR, "Memory leak detected, malloc tag = %d\n", walker->tag );
 		
 			fprintf( stderr, "Memory leak detected, malloc tag = %d \n", walker->tag );
@@ -231,7 +228,7 @@ void *_debugMalloc(uint32_t length, int32_t tag) {
 	chunkHeader->next = chunkList;
 	chunkList = chunkHeader;
 
-#if defined MEMORY_USAGE
+#ifdef MEMORY_USAGE
 
 	addMemory( length, tag );
 
@@ -240,7 +237,8 @@ void *_debugMalloc(uint32_t length, int32_t tag) {
 	return chunk;
 }
 
-void *_debugRealloc(void *memoryParameter, uint32_t length, int32_t tag) {
+void *_debugRealloc(void *memoryParameter, uint32_t length, int32_t tag)
+{
 	
 	unsigned char *memory;
 	struct chunkHeader *chunkHeader=NULL;
@@ -280,13 +278,14 @@ void *_debugRealloc(void *memoryParameter, uint32_t length, int32_t tag) {
 			copyLength = chunkHeader->length;
 
 		memcpy(result, memoryParameter, copyLength);
-		debugFree(memoryParameter, -300000);
+		debugFree(memoryParameter, -300280);
 	}
 
 	return result;
 }
 
-void _debugFree(void *memoryParameter, int tag) {
+void _debugFree(void *memoryParameter, int tag)
+{
 	
 	unsigned char *memory;
 	struct chunkHeader *chunkHeader;
@@ -339,7 +338,7 @@ void _debugFree(void *memoryParameter, int tag) {
 		cleanup_all( -500082 );
 	}
 
-#if defined MEMORY_USAGE
+#ifdef MEMORY_USAGE
 
 	removeMemory( chunkHeader->tag, tag );
 

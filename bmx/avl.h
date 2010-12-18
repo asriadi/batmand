@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2010 BMX contributors:
- * Axel Neumann
+ * Copyright (c) 2010  Axel Neumann
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of version 2 of the GNU General Public
  * License as published by the Free Software Foundation.
@@ -76,6 +75,7 @@ struct avl_node *avl_find( struct avl_tree *tree, void *key );
 void            *avl_find_item( struct avl_tree *tree, void *key );
 struct avl_node *avl_next( struct avl_tree *tree, void *key );
 void            *avl_next_item(struct avl_tree *tree, void *key);
+void            *avl_first_item(struct avl_tree *tree);
 struct avl_node *avl_iterate(struct avl_tree *tree, struct avl_node *it );
 void            *avl_iterate_item(struct avl_tree *tree, struct avl_node **it );
 

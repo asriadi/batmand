@@ -1,9 +1,9 @@
 
 CFLAGS +=	$(CORE_CFLAGS) -fpic -I../../
 LDFLAGS +=	-shared -luci
-#-Wl,-soname,bmx_config 
+#-Wl,-soname,bmx6_config
 
-PLUGIN_NAME =   bmx_uci_config
+PLUGIN_NAME =   bmx6_config
 
 SRC_C = uci_config.c
 SRC_H = uci_config.h

@@ -1,4 +1,5 @@
-# Copyright (C) 2010 BMX contributors:
+# Copyright (c) 2010  BMX protocol contributors
+#
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of version 2 of the GNU General Public
 # License as published by the Free Software Foundation.
@@ -13,96 +14,73 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 # 02110-1301, USA
 
-REVISION_VERSION =	$(shell if [ -d .svn ]; then which svn > /dev/null && which sed > /dev/null && which awk > /dev/null && { svn info | grep "Rev:" | sed -e '1p' -n | awk '{print $$4}';};else echo 0; fi )
-
-##CFLAGS ?= -I./lua-5.1.4/src -I./cyassl-1.4.0/include -O0 -ggdb3
-##LDFLAGS ?= -L./lua-5.1.4/src -L./cyassl-1.4.0/src/.libs
-
-#CFLAGS ?= -I$(shell pwd)/cyassl-1.4.0/ctaocrypt/include -DHAVE_CONFIG_H
-#LDFLAGS ?= -L./cyassl-1.4.0/src/.libs
 
 
-CFLAGS +=	 -pedantic -Wall -W -Wno-unused-parameter -Os -g3 -std=gnu99 -I./  \
-                        -DHAVE_CONFIG_H -DREVISION_VERSION=$(REVISION_VERSION) -DDEBUG_MALLOC -DMEMORY_USAGE
+  CFLAGS +=	 -pedantic -Wall -W -Wno-unused-parameter -Os -g3 -std=gnu99 -I./  -DHAVE_CONFIG_H
 
-LDFLAGS +=	-Wl,-export-dynamic -ldl -g3 -lm
+# optinal defines:
+# CFLAGS += -static
+# CFLAGS += -pg   # "-pg" with openWrt toolchain results in "gcrt1.o: No such file" ?!
 
-#-lcyassl
-#LDFLAGS +=	-shared -lssl -lcrypto
-# -static
-# -pg
+# paranoid defines (helps bug hunting during development):
+# CFLAGS += -DPROFILING -DEXTREME_PARANOIA -DEXIT_ON_ERROR
+
+# Some test cases:
+# CFLAGS += -DTEST_LINK_ID_COLLISION_DETECTION
+# CFLAGS += -DTEST_DEBUG          # (testing syntax of __VA_ARGS__ dbg...() macros)
+# CFLAGS += -DAVL_DEBUG -DAVL_TEST
+
+# optional defines (you may disable these features if you dont need it):
+# CFLAGS += -DNO_DEBUG_ALL
+# CFLAGS += -DLESS_OPTIONS
+# CFLAGS += -DNO_TRAFFIC_DUMP
+# CFLAGS += -DNO_DYN_PLUGIN
+# CFLAGS += -DNO_TRACE_FUNCTION_CALLS
+# CFLAGS += -DNO_DEBU_GALL
+# CFLAGS += -DNO_DEBUG_MALLOC
+# CFLAGS += -DNO_MEMORY_USAGE
+
+# experimental or advanced defines (please dont touch):
+# CFLAGS += -DNO_ASSERTIONS       # (disable syntax error checking and error-code creation!)
+# CFLAGS += -DEXTREME_PARANOIA    # (check difficult syntax errors)
+# CFLAGS += -DEXIT_ON_ERROR       # (exit and return code due to unusual behavior)
+# CFLAGS += -DTEST_DEBUG
+# CFLAGS += -DWITH_UNUSED	  # (includes yet unused stuff and buggy stuff)
+# CFLAGS += -DEXPORT_UNUSED       # (export only locally used stuff)
+# CFLAGS += -DPROFILING           # (no static functions -> better profiling and cores)
+# CFLAGS += -DNO_DEPRECATED	  # (for backward compatibility)
 
 
-#CFLAGS += -DTESTDEBUG
-#CFLAGS += -DAVL_DEBUG -DAVL_TEST
-#CFLAGS += -DPROFILING -DEXTREME_PARANOIA -D
+
 
 #EXTRA_CFLAGS +=
 #EXTRA_LDFLAGS +=
 
-# Recommended defines and approximate binary sizes with gcc-x86
-# -static
-# -pedantic -Wall -W -Wno-unused-parameter -O1 -g3 -std=gnu99
-# -pg  # "-pg" with openWrt toolchain results in "gcrt1.o: No such file" ?!
-#
+LDFLAGS +=	-g3
 
-# compared to -O1 stripped:
-# -Os								- ~29k
+LDFLAGS += $(shell echo "$(CFLAGS) $(EXTRA_CFLAGS)" | grep -q "DNO_DYNPLUGIN" || echo "-Wl,-export-dynamic -ldl" )
 
-# -DDEBUG_MALLOC  						+ ~0k
-# -DMEMORY_USAGE 						+ ~1k
 
-# optional defines (you may disable these features if you dont need it):
-# -DNOTRAILER							- ~3K
-# -DNODEBUGALL							- ~13k
-# -DLESS_OPTIONS                                                - ~8K
-#
-# -DNOTUNNEL  		(only affects this node)		- ~23k
-# -DNOSRV  		(only affects this node)		- ~3k
-# -DNOVIS  		(only affects this node)		- ~2k
-
-# -DNODEPRECATED	(for backward compatibility)		- ~2k
-
-# experimental or advanced defines (please dont touch):
-# -DNOHNA		(affects all nodes in network)		- ~6k
-# -DNO_PARANOIA		(makes bug-hunting impossible)		- ~2k
-# -DEXTREME_PARANOIA
-# -DEXTDEBUG		(this eats your cpu)			+ ~0k
-# -DTESTDEBUG		(testing syntax of __VA_ARGS__ dbg...() macros)
-# -DWITHUNUSED		(includes yet unused stuff)
-# -DPROFILING           (no static functions)
 
 
 SBINDIR =       $(INSTALL_PREFIX)/usr/sbin
 
-LOG_BRANCH= trunk/bmx2
-
 SRC_FILES= "\(\.c\)\|\(\.h\)\|\(Makefile\)\|\(INSTALL\)\|\(LIESMICH\)\|\(README\)\|\(THANKS\)\|\(./posix\)\|\(./linux\)\|\(./man\)\|\(./doc\)"
 
-SRC_C=  bmx.c msg.c plugin.c list.c allocate.c avl.c iid.c hna.c control.c schedule.c route.c cyassl/sha.c
-SRC_H=  bmx.h msg.h plugin.h list.h allocate.h avl.h iid.h hna.h control.h schedule.h route.h cyassl/sha.h
+SRC_C =  bmx.c msg.c metrics.c tools.c plugin.c list.c allocate.c avl.c iid.c hna.c control.c schedule.c ip.c cyassl/sha.c cyassl/random.c cyassl/arc4.c
+SRC_H =  bmx.h msg.h metrics.h tools.h plugin.h list.h allocate.h avl.h iid.h hna.h control.h schedule.h ip.h cyassl/sha.h cyassl/random.h cyassl/arc4.h
+
+SRC_C += $(shell echo "$(CFLAGS)" | grep -q "DNO_TRAFFIC_DUMP" || echo dump.c )
+SRC_H += $(shell echo "$(CFLAGS)" | grep -q "DNO_TRAFFIC_DUMP" || echo dump.h )
+
 OBJS=  $(SRC_C:.c=.o)
 
 #
 #
 
 
-PACKAGE_NAME=	bmxd
-BINARY_NAME=	bmxd
-
-
-
-SOURCE_VERSION_HEADER= bmx.h
-
-
-BAT_VERSION=    $(shell grep "^\#define SOURCE_VERSION " $(SOURCE_VERSION_HEADER) | sed -e '1p' -n | awk -F '"' '{print $$2}' | awk '{print $$1}')
-FILE_NAME=      $(PACKAGE_NAME)_$(BAT_VERSION)-rv$(REVISION_VERSION)_$@
-
-NOW=		$(shell date +%Y%m%d%H%M)-$(REVISION_VERSION)
-
-IPKG_DEPENDS=	"kmod-tun"
-
-SNAPSHOT_DIR=	../bmx-snapshots
+PACKAGE_NAME=	bmx6
+BINARY_NAME=	bmx6
 
 
 all:	
@@ -158,10 +136,10 @@ install_all: install install_libs
 help:
 	# further make targets:
 	# help					show this help
-	# all					compile  bmxd core only
-	# libs			 		compile  bmx plugins
-	# build_all				compile  bmxd and plugins
-	# strip / strip_libs / strip_all	strip    bmxd / plugins / all
-	# install / install_libs / install_all	install  bmxd / plugins / all
-	# clean / clean_libs / clean_all	clean    bmxd / libs / all
+	# all					compile  bmx6 core only
+	# libs			 		compile  bmx6 plugins
+	# build_all				compile  bmx6 and plugins
+	# strip / strip_libs / strip_all	strip    bmx6 / plugins / all
+	# install / install_libs / install_all	install  bmx6 / plugins / all
+	# clean / clean_libs / clean_all	clean    bmx6 / libs / all
 

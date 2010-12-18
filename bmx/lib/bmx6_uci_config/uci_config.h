@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2010 BMX contributors:
- * Axel Neumann
+ * Copyright (c) 2010  Axel Neumann
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of version 2 of the GNU General Public
  * License as published by the Free Software Foundation.
@@ -16,9 +15,9 @@
  * 02110-1301, USA
  */
 
-#define DEF_CONF_NAME "bmx"
+#define DEF_CONF_NAME "bmx6"
 #define DEF_SECT_NAME "general"
-#define DEF_SECT_TYPE "bmx"
+#define DEF_SECT_TYPE "bmx6"
 
 #define ARG_CONFIG_FILE		"config_file"
 #define ARG_SAVE_CONFIG		"save_config"

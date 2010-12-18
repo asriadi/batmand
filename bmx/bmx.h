@@ -1,6 +1,7 @@
 /*
- * Copyright (C) 2010 BMX contributors:
- * Axel Neumann
+ * Copyright (c) 2010  BMX protocol contributor(s):
+ * Axel Neumann  <neumann at cgws dot de>
+ *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of version 2 of the GNU General Public
  * License as published by the Free Software Foundation.
@@ -21,8 +22,274 @@
 #include <sys/types.h>
 #include <netinet/in.h>
 #include <linux/if.h>
+#include <linux/rtnetlink.h>
 
 #include "cyassl/sha.h"
+#include "cyassl/random.h"
+
+/*
+ * from other headers:
+ * TODO: partly move this to system.h
+ * dont touch this for compatibility reasons:
+ */
+
+#define CODE_VERSION 2             // to be incremented after each critical code change
+#define BMX_BRANCH "BMX6"
+#define BRANCH_VERSION "0.1-alpha" //put exactly one distinct word inside the string like "0.3-pre-alpha" or "0.3-rc1" or "0.3"
+#define COMPATIBILITY_VERSION 12
+
+/*
+ * from iid.h:
+ */
+typedef uint16_t IID_T;
+
+typedef struct neigh_node IID_NEIGH_T;
+
+typedef struct dhash_node IID_NODE_T;
+
+
+
+/*
+ * from ip.h:
+ */
+
+#define GEN_ADDR_LEN 20
+#define IP6_ADDR_LEN 16
+#define IP4_ADDR_LEN 4
+#define MAC_ADDR_LEN 6
+
+//#define INET_ADDRSTRLEN INET_ADDRSTRLEN     // from in.h
+//#define INET6_ADDRSTRLEN INET6_ADDRSTRLEN    // from in.h
+
+#define IPX_STR_LEN INET6_ADDRSTRLEN
+
+
+typedef uint32_t IP4_T;
+
+typedef struct in6_addr IP6_T;
+
+typedef IP6_T IPX_T;
+
+typedef union {
+	uint8_t   u8[GEN_ADDR_LEN];
+	uint16_t u16[GEN_ADDR_LEN / sizeof(uint16_t)];
+	uint32_t u32[GEN_ADDR_LEN / sizeof(uint32_t)];
+	uint64_t u64[GEN_ADDR_LEN / sizeof(uint64_t)];
+} ADDR_T;
+
+
+typedef union {
+	uint8_t   u8[MAC_ADDR_LEN];
+	uint16_t u16[MAC_ADDR_LEN / sizeof(uint16_t)];
+} MAC_T;
+
+
+typedef uint32_t LINK_ID_T;
+#define LINK_ID_ITERATIONS_MAX 256
+#define LINK_ID_ITERATIONS_WARN (LINK_ID_ITERATIONS_MAX<<3)
+#define LINK_ID_INVALID 0
+#define LINK_ID_MIN 1
+#define LINK_ID_MAX ((LINK_ID_T)-1)
+
+
+
+/*
+ * from bmx.h:
+ */
+typedef uint32_t TIME_T;
+typedef uint32_t TIME_SEC_T;
+
+typedef int8_t IDM_T; // smallest int which size does NOT matter
+
+
+/*
+ * from msg.h:
+ */
+
+// deprecated:
+typedef uint16_t SQN_T;
+#define SQN_MAX ((SQN_T)-1)
+#define MAX_SQN_RANGE 8192 // the maxumim of all .._SQN_RANGE ranges, should never be more than SQN_MAX/4
+
+
+
+// to be used:
+
+// OGMs:
+typedef uint16_t OGM_SQN_T;
+#define OGM_SQN_BIT_SIZE (16)
+#define OGM_SQN_MASK     ((1<<OGM_SQN_BIT_SIZE)-1)
+#define OGM_SQN_MAX      OGM_SQN_MASK
+#define OGM_SQN_STEP     1
+
+#define MIN_OGM_SQN_RANGE 32
+#define MAX_OGM_SQN_RANGE 8192 // changing this will cause compatibility trouble
+#define DEF_OGM_SQN_RANGE MAX_OGM_SQN_RANGE
+#define ARG_OGM_SQN_RANGE "ogm_validity_range"
+
+
+typedef uint16_t OGM_MIX_T;
+#define OGM_MIX_BIT_SIZE (sizeof (OGM_MIX_T) * 8)
+
+#define OGM_MANTISSA_BIT_SIZE 5
+#define OGM_EXPONENT_BIT_SIZE 5
+#define OGM_IIDOFFST_BIT_SIZE (OGM_MIX_BIT_SIZE-(OGM_MANTISSA_BIT_SIZE+OGM_EXPONENT_BIT_SIZE))
+
+#define OGM_MANTISSA_BIT_POS (0)
+#define OGM_EXPONENT_BIT_POS (0 + OGM_MANTISSA_BIT_SIZE)
+#define OGM_IIDOFFST_BIT_POS (0 + OGM_MANTISSA_BIT_SIZE + OGM_EXPONENT_BIT_SIZE)
+
+#define OGM_MANTISSA_MASK ((1<<OGM_MANTISSA_BIT_SIZE)-1)
+#define OGM_EXPONENT_MASK ((1<<OGM_EXPONENT_BIT_SIZE)-1)
+#define OGM_IIDOFFST_MASK ((1<<OGM_IIDOFFST_BIT_SIZE)-1)
+
+
+
+// aggregations of OGMs:
+typedef uint16_t AGGREG_SQN_T;
+#define AGGREG_SQN_BIT_SIZE (16)
+#define AGGREG_SQN_MASK     ((1<<AGGREG_SQN_BIT_SIZE)-1)
+#define AGGREG_SQN_MAX      AGGREG_SQN_MASK
+
+#define AGGREG_SQN_CACHE_RANGE 64
+#define AGGREG_SQN_CACHE_WARN  (AGGREG_SQN_CACHE_RANGE/2)
+#define AGGREG_ARRAY_BYTE_SIZE (AGGREG_SQN_CACHE_RANGE/8)
+
+
+
+// hello and hello reply messages:
+typedef uint16_t HELLO_FLAGS_SQN_T;
+#define HELLO_MIX_BIT_SIZE (sizeof (HELLO_FLAGS_SQN_T) * 8)
+
+#define HELLO_SQN_BIT_SIZE (12)
+#define HELLO_FLAGS_BIT_SIZE (HELLO_MIX_BIT_SIZE-HELLO_SQN_BIT_SIZE)
+
+#define HELLO_SQN_BIT_POS (0)
+#define HELLO_FLAGS_BIT_POS (0 + HELLO_SQN_BIT_SIZE)
+
+#define HELLO_SQN_MASK ((1<<HELLO_SQN_BIT_SIZE)-1)
+#define HELLO_FLAGS_MASK ((1<<HELLO_FLAGS_BIT_SIZE)-1)
+
+#define HELLO_SQN_MAX       HELLO_SQN_MASK
+
+
+
+#define DEF_HELLO_SQN_RANGE 32
+#define DEF_HELLO_DAD_RANGE 32
+
+
+
+
+// descriptions 
+typedef uint16_t DESC_SQN_T;
+#define DESC_SQN_BIT_SIZE   (16)
+#define DESC_SQN_MASK     ((1<<DESC_SQN_BIT_SIZE)-1)
+#define DESC_SQN_MAX        DESC_SQN_MASK
+
+#define DEF_DESCRIPTION_DAD_RANGE 8192
+
+
+typedef uint8_t  FRAME_TYPE_T;
+
+#define FRAME_ISSHORT_BIT_SIZE   (1)
+#define FRAME_RELEVANCE_BIT_SIZE  (1)
+#define FRAME_TYPE_BIT_SIZE    ((8*sizeof(FRAME_TYPE_T)) - FRAME_ISSHORT_BIT_SIZE - FRAME_RELEVANCE_BIT_SIZE)
+#define FRAME_TYPE_MASK        MIN( (0x1F) /*some bits reserved*/, (((FRAME_TYPE_T)-1)>>(8*sizeof(FRAME_TYPE_T)-FRAME_TYPE_BIT_SIZE)))
+#define FRAME_TYPE_ARRSZ       (FRAME_TYPE_MASK+1)
+#define FRAME_TYPE_PROCESS_ALL    (0xFF)
+#define FRAME_TYPE_PROCESS_NONE   (0xFE)
+
+
+#define HASH0_SHA1_LEN SHA_DIGEST_SIZE  // sha.h: 20 bytes
+
+#define MAX_PACKET_SIZE 1600
+
+
+
+struct packet_header // 10 bytes
+{
+	uint8_t  bmx_version;
+	uint8_t  reserved;             // reserved
+	uint16_t pkt_length; 	       // the relevant data size in bytes (including the bmx_header)
+
+	IID_T        transmitterIID;   // IID of transmitter node
+	LINK_ID_T    link_id;
+
+} __attribute__((packed));
+
+
+
+
+
+
+/*
+ * from metrics.h
+ */
+
+typedef uint16_t ALGO_T;
+typedef uint64_t UMETRIC_T;
+
+
+struct float_val_t {
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+	unsigned int mantissa : 8;
+	unsigned int exp_total : 8;
+#elif __BYTE_ORDER == __BIG_ENDIAN
+	unsigned int exp_total : 8;
+	unsigned int mantissa : 8;
+#else
+# error "Please fix <bits/endian.h>"
+#endif
+};
+
+struct float_metric_t {
+	union {
+		struct float_val_t f;
+		uint16_t u;
+	}val;
+
+	uint8_t exp_offset;
+	uint8_t reserved;
+};
+
+typedef struct float_metric_t FMETRIC_T;
+
+
+struct metric_record {
+	SQN_T sqn_bit_mask;
+
+        SQN_T clr; // SQN upto which waightedAverageVal has been purged
+	SQN_T set; // SQN which has been applied (if equals wa_pos) then wa_unscaled MUST NOT be set again!
+
+	UMETRIC_T umetric_slow;
+	UMETRIC_T umetric_fast;
+	UMETRIC_T umetric_final;
+};
+
+#define ZERO_METRIC_RECORD {0, 0, 0, 0,0,0}
+
+struct host_metricalgo {
+
+	uint8_t exp_offset;
+	uint8_t reserved_fmetric_mantissa_size;
+	uint8_t fmetric_mantissa_min;
+	uint8_t fmetric_exp_reduced_min;
+	UMETRIC_T umetric_min;
+	ALGO_T algo_type;
+	uint16_t flags;
+
+	uint8_t window_size;                // MUST be given as multiple of sqn_steps
+        uint8_t lounge_size;                // MUST be given as multiple of sqn_steps e.g. 6
+        uint8_t wavg_slow;             // e.g. 16
+        uint8_t wavg_fast;             // e.g. 2
+        uint8_t wavg_correction;             // e.g. 8
+	uint8_t hystere;
+	uint8_t hop_penalty;
+	uint8_t late_penalty;
+};
+
+
+
 
 #include "avl.h"
 #include "list.h"
@@ -31,25 +298,11 @@
 #include "allocate.h"
 
 
-#ifndef REVISION_VERSION
-#define REVISION_VERSION 0
-#endif
-
-/*
- *  from other headers:
- */
-
-#define IDM_T int8_t // int which size does NOT matter
-
-// dont touch this for compatibility reasons:
-#define IP4_T uint32_t
 
 #define DESCRIPTION0_ID_RANDOM_T uint64_t
 #define DESCRIPTION0_ID_RANDOM_LEN sizeof( DESCRIPTION0_ID_RANDOM_T )
-#define DESCRIPTION0_ID_NAME_LEN 22
+#define DESCRIPTION0_ID_NAME_LEN 32
 
-#define BMX_HASH0_LEN SHA_DIGEST_SIZE  // sha.h: 20 bytes
-#define BMX_PKEY0_LEN 1024
 
 struct description_id {
 	char    name[DESCRIPTION0_ID_NAME_LEN];
@@ -63,48 +316,12 @@ struct description_id {
 
 struct description_hash {
 	union {
-		uint8_t u8[BMX_HASH0_LEN];
-		uint32_t u32[BMX_HASH0_LEN/sizeof(uint32_t)];
+		uint8_t u8[HASH0_SHA1_LEN];
+		uint32_t u32[HASH0_SHA1_LEN/sizeof(uint32_t)];
 	} h;
 };
 
-// from msg.h
-#define FRAME_TYPE_ARRSZ 14
 
-
-/*
- *  bmx.h:
- */
-
-
-#define MIN_OGM0_SQN_RANGE 64
-#define MAX_OGM0_SQN_RANGE 8192// <=> 4096 / ogm_sqn_step_size=8 * ogm_interval=1000 = ~512sec
-#define DEF_OGM0_SQN_RANGE 8192// <=> 1024 / ogm_sqn_step_size=8 * ogm_interval=1000 = ~128sec
-
-#define ARG_OGM0_SQN_RANGE "ogm0_validity_range"
-
-#define SQN_DAD_RANGE 64 // if rcvd sqn is >= last_rcvd_sqn + SQN_TIMEOUT_RANGE then DAD
-#define SQN_T uint16_t
-
-#define MIN_SQN 0
-#define MAX_SQN ((SQN_T)-1)
-#define DEF_SQN 0 /* causes seqno to be randomized */
-
-
-#define MIN_OGM0_PQ_BITS 0
-#define MAX_OGM0_PQ_BITS 5
-#define DEF_OGM0_PQ_BITS 5
-#define ARG_OGM0_PQ_BITS "path_quality_bits"
-
-
-
-
-
-
-#define	MIN_MASK	1
-#define	MAX_MASK	32
-#define ARG_MASK	"netmask"
-#define ARG_NETW	"network"
 
 
 #define ARG_DEBUG	"debug"
@@ -113,14 +330,14 @@ struct description_hash {
 
 #define ARG_CONNECT "connect"
 #define ARG_RUN_DIR "runtime_dir"
-#define DEF_RUN_DIR "/var/run/bmx"
+#define DEF_RUN_DIR "/var/run/bmx6"
 
 
 extern uint32_t My_pid;
-#define BMX_ENV_LIB_PATH "BMX_LIB_PATH"
+#define BMX_ENV_LIB_PATH "BMX6_LIB_PATH"
 #define BMX_DEF_LIB_PATH "/usr/lib"
-// e.g. sudo BMX_LIB_PATH="$(pwd)/lib" ./bmxd -d3 eth0:bmx
-#define BMX_ENV_DEBUG "BMX_DEBUG"
+// e.g. sudo BMX_LIB_PATH="$(pwd)/lib" ./bmx6 -d3 eth0:bmx
+#define BMX_ENV_DEBUG "BMX6_DEBUG"
 
 
 
@@ -131,23 +348,10 @@ extern uint32_t My_pid;
 #define ARG_VERBOSE_EXP		"verbose_exp_help"
 
 #define ARG_VERSION		"version"
-#define ARG_TRAILER		"trailer"
 
 #define ARG_TEST		"test"
-#define ARG_SHOW_CHANGED 	"options"
+#define ARG_SHOW_PARAMETER 	"parameters"
 
-
-#define ARG_DEV  		"dev"
-#define ARG_DEV_TTL		"ttl"
-#define ARG_DEV_CLONE		"clone"
-#define ARG_DEV_ANTDVSTY	"ant_diversity"
-#define ARG_DEV_LL		"linklayer"
-#define ARG_DEV_ANNOUNCE        "announce"
-#define DEF_DEV_ANNOUNCE        YES
-
-#define VAL_DEV_LL_LO		0
-#define VAL_DEV_LL_LAN		1
-#define VAL_DEV_LL_WLAN		2
 
 
 #define ARG_ORIGINATORS "originators"
@@ -159,78 +363,29 @@ extern uint32_t My_pid;
 #define ARG_THROW "throw"
 
 
-#define PROBE_RANGE	1024
+
+#define MIN_TX_INTERVAL 35
+#define MAX_TX_INTERVAL 10000  // < U16_MAX due to metricalgo->ogm_interval field
+#define DEF_TX_INTERVAL 500
+#define ARG_TX_INTERVAL "tx_interval"
+extern int32_t my_tx_interval;
+
+#define DEF_TX_DELAY ((2*my_tx_interval) + rand_num(my_tx_interval))
+
+#define ARG_OGM_INTERVAL "ogm_interval"
+#define DEF_OGM_INTERVAL 3000
+#define MIN_OGM_INTERVAL 200
+#define MAX_OGM_INTERVAL 10000 // 60000 = 1 minutes
+extern int32_t my_ogm_interval;
 
 
+#define MIN_OGM_PURGE_TO  (MAX_OGM_INTERVAL + MAX_TX_INTERVAL)
+#define MAX_OGM_PURGE_TO  864000000 /*10 days*/
+#define DEF_OGM_PURGE_TO  MIN_OGM_PURGE_TO //MIN_OGM_PURGE_TO
+#define ARG_OGM_PURGE_TO  "purge_timeout"
+// extern int32_t purge_to;
 
-#define MAX_PWS 1024      /* 250 TBD: should not be larger until ogm->ws and neigh_node.packet_count (and related variables) is only 8 bit */
-#define MIN_PWS 32
-#define DEF_PWS 256      /* NBRF: NeighBor Ranking sequence Frame) sliding packet range of received orginator messages in squence numbers (should be a multiple of our word size) */
-#define ARG_PWS "path_window_size"
-extern int32_t my_pws; // my path window size used to quantify the end to end path quality between me and other nodes
-
-
-#define DEF_LWS 64
-#define MAX_LWS 250
-#define MIN_LWS 1
-#define ARG_LWS "link_window_size"
-extern int32_t local_lws; // my link window size used to quantify the link qualities to direct neighbors
-
-
-// the default link_lounge_size of 2 is good to compensate for ogi ~ but <= aggreg_interval
-#define MIN_RTQ_LOUNGE 0
-#define MAX_RTQ_LOUNGE 10
-#define DEF_RTQ_LOUNGE 2
-#define ARG_RTQ_LOUNGE "link_lounge_size"
-extern int32_t local_rtq_lounge;
-
-#define RQ_LINK_LOUNGE 0  /* may also be rtq_link_lounge */
-
-
-#define MIN_PATH_LOUNGE 0
-#define MAX_PATH_LOUNGE (0x01 << MAX_OGM0_PQ_BITS)
-#define DEF_PATH_LOUNGE (0x01 << DEF_OGM0_PQ_BITS)
-#define ARG_PATH_LOUNGE "path_lounge_size"
-extern int32_t my_path_lounge;
-
-#define MIN_PATH_HYST	0
-#define MAX_PATH_HYST	(PROBE_RANGE)/2
-#define DEF_PATH_HYST	0
-#define ARG_PATH_HYST   "path_hysteresis"
-extern int32_t my_path_hystere;
-
-#define MIN_RCNT_HYST	0
-#define MAX_RCNT_HYST	(PROBE_RANGE)/2
-#define DEF_RCNT_HYST	10
-#define ARG_RCNT_HYST   "fast_path_hysteresis"
-extern int32_t my_rcnt_hystere;
-
-#define DEF_RCNT_PWS 10
-#define MIN_RCNT_PWS 2
-#define MAX_RCNT_PWS 50
-#define ARG_RCNT_PWS "fast_path_window_size"
-extern int32_t my_rcnt_pws;
-
-
-#define DEF_RCNT_FK 4
-#define MIN_RCNT_FK 1
-#define MAX_RCNT_FK 11
-#define ARG_RCNT_FK "fast_path_faktor"
-extern int32_t my_rcnt_fk;
-
-#define MIN_LATE_PENAL 0
-#define MAX_LATE_PENAL 100
-#define DEF_LATE_PENAL 1
-#define ARG_LATE_PENAL "lateness_penalty"
-extern int32_t my_late_penalty;
-
-#define MIN_DROP_2HLOOP NO
-#define MAX_DROP_2HLOOP YES
-#define DEF_DROP_2HLOOP NO
-#define ARG_DROP_2HLOOP "drop_two_hop_loops"
-
-
-#define DEF_DAD_TO 50000
+#define DEF_DAD_TO (MAX_OGM_INTERVAL + MAX_TX_INTERVAL)
 #define MIN_DAD_TO 100
 #define MAX_DAD_TO 360000000
 #define ARG_DAD_TO "dad_timeout"
@@ -246,49 +401,12 @@ extern int32_t dad_to;
 #define ARG_TTL "ttl"
 extern int32_t my_ttl;
 
-#define DEF_WL_CLONES 200
-#define MIN_WL_CLONES 0
-#define MAX_WL_CLONES 400
-#define ARG_WL_CLONES   "ogm_broadcasts"
-extern int32_t wl_clones;
-
-#define DEF_LAN_CLONES 100
 
 
-#define DEF_ASYM_WEIGHT	100
-#define MIN_ASYM_WEIGHT	0
-#define MAX_ASYM_WEIGHT	100
-#define ARG_ASYM_WEIGHT	"asymmetric_weight"
-extern int32_t asym_weight;
-
-
-
-#define DEF_SYM_WEIGHT	80
-#define MIN_SYM_WEIGHT	0
-#define MAX_SYM_WEIGHT	100
-#define ARG_SYM_WEIGHT	"symmetric_weight"
-extern int32_t sym_weight;
-
-#define DEF_ASYM_EXP	1
-#define MIN_ASYM_EXP	0
-#define MAX_ASYM_EXP	3
-#define ARG_ASYM_EXP	"asymmetric_exp"
-
-#define DEF_HOP_PENALTY 1
-#define MIN_HOP_PENALTY 0
-#define MAX_HOP_PENALTY 100
-#define ARG_HOP_PENALTY "hop_penalty"
-extern int32_t my_hop_penalty;
-
-#define ARG_OGI_PWRSAVE "ogi_power_save"
-
-
-
-#define DEF_PURGE_TO  50000
-#define MIN_PURGE_TO  100
-#define MAX_PURGE_TO  864000000 /*10 days*/
-#define ARG_PURGE_TO  "purge_timeout"
-// extern int32_t purge_to;
+#define DEF_LINK_PURGE_TO  100000
+#define MIN_LINK_PURGE_TO  (MAX_TX_INTERVAL*2)
+#define MAX_LINK_PURGE_TO  864000000 /*10 days*/
+#define ARG_LINK_PURGE_TO  "link_purge_timeout"
 
 #define MIN_DHASH_TO 300000
 #define DHASH_TO_TOLERANCE_FK 10
@@ -297,20 +415,13 @@ extern int32_t my_hop_penalty;
 
 
 
-#define OGM_AGGREG_SQN_CACHE_RANGE 64
-#define OGM_AGGREG_SQN_CACHE_WARN  (OGM_AGGREG_SQN_CACHE_RANGE/2)
-#define OGM_AGGREG_ARRAY_BYTE_SIZE (OGM_AGGREG_SQN_CACHE_RANGE/8)
 
 
 
 
 
 
-#define SOURCE_VERSION "0.4-alpha" //put exactly one distinct word inside the string like "0.3-pre-alpha" or "0.3-rc1" or "0.3"
 
-#define COMPAT_VERSION 11
-
-#define IP4_STR_LEN 16
 
 #define MAX_DBG_STR_SIZE 1500
 #define OUT_SEQNO_OFFSET 1
@@ -332,46 +443,38 @@ enum ADGSN {
 #define SUCCESS 0
 #define FAILURE -1
 
-extern void* FAILURE_POINTER;
-
-#define ILLEGAL_STATE "Illegal program state. This should not happen!"
-
-#ifndef REVISION_VERSION
-#define REVISION_VERSION 0
-#endif
 
 #define MAX_SELECT_TIMEOUT_MS 400 /* MUST be smaller than (1000/2) to fit into max tv_usec */
 #define CRITICAL_PURGE_TIME_DRIFT 5
 
-#define RAND_INIT_DELAY 50
-#define COMMON_OBSERVATION_WINDOW (DEF_OGM_INTERVAL*DEF_PWS)
-
-//#define TYPE_OF_WORD unsigned long /* you should choose something big, if you don't want to waste cpu */
-//#define WORD_BIT_SIZE ( sizeof(TYPE_OF_WORD) * 8 )
 
 #define MAX( a, b ) ( (a>b) ? (a) : (b) )
 #define MIN( a, b ) ( (a<b) ? (a) : (b) )
 
-#define U32_MAX 4294967296
-#define I32_MAX 2147483647
-#define U16_MAX 65536
-#define I16_MAX 32767
-#define U8_MAX  256
-#define I8_MAX  127
+#define U64_MAX ((uint64_t)(-1))
+#define U32_MAX ((uint32_t)(-1))
+#define I32_MAX ((U32_MAX>>1))
+#define U16_MAX ((uint16_t)(-1))
+#define I16_MAX ((U16_MAX>>1))
+#define U8_MAX  ((uint8_t)(-1))
+#define I8_MAX  ((U8_MAX>>1))
 
 
+#define U32_LT( a, b )  ( ((uint32_t)( (a) - (b) ) ) >  I32_MAX )
+#define U32_LE( a, b )  ( ((uint32_t)( (b) - (a) ) ) <= I32_MAX )
+#define U32_GT( a, b )  ( ((uint32_t)( (b) - (a) ) ) >  I32_MAX )
+#define U32_GE( a, b )  ( ((uint32_t)( (a) - (b) ) ) <= I32_MAX )
 
-#define LESS_SQN( a, b )  ( ((uint16_t)( (a) - (b) ) ) >  I16_MAX )
-#define LSEQ_SQN( a, b )  ( ((uint16_t)( (b) - (a) ) ) <= I16_MAX )
-#define GREAT_SQN( a, b ) ( ((uint16_t)( (b) - (a) ) ) >  I16_MAX )
-#define GRTEQ_SQN( a, b ) ( ((uint16_t)( (a) - (b) ) ) <= I16_MAX )
+#define UXX_LT( mask, a, b )  ( ((mask)&( (a) - (b) ) ) >  (((mask)&U32_MAX)>>1) )
+#define UXX_LE( mask, a, b )  ( ((mask)&( (b) - (a) ) ) <= (((mask)&U32_MAX)>>1) )
+#define UXX_GT( mask, a, b )  ( ((mask)&( (b) - (a) ) ) >  (((mask)&U32_MAX)>>1) )
+#define UXX_GE( mask, a, b )  ( ((mask)&( (a) - (b) ) ) <= (((mask)&U32_MAX)>>1) )
 
-#define LESS_U32( a, b )  ( ((uint32_t)( (a) - (b) ) ) >  I32_MAX )
-#define LSEQ_U32( a, b )  ( ((uint32_t)( (b) - (a) ) ) <= I32_MAX )
-#define GREAT_U32( a, b ) ( ((uint32_t)( (b) - (a) ) ) >  I32_MAX )
-#define GRTEQ_U32( a, b ) ( ((uint32_t)( (a) - (b) ) ) <= I32_MAX )
+#define MAX_UXX( mask, a, b ) ( (UXX_GT(mask,a,b)) ? (a) : (b) )
+#define MIN_UXX( mask, a, b ) ( (UXX_LT(mask,a,b)) ? (a) : (b) )
 
-#define MAX_SQ( a, b ) ( (GREAT_SQN( (a), (b) )) ? (a) : (b) )
+
+#define UXX_GET_MAX(mask, a, b ) ( (UXX_GT( (mask), (a), (b) )) ? (a) : (b) )
 
 
 
@@ -382,28 +485,18 @@ extern void* FAILURE_POINTER;
 #define MAX_ARG_SIZE 200
 
 
-extern uint32_t bmx_time;
-extern uint32_t bmx_time_sec;
+extern TIME_T bmx_time;
+extern TIME_SEC_T bmx_time_sec;
 
-extern uint8_t on_the_fly;
+extern IDM_T initializing;
+extern IDM_T terminating;
 
 
 extern uint32_t s_curr_avg_cpu_load;
 
+extern IDM_T my_description_changed;
 
-
-
-
-extern struct dev_node *primary_if;
-
-
-extern struct orig_node my_orig_node;
-
-
-//extern struct list_head if_list;
-
-extern struct avl_tree dev_ip4_tree;
-extern struct avl_tree dev_name_tree;
+extern struct orig_node self;
 
 extern struct avl_tree link_tree;
 extern struct avl_tree link_dev_tree;
@@ -417,10 +510,6 @@ extern struct avl_tree orig_tree;
 extern struct avl_tree blocked_tree;
 extern struct avl_tree blacklisted_tree;
 
-
-
-
-
 /**
  * The most important data structures
  */
@@ -432,323 +521,177 @@ struct ogm_aggreg_node {
 
 	struct msg_ogm_adv *ogm_advs;
 
-	uint16_t aggregated_ogms;
+	uint16_t aggregated_msgs;
 
-	SQN_T    sqn;
-	uint8_t  tx_attempts;
-	uint32_t tx_timestamp;
+	AGGREG_SQN_T    sqn;
+	uint8_t  tx_attempt;
 };
-
 
 struct packet_buff {
 
-	//filled by wait4Event()
-#define pkt_buff_llip4 addr.sin_addr.s_addr
+	struct packet_buff_info {
+		//filled by wait4Event()
+		struct sockaddr_storage addr;
+		struct timeval tv_stamp;
+		struct dev_node *iif;
+		int total_length;
+		uint8_t unicast;
 
-	unsigned char packet_in[2001];
-	struct sockaddr_in      addr;
-	struct timeval		tv_stamp;
-	struct dev_node	       *iif;
-	int			total_length;
-	uint8_t 		unicast;
+		//filled in by rx_packet()
+		uint32_t rx_counter;
+		IID_T transmittersIID;
+		LINK_ID_T link_id;
+		IPX_T llip;
+		char llip_str[INET6_ADDRSTRLEN];
+		struct dev_node *oif;
+		struct link_node *ln;
+		struct link_dev_node *lndev;
+		struct dhash_node *described_dhn; // might be updated again process_dhash_description_neighIID4x()
+	} i;
 
-	//filled in by rx_packet()
-	char neigh_str[IP4_STR_LEN];
-	struct dev_node        *oif;
-	struct link_node       *ln;
-
-	//filled in by rx_frm_hey0_reps() or rx_frame()
-	struct link_dev_node   *lndev;
+	union {
+		struct packet_header header;
+		unsigned char data[MAX_PACKET_SIZE + 1];
+	} packet;
 
 };
 
 
 
 
-struct task_node
-{
+struct task_node {
 	struct list_node list;
-	uint32_t expire;
+	TIME_T expire;
 	void (* task) (void *fpara); // pointer to the function to be executed
 	void *data; //NULL or pointer to data to be given to function. Data will be freed after functio is called.
 };
 
-
-
-struct tx_task_node {
-	struct list_node list;
-
-	IP4_T    dst_ip4;
-	IID_T    myIID4x;
-	IID_T    neighIID4x;
-	SQN_T 	 sqn;
-	uint16_t frame_data_length_target; // because some variable msgs sizes may vary between scheduling and tx
-	uint8_t  frame_type;
-	uint8_t  tx_iterations;
-	uint32_t tx_timestamp;
+struct tx_task_key {
 	struct dev_node *dev; // the outgoing interface to be used for transmitting
-
-};
-
-struct tx_timestamp_key {
-	IP4_T myIID4x_or_dest_ip4;
+	struct link_node *link;
+	struct link_dev_node *lndev;
+	uint32_t u32;
+	uint16_t u16;
+	IID_T myIID4x;
 	IID_T neighIID4x;
 	uint16_t type;
 };
 
-struct tx_timestamp_node {
-	struct tx_timestamp_key key;
-	uint32_t timestamp;
-};
-
-struct dev_node
-{
+struct tx_task_node {
 	struct list_node list;
-	char name[IFNAMSIZ];
-	char name_phy[IFNAMSIZ];
 
-	char ip4_str[IP4_STR_LEN];
-
-	int32_t index;
-
-	uint8_t active;
-
-	uint16_t  ip4_prefix_length;
-
-	uint32_t ip4_addr;
-	uint32_t ip4_tree_addr;
-	uint32_t ip4_netaddr;
-	uint32_t ip4_broad;
-	uint32_t ip4_netmask;
-
-	int ip4_mtu;
-
-	int32_t rp_filter_orig;
-	int32_t send_redirects_orig;
-
-
-	struct sockaddr_in ip4_unicast_addr;
-	struct sockaddr_in ip4_netwbrc_addr;
-
-	int32_t unicast_sock;
-	int32_t netwbrc_sock;
-	int32_t fullbrc_sock;
-
-	SQN_T packet_sqn;
-	SQN_T ogm_sqn;
-	uint32_t link_activity_timestamp;
-	uint32_t next_powersave_hardbeat;
-
-	uint16_t misc_flag;
-
-	struct list_head tx_tasks_list[FRAME_TYPE_ARRSZ]; // scheduled frames and messages
-	struct tx_task_node *my_tx_tasks[FRAME_TYPE_ARRSZ];
-	uint16_t tx_frames_data_len_target; // target (should) length of all currently scheduled tx messages (not including packet- or frame-headers
-
-	struct avl_tree tx_timestamp_tree; // timestamps of recently send messages, ordered by type and iid
-
-	// having a pointer right before the following array ensures 32/64 bit alignment.
-//	unsigned char *aggregation_out;
-//	unsigned char aggregation_out_buff[MAX_UDPD_SIZE + 1];
-
-//	int16_t aggregation_len;
-
-
-	int8_t soft_conf_changed;
-	int8_t hard_conf_changed;
-
-	int8_t linklayer_conf;
-	int8_t linklayer;
-
-	int16_t send_clones_conf;
-	int16_t send_clones;
-
-	int16_t antenna_diversity_conf;
-	int16_t antenna_diversity;
-
-	int8_t announce_conf;
-	int8_t announce;
-
+	struct tx_task_key content;
+	uint16_t frame_msgs_length; 
+	int16_t  tx_iterations;
+	TIME_T considered_ts;
+	TIME_T send_ts;
 };
 
 
 
-struct metric_algo {
-        SQN_T sqn_mask;
-        SQN_T sqn_steps;                 // e.g. 2
-        SQN_T sqn_window;                // MUST be given as multiple of sqn_steps
-        SQN_T sqn_lounge;                // MUST be given as multiple of sqn_steps e.g. 6
-        uint32_t regression; // e.g. window_size/2
-        uint32_t metric_max;             // e.g. 256
-};
 
 #define SQR_RTQ 0x00
 #define SQR_RQ  0x01
 #define SQR_RANGE 0x02
 
-extern struct metric_algo link_metric_algo[SQR_RANGE];
-
-#define TQ_RATE( lndev, range) ( ((lndev)->mr[SQR_RQ].val ) ? \
-(MIN( ( ((range) * ((lndev)->mr[SQR_RTQ].val) ) / ((lndev)->mr[SQR_RQ].val) ), (range) )): \
-(0)  )
-
-
-struct metric_record {
-        SQN_T clr; // SQN upto which waightedAverageVal has been purged
-	SQN_T set; 	// SQN which has been applied (if equals wa_pos) then wa_unscaled MUST NOT be set again!
-	uint32_t val;
-};
 
 
 
 
 
-struct link_key {
-	IP4_T llip4;
+
+struct link_dev_key {
+	struct link_node *link;
 	struct dev_node *dev;
 };
 
 struct link_dev_node {
 	struct list_node list;
-
-	struct link_key key;
-
-	uint32_t pkt_time_max;
-
-	uint32_t rtq_time_max;
-
-	struct link_node *link;
-
-//	struct sq_record sqr[SQR_RANGE];
-
+	struct link_dev_key key;
 	struct metric_record mr[SQR_RANGE];
+	UMETRIC_T umetric_link;
 
+	struct list_head tx_task_lists[FRAME_TYPE_ARRSZ]; // scheduled frames and messages
+
+	HELLO_FLAGS_SQN_T rx_hello_reply_flags;
+	HELLO_FLAGS_SQN_T tx_hello_reply_flags;
+
+	TIME_T pkt_time_max;
+	TIME_T rtq_time_max;
 };
 
-/* MUST be allocated and initiated all or nothing !
- * MUST be initiated with any unidirectional received OGM
- * from a direct link NB
- */
-/* Only OG interfaces which are direct link neighbors have a link_node
- * Because neighboring interfaces may be seen via several of our own interfaces
- * each link_node points to one or several link_node_dev structures
- */
-struct link_node
-{
-	uint32_t llip4;
-	char llip4_str[IP4_STR_LEN];
+struct link_node {
+	LINK_ID_T link_id;
+	IPX_T link_ip;
 
-	uint32_t pkt_time_max;
-	SQN_T pkt_sqn_max;
+	TIME_T pkt_time_max;
 
-	SQN_T rq_sqn_max;
-	uint32_t rq_time_max;
+	uint8_t rq_purge_iterations;
+
+	TIME_T rq_purge_interval;
+	TIME_T rq_time_max_prev;
+	TIME_T rq_time_max;
+
+	HELLO_FLAGS_SQN_T rq_hello_sqn_max_prev;
+	HELLO_FLAGS_SQN_T rq_hello_sqn_max;
 
 	struct neigh_node *neigh;
-
+	
 	struct list_head lndev_list; // list with one link_node_dev element per link
-
 };
 
 
 
 /* Path statistics per neighbor via which OGMs of the parent orig_node have been received */
-/* Every OG has one ore several neigh_nodes. */
+
+
 struct router_node {
-
-	struct link_key key;
-
-//	SQN_T ogm_sqn_to_be_send;
-
+	struct link_dev_key key;
 	struct metric_record mr;
-
-//	uint32_t metric;
-
-
-
 };
 
-struct orig_node   {
 
+struct orig_node   {
 	// filled in by validate_new_link_desc0():
 
 	struct description_id id;
 
 	struct dhash_node *dhn;
-	struct description *desc0;
-//	struct orig_node *orig_key;
+	struct description *desc;
 
-	uint32_t updated_timestamp; // last time this on's desc was succesfully updated
-//	uint32_t referred_timestamp;// use dhn->referred_timestamp instead
+	TIME_T updated_timestamp; // last time this on's desc was succesfully updated
 
-	SQN_T desc0_sqn;
+	DESC_SQN_T descSqn;
 
-	SQN_T ogm_sqn_min;
-	SQN_T ogm_sqn_to_be_send;
-	SQN_T ogm_sqn_aggregated;
+	OGM_SQN_T ogmSqn_rangeMin;
+	OGM_SQN_T ogmSqn_rangeSize;
 
-	SQN_T ogm_sqn_range;
 
-//	SQN_T ogm_sqn_mask;
-//	SQN_T ogm_sqn_steps;
-
-	SQN_T ogm_sqn_max_rcvd;
-
-	uint8_t ogm_sqn_pq_bits;
-
-	struct metric_algo path_metric_algo;
-
-	uint8_t blocked;
-
-	// not yet filled in:
 
 	// filled in by process_desc0_tlvs()->
-
-	uint32_t primary_ip4;
-	char primary_ip4_str[IP4_STR_LEN];
-
-
-	// filled in by ???
+	IPX_T primary_ip;
+	char primary_ip_str[IPX_STR_LEN];
+	uint8_t blocked;
 
 
-	struct link_key router_key;   // the neighbor which is the currently best_next_hop
-	struct avl_tree router_tree;
-	uint32_t router_path_metric;
-	uint32_t router_best_metric;
+	struct host_metricalgo *path_metricalgo;
+
+	// calculated by update_path_metric()
+
+	OGM_SQN_T ogmSqn_maxRcvd;
+	OGM_SQN_T ogmSqn_toBeSend;
+	OGM_SQN_T ogmSqn_aggregated;
+	
+	UMETRIC_T *metricSqnMaxArr;
+
+	struct avl_tree rt_tree;
+
+	struct router_node *best_rn;
+	struct router_node *curr_rn;
 
 
-/*
-	// old unused:
 
-
-
-
-	uint32_t last_aware;              // when last valid ogm via  this node was received
-	uint32_t last_valid_time;         // when last valid ogm from this node was received
-
-	uint32_t first_valid_sec;         // only used for debugging purposes
-
-	SQN_T last_decided_sqn;
-	SQN_T last_accepted_sqn;          // last squence number acceppted for metric
-	SQN_T last_valid_sqn;             // last and best known squence number
-	SQN_T last_wavg_sqn;              // last sequence number used for estimating ogi
-
-	uint8_t last_path_ttl;
-	int8_t last_path_change_scenario;
-
-	uint8_t  pws;
-	uint8_t  path_lounge;
-	uint8_t path_hystere;
-	uint8_t late_penalty;
-
-	uint8_t rcnt_pws;
-	uint8_t rcnt_hystere;
-	uint8_t rcnt_fk;
-
-	uint32_t ogi_wavg;
-	uint32_t rt_changes;
-*/
-	/*size of plugin data is defined during intialization and depends on registered plugin-data hooks */
+	//size of plugin data is defined during intialization and depends on registered PLUGIN_DATA_ORIG hooks
 	void *plugin_data[];
 
 };
@@ -757,16 +700,13 @@ struct orig_node   {
 struct neigh_node {
 
 	struct neigh_node *nnkey;
+	struct dhash_node *dhn; // confirmed dhash
 
 	struct avl_tree link_tree;
-
-	struct dhash_node *dhn;
-
 
 	// filled in by ???:
 
 	IID_T neighIID4me;
-	IID_T neighIID4neigh;
 
 	struct iid_repos neighIID4x_repos;
 
@@ -774,32 +714,26 @@ struct neigh_node {
 	struct link_dev_node *best_rtq;
 
 	// filled in by ???:
-	SQN_T ogm_aggregation_rcvd_max;
-	uint8_t ogm_aggregations_acked[OGM_AGGREG_ARRAY_BYTE_SIZE];
-	uint8_t ogm_aggregations_rcvd[OGM_AGGREG_ARRAY_BYTE_SIZE];
-
+	AGGREG_SQN_T ogm_aggregation_rcvd_set;
+	AGGREG_SQN_T ogm_aggregation_cleard_max;
+	uint8_t ogm_aggregations_acked[AGGREG_ARRAY_BYTE_SIZE];
+	uint8_t ogm_aggregations_rcvd[AGGREG_ARRAY_BYTE_SIZE];
 };
+
 
 
 struct dhash_node {
 
 	struct description_hash dhash;
 
-	// filled in by rx_frm_hiX0_advs() -> get_orig_node():
-
-	uint32_t referred_timestamp; // last time this dhn was referred
+	TIME_T referred_by_me_timestamp; // last time this dhn was referred
 
 	struct neigh_node *neigh;
 
 	IID_T myIID4orig;
 
 
-	// filled in by rx_frm_hi40_reps():
-
 	struct orig_node *on;
-
-	// filled in by expire_dhash_node()
-	// uint8_t invalid; equal to on == NULL
 };
 
 
@@ -822,7 +756,7 @@ struct throw_node
 
 
 
-# define timercpy(d, a) (d)->tv_sec = (a)->tv_sec; (d)->tv_usec = (a)->tv_usec;
+#define timercpy(d, a) (d)->tv_sec = (a)->tv_sec; (d)->tv_usec = (a)->tv_usec;
 
 
 
@@ -833,33 +767,88 @@ enum {
 	CLEANUP_RETURN
 };
 
+
+/***********************************************************
+ Data Infrastructure
+ ************************************************************/
+IDM_T equal_link_key( struct link_dev_key *a, struct link_dev_key *b );
+
+void blacklist_neighbor(struct packet_buff *pb);
+
+IDM_T blacklisted_neighbor(struct packet_buff *pb, struct description_hash *dhash);
+
+struct dhash_node *is_described_neigh_dhn(struct packet_buff *pb);
+
+
+void purge_link_and_orig_nodes(struct dev_node *only_dev, IDM_T only_expired);
+void free_orig_node(struct orig_node *on);
+void init_orig_node(struct orig_node *on, struct description_id *id);
+
+
+struct dhash_node* create_dhash_node(struct description_hash *dhash,  struct orig_node *on);
+void free_dhash_node( struct dhash_node *dhn );
+void invalidate_dhash_node( struct dhash_node *dhn );
+
+
+IDM_T update_neigh_node(struct link_node *ln, struct dhash_node *dhn, IID_T neighIID4neigh, struct description *dsc);
+
+LINK_ID_T new_link_id(struct dev_node *dev);
+
+void rx_packet( struct packet_buff *pb );
+
+
+/***********************************************************
+ Runtime Infrastructure
+************************************************************/
+
+
 /*
- * PARANOIA ERROR CODES:
+ * ASSERTION / PARANOIA ERROR CODES:
  * Negative numbers are used as SIGSEV error codes !
- * Currently used numbers are: -500000 ... -500520
+ * Currently used numbers are: -500000 -500001 ... -500922
  */
 
-#ifdef NO_PARANOIA
+#ifdef NO_ASSERTIONS
 #define paranoia( ... )
 #define assertion( ... )
 #define ASSERTION( ... )
-#else
-#define paranoia( code , problem ); do { if ( (problem) ) { cleanup_all( code ); } }while(0)
-#define assertion( code , condition ); do { if ( !(condition) ) { cleanup_all( code ); } }while(0)
-#ifdef EXTREME_PARANOIA
-#define ASSERTION( code , condition ); do { if ( !(condition) ) { cleanup_all( code ); } }while(0)
-#define CHECK_INTEGRITY( ... ) checkIntegrity()
-#else
+#define EXITERROR( ... )
 #define CHECK_INTEGRITY( ... )
-#define ASSERTION( ... )
+
+#else//NO_ASSERTIONS
+
+#define paranoia( code , problem ) do { if ( (problem) ) { cleanup_all( code ); } }while(0)
+#define assertion( code , condition ) do { if ( !(condition) ) { cleanup_all( code ); } }while(0)
+
+#ifdef EXTREME_PARANOIA
+#define ASSERTION( code , condition ) do { if ( !(condition) ) { cleanup_all( code ); } }while(0)
+#define CHECK_INTEGRITY( ) checkIntegrity()
+#else
+#define CHECK_INTEGRITY( )
+#define ASSERTION( code , condition )
 #endif
+
+#ifdef EXIT_ON_ERROR
+#define EXITERROR( code , condition )                                                                                  \
+  do {                                                                                                                 \
+      if ( !(condition) ) {                                                                                            \
+         dbgf(DBGL_SYS, DBGT_ERR, "This is paranoid! Disable EXIT_ON_ERROR to not exit due to minor or others' misbehavior");              \
+           cleanup_all( code );                                                                                        \
+      }                                                                                                                \
+  }while(0)
+#else
+#define EXITERROR( code , condition )
 #endif
+
+#endif//NO_ASSERTIONS
 
 
 #ifndef PROFILING
 #define STATIC_FUNC static
+#define STATIC_INLINE_FUNC static inline
 #else
 #define STATIC_FUNC
+#define STATIC_INLINE_FUNC
 #endif
 
 #ifdef STATIC_VARIABLES
@@ -868,64 +857,34 @@ enum {
 #define STATIC_VAR
 #endif
 
-/***********************************************************
- Data Infrastructure
- ************************************************************/
 
-void blacklist_neighbor(struct packet_buff *pb);
+#ifndef NO_TRACE_FUNCTION_CALLS
 
-IDM_T blacklisted_neighbor(struct packet_buff *pb, struct description_hash *dhash);
+#define FUNCTION_CALL_BUFFER_SIZE 64
 
-IDM_T validate_metric_algo(struct metric_algo *ma, struct ctrl_node *cn);
+extern char* function_call_buffer_name_array[FUNCTION_CALL_BUFFER_SIZE];
+extern TIME_T function_call_buffer_time_array[FUNCTION_CALL_BUFFER_SIZE];
+extern uint8_t function_call_buffer_pos;
 
-uint32_t update_metric(struct link_node *ln, struct orig_node *on,
-	struct metric_record *mr, struct metric_algo *ma, SQN_T sqn_in, SQN_T sqn_max, uint32_t probe);
-
-void update_link_node(struct link_node *ln, struct dev_node *iif, SQN_T sqn, SQN_T sqn_max, uint8_t sqr, uint32_t probe);
-
-void purge_orig(struct dev_node *only_dev, IDM_T only_expired);
-void free_orig_node(struct orig_node *on);
-
-IDM_T update_orig_metrics(struct packet_buff *pb, struct orig_node *on, IID_T orig_sqn);
-
-struct dhash_node* create_dhash_node(struct description_hash *dhash,  struct orig_node *on);
-void free_dhash_node( struct dhash_node *dhn );
-void invalidate_dhash_node( struct dhash_node *dhn );
+void trace_function_call(const char *);
+#define TRACE_FUNCTION_CALL trace_function_call ( __FUNCTION__ )
 
 
-IDM_T update_neigh_node(struct link_node *ln, struct dhash_node *dhn, IID_T neighIID4neigh);
+#else
 
-IDM_T update_neighIID4x_repository(struct neigh_node *neigh, IID_T neighIID4x, struct dhash_node *dhn);
+#define TRACE_FUNCTION_CALL
 
-struct dev_node * get_bif(char *dev);
+#endif
 
-void rx_packet( struct packet_buff *pb );
-/***********************************************************
- Runtime Infrastructure
-************************************************************/
-void wait_sec_msec( uint32_t sec, uint32_t msec );
 
-void cleanup_all( int status );
+void wait_sec_msec( TIME_SEC_T sec, TIME_T msec );
+
+void cleanup_all( int32_t status );
 
 void upd_time( struct timeval *precise_tv );
 
 char *get_human_uptime( uint32_t reference );
 
-int32_t rand_num( uint32_t limit );
-
-int8_t terminating();
-
-uint8_t bits_count( uint32_t v );
-
-uint8_t bit_get(uint8_t *array, uint16_t array_bit_size, uint16_t bit);
-
-void bit_set(uint8_t *array, uint16_t array_bit_size, uint16_t bit, IDM_T value);
-
-void bit_clear(uint8_t *array, uint16_t array_bit_size, uint16_t begin, uint16_t end);
-
-void byte_clear(uint8_t *array, uint16_t array_size, uint16_t begin, uint16_t range);
-
-uint8_t is_zero(char *data, int len);
 
 
 /***********************************************************
@@ -934,5 +893,4 @@ uint8_t is_zero(char *data, int len);
 
 
 IDM_T validate_name( char* name );
-
-int32_t opt_update_description ( uint8_t cmd, uint8_t _save, struct opt_type *opt, struct opt_parent *patch, struct ctrl_node *cn );
+IDM_T validate_param(int32_t probe, int32_t min, int32_t max, char *name);

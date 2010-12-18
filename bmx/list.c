@@ -1,6 +1,4 @@
 /*
- * Copyright (C) 2010 BMX contributors:
- * Axel Neumann
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of version 2 of the GNU General Public
  * License as published by the Free Software Foundation.
@@ -21,12 +19,14 @@
  * double-linked list implementaton from the linux-kernel
  * which can be found in include/linux/list.h
  *
- * The following has been to better fit my needs:
+ * The following has been changed/added to better fit my needs:
  * - items counter
  * - plist handler (list-node structure with void* item pointer
  * - single-linked list instead of double-linked list to save overhead
  * - some functions for straight item access!
+ * - ...
  */
+#include <string.h>
 
 #include "bmx.h"
 #include "list.h"
@@ -38,18 +38,28 @@
  */
 void * list_iterate(struct list_head *head, void *node)
 {
-        struct list_node * ln;
-
-        if (head->prev == (ln = ((node ?
-                (struct list_node*) (((char*) node) + head->list_node_offset) :
-                (struct list_node*) head))->next)
-                )
+        //assertion(-500869, (0)); // does not return NULL when iteration finished
+        if (head->prev == (node ? ((struct list_node*) (((char*) node) + head->list_node_offset)) : head->next))
                 return NULL;
+
+        struct list_node *ln = ((node ?
+                (struct list_node*) (((char*) node) + head->list_node_offset) :
+                (struct list_node*) head))->next;
 
         return (((char*) ln) - head->list_node_offset);
 }
 
+void *list_find(struct list_head *head, void* key)
+{
+        char *node = NULL;
 
+        while ((node = list_iterate(head, node))) {
+
+                if ( memcmp( node+head->key_node_offset, key, head->key_length ) == 0)
+                        return node;
+        }
+        return NULL;
+}
 
 /**
  * list_add_head - add a new entry at the beginning of a list
@@ -135,22 +145,6 @@ void * plist_iterate(struct list_head *head, struct plist_node **pln)
                 return NULL;
 
         return (*pln)->item;
-
-/*
-        if (LIST_EMPTY(head))
-                return NULL;
-        
-        if (*pln) {
-
-                if (head->prev == (struct list_node*) (*pln = (struct plist_node*) ((*pln)->list->next)))
-                        return NULL;
-
-        } else {
-                *pln = (struct plist_node*) head->next;
-        }
-
-        return (*pln)->item;
-*/
 
 }
 

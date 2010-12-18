@@ -20,13 +20,14 @@
 
 #ifndef _ALLOCATE_H
 #define _ALLOCATE_H 1
+
 #include <stdint.h>
 
 
-// currently used memory tags: -300000 .. -300228
-#define debugMalloc( l,t )  _debugMalloc( (l), (t) )
-#define debugRealloc( m,l,t ) _debugRealloc( (m), (l), (t) )
-#define debugFree( m,t ) _debugFree( (m), (t) )
+// currently used memory tags: -300000, -300001 .. -300317
+#define debugMalloc( length,tag )  _debugMalloc( (length), (tag) )
+#define debugRealloc( mem,length,tag ) _debugRealloc( (mem), (length), (tag) )
+#define debugFree( mem,tag ) _debugFree( (mem), (tag) )
 void *_debugMalloc(uint32_t length, int32_t tag);
 void *_debugRealloc(void *memory, uint32_t length, int32_t tag);
 void _debugFree(void *memoryParameter, int32_t tag);
